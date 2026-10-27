@@ -58,9 +58,9 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
     /** Records a finished game; a ranked game moves the ladder and returns how. */
     fun record(mode: PlayMode, outcome: RankOutcome, opponents: List<MatchOpponent>, opponentBracket: Int?, aiSkill: Int?, deckID: String,
                deckName: String, commander: String?, colors: List<String>, deckBracket: Int, turns: Int, aiDeckID: String? = null,
-               engineMatchID: String? = null, gameRecordFile: String? = null): RankChange? {
+               engineMatchID: String? = null, gameRecordFile: String? = null, durationSeconds: Int? = null): RankChange? {
         val (next, change) = file.recording(now(), mode, outcome, opponents, opponentBracket, aiSkill, deckID, deckName, commander, colors,
-            deckBracket, turns, aiDeckID, engineMatchID, gameRecordFile)
+            deckBracket, turns, aiDeckID, engineMatchID, gameRecordFile, durationSeconds)
         file = next; save()
         if (mode == PlayMode.RANKED) publish?.invoke(file.rank, file.title, shownCommander)
         // The finished game goes to the profile server too (when there is a profile): never blocks play.

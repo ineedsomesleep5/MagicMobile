@@ -57,6 +57,8 @@ export interface MatchRecord {
   engineMatchID?: string;
   /** A ranked AI game's server ticket, so the server's answer finds this game. */
   rankedTicket?: string;
+  /** How long the game ran, in seconds; absent for games from before 2026-10-26. */
+  durationSeconds?: number;
   /** How the server counted it (counted, too_soon, capped, unverified) and, for an unverified win, why. */
   settlement?: string;
   settlementCheck?: string;
@@ -191,6 +193,8 @@ export interface FinishedGame {
   aiDeckID?: string; engineMatchID?: string;
   /** The server's ticket for a ranked game against the AI. */
   rankedTicket?: string;
+  /** How long the game ran, in seconds. */
+  durationSeconds?: number;
 }
 
 /**
@@ -328,6 +332,7 @@ export class PlayerRecordStore {
       ...(game.mode === "ranked" ? { season: this._rank.season } : {}),
       ...(game.engineMatchID !== undefined ? { engineMatchID: game.engineMatchID } : {}),
       ...(game.mode === "ranked" && game.rankedTicket !== undefined && game.opponents.every((o) => o.isAI) ? { rankedTicket: game.rankedTicket } : {}),
+      ...(game.durationSeconds !== undefined ? { durationSeconds: Math.min(86_400, Math.max(0, Math.round(game.durationSeconds))) } : {}),
     };
     this._matches = [match, ...this._matches].slice(0, PlayerRecordStore.maxMatches);
     const aiDeckID = game.aiDeckID;

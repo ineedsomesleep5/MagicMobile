@@ -11,6 +11,7 @@
  * PlayerAccount is framework-free (like GameTable): `state` is replaced on every change, `version` counts changes and
  * `subscribe(listener)` hears them, so React reads it with useSyncExternalStore.
  */
+import { appConfig } from "./appConfig";
 import { arr, bool, get, int, isObject, isUuid, type J, type JObject, str } from "./json";
 import { parseMyGames } from "./remoteGames";
 import { Achievement, type KeyValueStore, type MatchRecord, type PlayerRecordStore, type PlayMode } from "./playerRecord";
@@ -531,6 +532,8 @@ export interface RankedLeaderboardEntry {
   losses: number;
   online: boolean;
   you: boolean;
+  /** Straight wins right now; absent from a server before 2026-10-27. */
+  streak?: number;
 }
 
 /**
@@ -544,26 +547,42 @@ export interface RankedLeaderboard {
   online: number;
   entries: RankedLeaderboardEntry[];
   me?: RankedLeaderboardEntry;
+  /** Last season's top three (the champions); absent from a server before 2026-10-27. */
+  champions?: { season: string; entries: RankedLeaderboardEntry[] };
 }
 
 const parseEntry = (row: J | undefined): RankedLeaderboardEntry => {
   const title = optional(get(row, "title"), str), commander = optional(get(row, "commander"), str);
+  const streak = optional(get(row, "streak"), int);
   return {
     position: required(get(row, "position"), int), username: required(get(row, "username"), str),
     ...(title !== undefined ? { title } : {}), ...(commander !== undefined ? { commander } : {}),
     points: required(get(row, "points"), int), wins: required(get(row, "wins"), int), losses: required(get(row, "losses"), int),
     online: required(get(row, "online"), bool), you: required(get(row, "you"), bool),
+    ...(streak !== undefined ? { streak } : {}),
+  };
+};
+
+/** A champion's row: its step and pips instead of points, never online. */
+const parseChampion = (row: J | undefined): RankedLeaderboardEntry => {
+  const commander = optional(get(row, "commander"), str);
+  return {
+    position: required(get(row, "position"), int), username: required(get(row, "username"), str), ...(commander !== undefined ? { commander } : {}),
+    points: RankPosition.points(RankPosition.published(required(get(row, "step"), int), required(get(row, "pips"), int))),
+    wins: required(get(row, "wins"), int), losses: required(get(row, "losses"), int), online: false, you: required(get(row, "you"), bool),
   };
 };
 
 export const RankedLeaderboard = {
   scopes: ["everyone", "friends"] as RankedLeaderboardScope[],
   parse(json: J): RankedLeaderboard {
-    const me = get(json, "me");
+    const me = get(json, "me"), champions = get(json, "champions");
     return {
       season: required(get(json, "season"), str), scope: required(get(json, "scope"), str), total: required(get(json, "total"), int),
       online: required(get(json, "online"), int), entries: required(get(json, "entries"), arr).map(parseEntry),
       ...(me !== undefined && me !== null ? { me: parseEntry(me) } : {}),
+      ...(champions !== undefined && champions !== null
+        ? { champions: { season: required(get(champions, "season"), str), entries: required(get(champions, "entries"), arr).map(parseChampion) } } : {}),
     };
   },
   rank: (entry: RankedLeaderboardEntry) => RankPosition.fromPoints(entry.points),
@@ -1153,6 +1172,12 @@ export class PlayerAccount {
   }
 
   /** Sends one finished game. Never throws: the caller keeps what could not be sent and tries again later. */
+  /** The server's settings for the web (mm_app_config): the menu's notice, name fixes and switches. Best effort. */
+  async refreshAppConfig(): Promise<void> {
+    if (this.state.phase !== "ready") return;
+    try { appConfig.store(await this.api.rpc("mm_app_config", { p_platform: "web", p_build: 0 })); } catch { /* the last copy stays */ }
+  }
+
   async recordGame(match: MatchRecord): Promise<GameUploadResult> {
     if (!this.hasName) return "unavailable";
     const params: Record<string, J> = {
@@ -1164,6 +1189,7 @@ export class PlayerAccount {
       })),
     };
     if (match.turns > 0) params.p_turns = Math.min(1000, match.turns);
+    if (match.durationSeconds !== undefined && match.durationSeconds > 0) params.p_duration_seconds = Math.min(86_400, Math.round(match.durationSeconds));
     if (match.rankChange) params.p_rank_points = RankPosition.points(match.rankChange.after);
     try {
       await this.api.rpc("mm_record_game", params);

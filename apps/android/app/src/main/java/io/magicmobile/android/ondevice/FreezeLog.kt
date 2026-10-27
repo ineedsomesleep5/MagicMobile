@@ -60,7 +60,7 @@ object FreezeLog {
         val main = Handler(Looper.getMainLooper())
         io.execute {
             val offer = runCatching { store()?.load() }.getOrNull().orEmpty()
-                .lastOrNull { !it.sent && !it.declined && it.kind != FreezeRules.REPORTED && it.atMillis < startedAtWall && it.duringGame }
+                .lastOrNull { !it.sent && !it.declined && FreezeRules.worthAsking(it.kind, it.durationSeconds) && it.atMillis < startedAtWall && it.duringGame }
             if (offer != null) main.post { launchOffer = offer }
         }
         watchdog = Watchdog(main).also { it.start() }

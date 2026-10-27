@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AIDeckPool, type AIDeck, playerDeckID } from "../../core/aiDeckPool";
+import { appConfig } from "../../core/appConfig";
 import { BracketRules, type BracketRulesFile, CommanderBracket, DeckBracketPreference } from "../../core/brackets";
 import { loadCatalogue } from "../../core/deckStudio/catalogue";
 import { draftFromDeck, DraftPresentation } from "../../core/deckStudio/draft";
@@ -140,6 +141,9 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
     }
   }, [deckSync, library, libraryChanged]);
   const accountReady = player.state.phase === "ready";
+  // The server's settings for the web (appConfig): the menu's notice, name fixes, feature switches.
+  useEffect(() => { if (accountReady) void player.refreshAppConfig(); }, [accountReady, player]);
+  const appNotice = useSyncExternalStore(appConfig.subscribe, () => appConfig.shownNotice());
   useEffect(() => {
     if (!accountReady) return;
     void syncDecks();
@@ -471,9 +475,12 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
     if (!online) return;
     const { table } = online;
     let opened = table.state.stage !== "idle";
+    // When the game itself began, for its length on the profile.
+    let playingSince: number | undefined = table.state.stage === "playing" ? Date.now() : undefined;
     const check = () => {
       const stage = table.state.stage;
       if (stage !== "idle") opened = true;
+      if (stage === "playing" && playingSince === undefined) playingSince = Date.now();
       if (opened && (stage === "idle" || stage === "closed")) {
         account.setHosting(undefined);
         if (online.rankedMatchID) rankedQueue.finish();
@@ -489,6 +496,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
       record.record({
         mode: online.mode, outcome, opponents: table.state.tableSeats.filter((seat) => !seat.isLocal).map((seat) => ({ name: seat.name, commander: seat.commanders[0], isAI: false })),
         deckID: online.deck.id, deckName: online.deck.name, commander: online.deck.commander, colors: [...online.deck.colors], deckBracket: online.deckBracket, turns: snapshot.turn,
+        ...(playingSince !== undefined ? { durationSeconds: (Date.now() - playingSince) / 1000 } : {}),
       });
       void (async () => {
         if (online.rankedMatchID) await rankedQueue.report(online.rankedMatchID, outcome);
@@ -521,6 +529,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
     if (!game) return;
     sample.current?.cancel();
     sample.current = startPerformanceSample(game.mode, game.skill);
+    const startedAt = Date.now();
     const check = () => {
       const snapshot = game.table.session?.state.snapshot;
       if (!snapshot || snapshot.gameStatus !== "completed" || recorded.current === game.key) return;
@@ -532,7 +541,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
         mode: game.mode, outcome, opponents: game.opponents.map((o) => ({ name: o.name, commander: o.commander, isAI: true })),
         opponentBracket: game.opponents[0]?.bracket, aiSkill: game.skill, deckID: game.deck.id, deckName: game.deck.name, commander: game.deck.commander,
         colors: [...game.deck.colors], deckBracket: game.deckBracket, turns: snapshot.turn, aiDeckID: game.opponents[0]?.id,
-        ...(game.ticket ? { rankedTicket: game.ticket.id } : {}),
+        ...(game.ticket ? { rankedTicket: game.ticket.id } : {}), durationSeconds: (Date.now() - startedAt) / 1000,
       });
       if (change) setRankChange({ key: game.key, change });
       const recordedID = game.ticket ? record.matches[0]?.id : undefined;
@@ -711,6 +720,13 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
         <ChallengeBanner challenge={challenges.incoming[0]} accept={() => { void acceptChallenge(challenges.incoming[0]); }} decline={() => { void challenges.decline(challenges.incoming[0]); }} />
       )}
       {notice && <button type="button" className="mtoast glass" role="status" onClick={() => setNotice(undefined)}>{notice}</button>}
+      {/* The server's notice on the main menu (appConfig): it stays until closed, then never comes back. */}
+      {!notice && appNotice && !game && !online && (
+        <div className="mtoast glass mappnotice" role="status" data-id="menu.notice">
+          <span>{appNotice.text}</span>
+          <button type="button" aria-label="Dismiss notification" onClick={() => appConfig.dismiss(appNotice)}>✕</button>
+        </div>
+      )}
       <MenuPanel open={panel === "friends"} onClose={() => setPanel(undefined)} placement="leading" label="Friends">
         <FriendsPanel account={player} onClose={() => setPanel(undefined)} join={joinTable}
           challenge={(friend, mode) => { window.setTimeout(() => { void challengeFriend(friend, mode); }, 300); }} myRankStep={RankPosition.step(rank.position)}
@@ -718,7 +734,8 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
       </MenuPanel>
       <MenuPanel open={social?.kind === "profile"} onClose={() => setSocial(undefined)} label="Player profile" maxWidth={760}>
         {social?.kind === "profile" && <PublicProfile account={player} username={social.username} onClose={() => setSocial(undefined)}
-          message={(username) => setSocial({ kind: "conversation", username })} />}
+          message={(username) => setSocial({ kind: "conversation", username })}
+          join={(code) => { setPanel(undefined); window.setTimeout(() => joinTable(code), 300); }} />}
       </MenuPanel>
       <MenuPanel open={social?.kind === "conversation"} onClose={() => setSocial(undefined)} label="Conversation" maxWidth={620}>
         {social?.kind === "conversation" && <Conversation account={player} username={social.username} onClose={() => setSocial(undefined)}

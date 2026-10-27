@@ -302,9 +302,9 @@ function App() {
               <details>
                 <summary>What to expect from the alpha</summary>
                 <p>
-                  Android build 41 takes ranked difficulty from the server (Gold and Platinum got harder), counts every ranked
-                  win, fits phones with on-screen Back, Home and Recents buttons, carries the card you start a drag on, and adds
-                  season badges and a glow on cards with an ability you can use. AI opponents match your rank, and your decks stay in
+                  Android build 42 keeps online tables going when a player leaves (the others can vote to go on without someone
+                  who dropped), lets you tuck the stack card aside, joins a friend's table from their profile, imports more
+                  Archidekt decks whole, and adds a richer leaderboard and profile. AI opponents match your rank, and your decks stay in
                   sync across every phone signed in to the same profile. Arena stays the default board, with Hearth in Options. It keeps the lighter engine from
                   build 31. Android is an early alpha; physical-phone acceptance is still pending.
                 </p>

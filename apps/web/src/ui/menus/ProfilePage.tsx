@@ -15,7 +15,8 @@ import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useM
 import { Achievement, colorName, type MatchRecord, playerStats, type PlayerRecordStore } from "../../core/playerRecord";
 import { mergeMatches } from "../../core/remoteGames";
 import {
-  percent, portraitChoices, ProfileGame, type ProfileRankPoint, type ProfileShare, ProfileSummary, type ProfileWeek, rankChartRange,
+  type InsightLine, percent, portraitChoices, ProfileGame, ProfileInsights, type ProfileRankPoint, type ProfileShare, ProfileSummary, type ProfileWeek,
+  rankChartRange,
 } from "../../core/profileSummary";
 import { RankLadder, RankPosition, RankTier, SeasonBadge } from "../../core/rankLadder";
 import { ManaSymbol } from "../arena/Symbols";
@@ -134,6 +135,7 @@ export function ProfilePage({ record, remote = [], playerName, deckCommanders, o
   const unlocked = useMemo(() => Achievement.unlocked(matches, record.rank), [matches, record.rank]);
   const scoped = useMemo(() => (deckFilter === undefined ? [...matches] : matches.filter((m) => m.deckID === deckFilter)), [matches, deckFilter]);
   const summary = useMemo(() => ProfileSummary.forDeck(matches, deckFilter), [matches, deckFilter]);
+  const insights = useMemo(() => ProfileInsights.of(scoped.map((m) => ProfileGame.from(m))), [scoped]);
   const all = useMemo(() => ProfileSummary.fromMatches(matches), [matches]);
 
   const choose = (next: Chooser, sound = true) => {
@@ -245,9 +247,13 @@ export function ProfilePage({ record, remote = [], playerName, deckCommanders, o
               <Streak title="Streak" value={summary.currentStreak} hot={summary.currentStreak >= 3} />
               <Streak title="Best" value={summary.bestStreak} hot={false} />
             </div>
+            {insights.form.length >= 3 && (
+              <div className="mprofileform" data-id="profile.form"><small>RECENT FORM</small><FormStrip results={insights.form} /></div>
+            )}
           </>
         )}
       </Card>
+      <InsightCards insights={insights} />
       <Card>
         <SectionTitle text="Games over time" trailing="last 8 weeks" />
         {summary.weeks.every((w) => w.games === 0) ? <EmptyNote text="Nothing played in the last eight weeks." glyph="calendar" /> : (
@@ -434,6 +440,68 @@ function ProgressTile({ value, label, glyph }: { value: string; label: string; g
 /** A big number over a small caption, in a dark inset tile (ProfileStatTile). */
 function StatTile({ title, value }: { title: string; value: string }) {
   return <div className="mprofilestat" role="group" aria-label={`${title}: ${value}`}><b>{value}</b><small>{title.toUpperCase()}</small></div>;
+}
+
+/** The last ten results, newest first, as small gold, red and grey coins (FormStrip). */
+function FormStrip({ results }: { results: ProfileInsights["form"] }) {
+  const wins = results.filter((r) => r === "win").length, losses = results.filter((r) => r === "loss").length;
+  return (
+    <span className="mprofileformstrip" role="img" aria-label={`Last ${results.length} games: ${wins} wins, ${losses} losses`}>
+      {results.map((result, index) => <i key={index} className={result}>{result === "win" ? "W" : result === "loss" ? "L" : "D"}</i>)}
+    </span>
+  );
+}
+
+/** One line of a record: what (a mode, a tier, a commander), the record and the win rate's bar (ProfileRecordLine). */
+function RecordLine({ title, line, leading }: { title: string; line: InsightLine; leading: ReactNode }) {
+  const rate = line.games === 0 ? 0 : line.wins / line.games;
+  return (
+    <div className="mprofilerecordline" role="group" aria-label={`${title}: ${line.wins} wins, ${line.losses} losses`}>
+      <span className="mprofilerecordlead" aria-hidden="true">{leading}</span>
+      <span className="grow">
+        <span className="mprofilerecordtop"><b>{title}</b><em>{line.wins}–{line.losses}</em></span>
+        <span className="mprofilerecordbar" aria-hidden="true"><i style={{ width: `${Math.max(3, rate * 100)}%` }} /></span>
+      </span>
+    </div>
+  );
+}
+
+const MODE_NAMES: Record<string, string> = { ranked: "Ranked", quick: "Quick Match", casual: "Casual" };
+
+/** Highlights, records by mode and by ranked tier, and how the player does against each commander (insightCards). */
+function InsightCards({ insights }: { insights: ProfileInsights }) {
+  const tiles: [string, string][] = [];
+  if (insights.fastestWin !== undefined) tiles.push(["Fastest win", `Turn ${insights.fastestWin}`]);
+  if (insights.averageMinutes !== undefined) tiles.push(["Avg. game", `${Math.round(insights.averageMinutes)} min`]);
+  if (insights.averageTurnsInWins !== undefined) tiles.push(["Turns in wins", insights.averageTurnsInWins.toFixed(1)]);
+  if (insights.averageTurnsInLosses !== undefined) tiles.push(["Turns in losses", insights.averageTurnsInLosses.toFixed(1)]);
+  return (
+    <>
+      {(tiles.length > 0 || insights.bestDeck) && (
+        <Card id="profile.highlights">
+          <SectionTitle text="Highlights" />
+          <div className="mprofiletiles">{tiles.map(([title, value]) => <StatTile key={title} title={title} value={value} />)}</div>
+          {insights.bestDeck && <RecordLine title={`Best deck: ${insights.bestDeck.id}`} line={insights.bestDeck} leading={<Glyph name="sparkles" size={14} lit />} />}
+        </Card>
+      )}
+      {(insights.modes.length > 1 || insights.tiers.length > 0) && (
+        <Card id="profile.records">
+          <SectionTitle text="Records" />
+          {insights.modes.map((line) => <RecordLine key={line.id} title={MODE_NAMES[line.id] ?? line.id} line={line} leading={<Emblem name={line.id === "ranked" ? "ranked" : "quick"} size={14} lit />} />)}
+          {insights.tiers.length > 0 && <Caps text="Ranked by tier" />}
+          {insights.tiers.map((line) => <RecordLine key={line.id} title={RankTier.name(line.id as RankTier)} line={line} leading={<RankEmblem tier={line.id as RankTier} size={26} />} />)}
+        </Card>
+      )}
+      {insights.matchups.length > 0 && (
+        <Card id="profile.matchups">
+          <SectionTitle text="Matchups" trailing="most faced" />
+          {insights.matchups.map((line) => (
+            <RecordLine key={line.id} title={`vs ${line.id}`} line={line} leading={<span className="mprofilematchupart"><DeckArt name={line.id} colors={[]} /></span>} />
+          ))}
+        </Card>
+      )}
+    </>
+  );
 }
 
 /** A current or best streak as a flame (StreakRow). */
@@ -686,12 +754,17 @@ function GameCard({ game }: { game: ProfileGame }) {
         <span className="grow">
           <b>vs {opponents}</b>
           <small>{deck}</small>
-          <span className="mprofilegamemeta"><i className="mprofiletag">{mode.toUpperCase()}</i>{mediumDate.format(game.date)}</span>
+          <span className="mprofilegamemeta"><i className="mprofiletag">{mode.toUpperCase()}</i>
+            {[mediumDate.format(game.date), game.turns !== undefined ? `turn ${game.turns}` : undefined,
+              game.durationSeconds !== undefined && game.durationSeconds > 0 ? `${Math.max(1, Math.floor(game.durationSeconds / 60))} min` : undefined]
+              .filter(Boolean).join(" · ")}</span>
         </span>
         <span className="mprofilegameend">
           <i className={`mprofilestamp ${game.outcome}`}>{ProfileGame.resultLetter(game)}</i>
           {game.rankNote !== undefined ? <em className="held">Not ranked</em>
             : delta !== undefined && game.mode === "ranked" && <em className={delta > 0 ? "up" : delta < 0 ? "down" : "even"}>{delta > 0 ? `+${delta}` : delta === 0 ? "±0" : delta}</em>}
+          {/* A crushing loss (the AI kept 30 of its 40 life) costs two pips. */}
+          {game.rankNote === undefined && delta !== undefined && delta <= -2 && game.outcome === "loss" && <em className="held">Crushing loss</em>}
         </span>
       </button>
       {expanded && (

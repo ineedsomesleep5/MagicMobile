@@ -31,14 +31,32 @@ object FreezeRules {
     /** AI turns run up to about 70 s; a person at the table may think longer. */
     const val QUIET_SOLO_SECONDS = 120.0
     const val QUIET_WITH_PEOPLE_SECONDS = 180.0
+    /**
+     * A hang this long is a freeze worth asking about; shorter hitches stay in the log for the report sheet (Danny,
+     * 2026-10-26: "The last game froze" at every launch after games that never froze).
+     */
+    const val ASK_HANG_SECONDS = 8.0
+    /** The launch question asks at most once in this long. */
+    const val ASK_INTERVAL_SECONDS = 3 * 86_400.0
 
+    /** Waiting on you, or on another person at the table who is thinking, is not a freeze. */
     fun stall(inGame: Boolean, over: Boolean, waitingOnYou: Boolean, answerPendingSeconds: Double?, quietSeconds: Double,
-              withPeople: Boolean): String? {
+              withPeople: Boolean, waitingOnPerson: Boolean = false): String? {
         if (!inGame || over) return null
         if (answerPendingSeconds != null && answerPendingSeconds >= ANSWER_SECONDS) return ANSWER_NOT_ACCEPTED
-        if (waitingOnYou) return null
+        if (waitingOnYou || waitingOnPerson) return null
         return if (quietSeconds >= (if (withPeople) QUIET_WITH_PEOPLE_SECONDS else QUIET_SOLO_SECONDS)) ENGINE_QUIET else null
     }
+
+    /** Whether the launch question asks about an incident: a stall, or a hang of [ASK_HANG_SECONDS] or more. */
+    fun worthAsking(kind: String, durationSeconds: Double?): Boolean = when (kind) {
+        ANSWER_NOT_ACCEPTED, ENGINE_QUIET -> true
+        HANG -> (durationSeconds ?: 0.0) >= ASK_HANG_SECONDS
+        else -> false
+    }
+
+    /** Whether the launch question may ask now, [secondsSinceAsked] after it last asked (null: never). */
+    fun mayAsk(secondsSinceAsked: Double?): Boolean = secondsSinceAsked == null || secondsSinceAsked < 0 || secondsSinceAsked >= ASK_INTERVAL_SECONDS
 }
 
 /**
@@ -61,8 +79,8 @@ class FreezeStallTracker(now: Double = 0.0) {
     fun quietSeconds(now: Double): Double = now - changedAt
 
     /** The stall's kind the first time this episode qualifies; null otherwise. */
-    fun check(now: Double, inGame: Boolean, over: Boolean, waitingOnYou: Boolean, withPeople: Boolean): String? {
-        val kind = FreezeRules.stall(inGame, over, waitingOnYou, answerPendingSeconds(now), quietSeconds(now), withPeople) ?: return null
+    fun check(now: Double, inGame: Boolean, over: Boolean, waitingOnYou: Boolean, withPeople: Boolean, waitingOnPerson: Boolean = false): String? {
+        val kind = FreezeRules.stall(inGame, over, waitingOnYou, answerPendingSeconds(now), quietSeconds(now), withPeople, waitingOnPerson) ?: return null
         if (recorded) return null
         recorded = true
         return kind

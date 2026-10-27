@@ -223,3 +223,20 @@
   box-shadow: inset 0 0 0 1px rgba(0,0,0,.3); }
 .mseasonbadge > small { max-width: 100%; font: 600 max(9px, calc(var(--size) * .15))/1.15 var(--sans); opacity: .75; text-align: center; text-wrap: balance; }
 .mseasonpin { position: absolute; top: 0; right: 4px; width: 13px; height: 13px; fill: var(--gold); filter: drop-shadow(0 1px 1px rgba(0,0,0,.7)); }
+
+/* insights (ProfileInsights): recent form, records by mode and tier, matchups, highlights */
+.mprofileform { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.mprofileform small { font: 800 9px/1 var(--sans); letter-spacing: 1px; opacity: .7; }
+.mprofileformstrip { display: flex; gap: 5px; }
+.mprofileformstrip i { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: normal 900 10px/1 var(--serif, serif); }
+.mprofileformstrip i.win { background: #fac75c; color: rgba(0,0,0,.75); }
+.mprofileformstrip i.loss { background: #9e291f; color: #f2e6cf; }
+.mprofileformstrip i.draw { background: #9e9480; color: #f2e6cf; }
+.mprofilerecordline { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.mprofilerecordlead { width: 28px; height: 28px; display: grid; place-items: center; flex: none; }
+.mprofilerecordtop { display: flex; align-items: baseline; gap: 8px; }
+.mprofilerecordtop b { flex: 1; font: 700 13.5px/1.2 var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mprofilerecordtop em { font: normal 800 13px/1 var(--sans); font-variant-numeric: tabular-nums; color: #fad584; }
+.mprofilerecordbar { display: block; height: 5px; margin-top: 5px; border-radius: 3px; background: rgba(0,0,0,.42); overflow: hidden; }
+.mprofilerecordbar i { display: block; height: 100%; border-radius: 3px; background: #fac75c; }
+.mprofilematchupart { width: 28px; height: 28px; border-radius: 50%; overflow: hidden; display: block; box-shadow: 0 0 0 1px rgba(232,190,110,.6); }

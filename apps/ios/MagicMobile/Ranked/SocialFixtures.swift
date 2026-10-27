@@ -239,10 +239,15 @@ extension SocialFixtures {
         rows.sort { $0.points != $1.points ? $0.points > $1.points : $0.name.lowercased() < $1.name.lowercased() }
         let entries = rows.enumerated().map { index, row in
             RankedLeaderboard.Entry(position: index + 1, username: row.name, title: row.title, commander: row.commander, points: row.points,
-                                    wins: row.wins, losses: row.losses, online: row.online, you: row.name == own)
+                                    wins: row.wins, losses: row.losses, online: row.online, you: row.name == own, streak: index % 3 == 0 ? 4 - index % 2 : 0)
         }
+        let champions = RankedLeaderboard.Champions(season: RankLadder.season(for: Date().addingTimeInterval(-40 * 86_400)), entries: entries.prefix(3).map {
+            RankedLeaderboard.Champions.Entry(position: $0.position, username: $0.username, step: $0.rank.step, pips: $0.rank.pips, wins: $0.wins,
+                                              losses: $0.losses, commander: $0.commander, you: $0.you)
+        })
         return RankedLeaderboard(season: RankLadder.season(for: Date()), scope: scope.rawValue, total: entries.count,
-                                 online: entries.filter(\.online).count, entries: Array(entries.prefix(limit)), me: entries.first(where: \.you))
+                                 online: entries.filter(\.online).count, entries: Array(entries.prefix(limit)), me: entries.first(where: \.you),
+                                 champions: champions)
     }
 }
 

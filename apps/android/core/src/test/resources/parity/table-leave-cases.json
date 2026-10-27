@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "about": "TableLeaveRules (PROTOCOL.md, Players who leave): when the players still at a table may go on without one who is away, and the host's vote packet. voteAfterSeconds is 15.",
+  "voteAfterSeconds": 15,
+  "passes": [
+    { "name": "nobody left to vote", "yes": 0, "eligible": 0, "expect": false },
+    { "name": "two players, one voted", "yes": 1, "eligible": 2, "expect": false },
+    { "name": "two players, both voted", "yes": 2, "eligible": 2, "expect": true },
+    { "name": "alone with the AI", "yes": 1, "eligible": 1, "expect": true },
+    { "name": "three players, two voted", "yes": 2, "eligible": 3, "expect": false }
+  ],
+  "packets": [
+    { "name": "open vote", "packet": { "type": "vote", "epoch": "E", "seat": "player3", "voters": ["player1"], "needed": 2 }, "localSeat": "player2", "expect": { "seat": "player3", "voters": ["player1"], "needed": 2, "voted": false } },
+    { "name": "you voted", "packet": { "type": "vote", "epoch": "E", "seat": "player3", "voters": ["player1", "player2"], "needed": 3 }, "localSeat": "player2", "expect": { "seat": "player3", "voters": ["player1", "player2"], "needed": 3, "voted": true } },
+    { "name": "no vote open", "packet": { "type": "vote", "epoch": "E", "seat": "", "voters": [], "needed": 0 }, "localSeat": "player2", "expect": null },
+    { "name": "extra key", "packet": { "type": "vote", "epoch": "E", "seat": "player3", "voters": [], "needed": 2, "x": 1 }, "localSeat": "player2", "expect": "invalid" },
+    { "name": "not a seat", "packet": { "type": "vote", "epoch": "E", "seat": "ai-1", "voters": [], "needed": 2 }, "localSeat": "player2", "expect": "invalid" },
+    { "name": "a seat with nobody needed", "packet": { "type": "vote", "epoch": "E", "seat": "player3", "voters": [], "needed": 0 }, "localSeat": "player2", "expect": "invalid" },
+    { "name": "too many needed", "packet": { "type": "vote", "epoch": "E", "seat": "player3", "voters": [], "needed": 5 }, "localSeat": "player2", "expect": "invalid" }
+  ]
+}

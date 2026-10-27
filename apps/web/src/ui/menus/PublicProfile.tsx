@@ -10,7 +10,7 @@
  * Left out for now: the Challenge button (friend challenges need hosting from the browser; a later phase).
  */
 import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { type PlayerAccount, ProfileVisibility, type PublicProfile as Profile, PublicProfile as ProfileRules } from "../../core/account";
+import { type PlayerAccount, PlayerFriend, ProfileVisibility, type PublicProfile as Profile, PublicProfile as ProfileRules } from "../../core/account";
 import { colorName } from "../../core/playerRecord";
 import { percent, ProfileGame, type ProfileRankPoint, type ProfileShare, ProfileSummary, type ProfileWeek, rankChartRange } from "../../core/profileSummary";
 import { RankLadder, RankPosition, RankTier } from "../../core/rankLadder";
@@ -34,12 +34,14 @@ const fullDate = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeSty
 const weekDay = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
 const weekDayLong = new Intl.DateTimeFormat(undefined, { month: "long", day: "numeric", timeZone: "UTC" });
 
-export function PublicProfile({ account, username, onClose, message }: {
+export function PublicProfile({ account, username, onClose, message, join }: {
   account: PlayerAccount;
   username: string;
   onClose: () => void;
   /** Opens a conversation with this friend; the Message button is left out without it. */
   message?: (username: string) => void;
+  /** Joins a friend's open table by its code (the menus' join flow); the Join table button is left out without it. */
+  join?: (code: string) => void;
 }) {
   const state = useAccountState(account);
   /** The profiles opened one from another (an opponent's name); back returns along them. */
@@ -93,11 +95,21 @@ export function PublicProfile({ account, username, onClose, message }: {
 
   const actions = (profile: Profile) => !ProfileRules.isSelf(profile) && (
     <div className="msocialrow mpublicactions">
-      {profile.relation === "friend" ? (
-        state.messagesAvailable && message && (
-          <Btn kind="secondary" compact sound="ui-open" id="publicProfile.message" onClick={() => message(profile.username)}>Message</Btn>
-        )
-      ) : profile.relation === "outgoing" ? (
+      {profile.relation === "friend" ? (() => {
+        // A friend hosting a table with a seat open: join it from here (Caleb, 2026-10-26).
+        const friend = state.friends.find((f) => f.username === profile.username);
+        const code = friend ? PlayerFriend.joinableCode(friend) : undefined;
+        return (
+          <>
+            {join && code !== undefined && (
+              <Btn compact id="publicProfile.join" onClick={() => { onClose(); join(code); }}>Join table</Btn>
+            )}
+            {state.messagesAvailable && message && (
+              <Btn kind="secondary" compact sound="ui-open" id="publicProfile.message" onClick={() => message(profile.username)}>Message</Btn>
+            )}
+          </>
+        );
+      })() : profile.relation === "outgoing" ? (
         <Btn kind="secondary" compact disabled id="publicProfile.requested">Request sent</Btn>
       ) : profile.relation === "incoming" ? (
         <>

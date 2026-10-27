@@ -829,7 +829,9 @@ fun NativeGameView(
             // --- Opening hand, spectator bar and the result (above the HUD, dock and choice layers) ---
             val openingChoice = OpeningHandChoice.of(board)
             val hand = board.human?.zones?.hand ?: emptyList()
-            if (openingChoice != null && hand.isNotEmpty()) OpeningHandOverlay(openingChoice, hand, pendingActionId != null, runCommand,
+            // Only after the starting roll: the Arena board's roll is see-through, and the mulligan question can arrive
+            // before the last die lands (Caleb, 2026-10-26: the opening hand showed behind a three-player roll).
+            if (!startingRollVisible && openingChoice != null && hand.isNotEmpty()) OpeningHandOverlay(openingChoice, hand, pendingActionId != null, runCommand,
                 heading = board.startingPlayerHeading)
             AnimatedVisibility(board.isSpectating, Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
                 enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {

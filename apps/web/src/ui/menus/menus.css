@@ -797,3 +797,7 @@ button.mtoolcoin:disabled { opacity: .35; }
 .mhostrow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .mtoast { position: absolute; left: 50%; top: calc(var(--bar) + 12px); transform: translateX(-50%); z-index: 50; max-width: min(520px, 100% - 32px); padding: 10px 16px;
   border-radius: 12px; font: 600 13px/1.35 var(--sans); color: var(--text); text-align: center; }
+/* the server's notice on the main menu (appConfig): stays until closed */
+.mappnotice { display: flex; align-items: center; gap: 12px; }
+.mappnotice span { flex: 1; }
+.mappnotice button { flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); color: inherit; cursor: pointer; }

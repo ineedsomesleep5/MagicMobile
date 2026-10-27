@@ -21,9 +21,22 @@ final class FreezeLogTests: XCTestCase {
             let input = try XCTUnwrap(item["input"] as? [String: Any])
             let result = FreezeRules.stall(
                 inGame: input["inGame"] as! Bool, over: input["over"] as! Bool, waitingOnYou: input["waitingOnYou"] as! Bool,
+                waitingOnPerson: input["waitingOnPerson"] as? Bool ?? false,
                 answerPendingSeconds: (input["answerPendingSeconds"] as? NSNumber)?.doubleValue,
                 quietSeconds: (input["quietSeconds"] as! NSNumber).doubleValue, withPeople: input["withPeople"] as! Bool)
             XCTAssertEqual(result, item["expect"] as? String, item["name"] as? String ?? "")
+        }
+        let asks = try XCTUnwrap(root["askCases"] as? [[String: Any]])
+        XCTAssertFalse(asks.isEmpty)
+        for item in asks {
+            XCTAssertEqual(FreezeRules.worthAsking(kind: item["kind"] as! String, duration: (item["duration"] as? NSNumber)?.doubleValue),
+                           item["expect"] as! Bool, item["name"] as? String ?? "")
+        }
+        let mayAsks = try XCTUnwrap(root["mayAskCases"] as? [[String: Any]])
+        XCTAssertFalse(mayAsks.isEmpty)
+        for item in mayAsks {
+            XCTAssertEqual(FreezeRules.mayAsk(secondsSinceAsked: (item["secondsSinceAsked"] as? NSNumber)?.doubleValue),
+                           item["expect"] as! Bool, item["name"] as? String ?? "")
         }
     }
 
@@ -52,10 +65,12 @@ final class FreezeLogTests: XCTestCase {
 
     func testOnlyInGameIncidentsAreAskedAboutAndTheLastFiveAreKept() {
         let log = FreezeLog(directory: temporaryDirectory())
-        log.record(kind: "hang")
+        log.record(kind: "hang", duration: 9)
         XCTAssertNil(log.unsent, "a hang in the menus is kept but never asked about")
         log.setContext("Game: quick vs AI")
-        for _ in 1...6 { log.record(kind: "hang") }
+        log.record(kind: "hang", duration: 2.5)
+        XCTAssertNil(log.unsent, "a short hitch is kept but never asked about")
+        for _ in 1...6 { log.record(kind: "hang", duration: 9) }
         XCTAssertEqual(log.incidents.count, FreezeLog.incidentLimit)
         log.markSent(log.incidents.last!.id)
         XCTAssertEqual(log.unsent?.id, log.incidents[FreezeLog.incidentLimit - 2].id)

@@ -13,6 +13,8 @@ import {
 } from "../core/models";
 import type { RankChange } from "../core/rankLadder";
 import { rollPlates } from "../core/startingRoll";
+import { appConfig } from "../core/appConfig";
+import { TableLeaveRules } from "../core/tableLeave";
 import { loadSmartPass, saveSmartPass, type SmartPassSettings } from "../core/smartPass";
 import { GameEmotes, TableChatFilter } from "../core/tableChat";
 import type { GameTable } from "../table/gameTable";
@@ -36,7 +38,7 @@ import { CombatLogReasons } from "../core/gameLog";
 import { TriggerPlan, type TriggerPick } from "./arena/triggerPlan";
 import type { CardChoicePlan } from "../core/cardChoicePlan";
 import { allAttackTargets, AttackQueue, boardTargetableIds, combatArrows, declaredCount, finishTitle } from "./arena/combat";
-import { combatPhase, commandersTaken, commanderTakenNotice, extraHandCards } from "../core/arenaBoard";
+import { arenaStackTucked, combatPhase, commandersTaken, commanderTakenNotice, extraHandCards } from "../core/arenaBoard";
 import { GameStats } from "../core/gameStats";
 import { BoardFXOverlay, FXBoundary, type FXAnchors } from "./arena/BoardFX";
 import { fxNow, useBoardFX } from "./arena/useBoardFX";
@@ -72,6 +74,7 @@ const EYE = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4C5.5 4 2.2
 const EYE_OPEN = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4C5.5 4 2.2 7 1 10c1.2 3 4.5 6 9 6s7.8-3 9-6c-1.2-3-4.5-6-9-6z" fill="none" stroke="currentColor" strokeWidth="1.6" /><circle cx="10" cy="10" r="2.6" /></svg>;
 const SUN = <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="4.2" /><path d="M10 1v3M10 16v3M1 10h3M16 10h3M3.6 3.6l2.1 2.1M14.3 14.3l2.1 2.1M3.6 16.4l2.1-2.1M14.3 5.7l2.1-2.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>;
 const MOON = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M13.5 2.2A8 8 0 1 0 17.8 13 6.4 6.4 0 0 1 13.5 2.2z" /></svg>;
+const EYE_OFF = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M1.5 10S4.8 4 10 4s8.5 6 8.5 6-3.3 6-8.5 6S1.5 10 1.5 10z" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="10" cy="10" r="2.6" /><path d="M3 17L17 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>;
 
 function PhaseStrip({ step, side, top, onOpen }: { step?: string; side: "me" | "opp"; top: number; onOpen: () => void }) {
   const { items, current } = phaseStrip(step);
@@ -260,6 +263,9 @@ export function GameScreen({ table, rankChange, rankNote, versus }: {
   const suppressClick = useRef(false);
   /** An opponent's spell is revealed larger toward the middle for its first 1.3 s, then settles onto the stack card. */
   const [revealID, setRevealID] = useState<string>();
+  /** The stack card stepped aside for this top object (ArenaStackTuck), or was brought back while picking. */
+  const [stackTuckedTop, setStackTuckedTop] = useState<string>();
+  const [stackPeekTop, setStackPeekTop] = useState<string>();
   const [, setClockTick] = useState(0);
   useEffect(() => { if (session?.smartPass) setSmartSettings(session.smartPass); }, [session]);
   // Development only: the table, for checking a game from the console.
@@ -321,8 +327,17 @@ export function GameScreen({ table, rankChange, rankNote, versus }: {
     setNotice({ text, until: fxNow() + seconds });
     window.setTimeout(() => setNotice((n) => (n && n.until <= fxNow() + 0.05 ? undefined : n)), seconds * 1000 + 50);
   }, []);
+  // A player left the table and the others play on (TableLeaveRules).
+  const tableNotice = table.state.tableNotice;
+  useEffect(() => {
+    if (!tableNotice) return;
+    showNotice(tableNotice, 5);
+    table.clearTableNotice?.();
+  }, [tableNotice, table, showNotice]);
   const activeIsMe = snapshot?.activePlayerId !== undefined && snapshot.activePlayerId === viewer;
   const stack = snapshot?.xmage?.stack ?? [];
+  const pickingOnTable = appConfig.isOn("stackAutoTuck") && snapshot !== undefined && boardTargetableIds(snapshot).size > 0;
+  const stackTucked = (id: string) => revealID !== id && arenaStackTucked(id, stackTuckedTop, stackPeekTop, pickingOnTable);
   const promptActions = (snapshot?.legalActions ?? []).filter((a) => a.cardInstanceId === undefined && a.sourceInstanceId === undefined);
 
   const fail = useCallback((error: unknown) => {
@@ -656,8 +671,8 @@ export function GameScreen({ table, rankChange, rankNote, versus }: {
         classes: `${classFor(card, false)} ${carrying && carry?.id === card.instanceId ? "carried" : ""} ${arrival !== undefined ? `arrive-${arrival}` : ""} ${mulligan ? "opening" : ""} ${crowded && card.instanceId !== shownPop ? "nocost" : ""}`,
         onClick: mulligan ? () => reader.open({ name: card.card.name, card }, false) : clickHand, onPress: mulligan ? undefined : pressHand, reader });
     });
-    // Only the top of the stack stands on the table (ArenaStackCard); the tab opens the rest.
-    stack.slice(0, 1).forEach((item, depth) => {
+    // Only the top of the stack stands on the table (ArenaStackCard); the tab opens the rest. Tucked, it steps aside.
+    stack.slice(0, 1).filter((item) => !stackTucked(item.id)).forEach((item, depth) => {
       const name = item.sourceCard?.card.name ?? item.sourceName ?? item.name;
       const ability = isStackAbility(item);
       const source = item.sourceCard ?? (item.sourceInstanceId ? battlefieldCard(item.sourceInstanceId) : undefined);
@@ -789,8 +804,8 @@ export function GameScreen({ table, rankChange, rankNote, versus }: {
 
   // ---------------- the starting roll, the result ----------------
   const roll = table.state.roll;
-  const showRoll = roll !== undefined && !rollDismissed &&
-    (roll.nextSeatID !== undefined || !snapshot || (snapshot.turn <= 1 && !envelope?.message.toLowerCase().includes("mulligan")));
+  // The last die lands and its result shows before the opening hand (Caleb, 2026-10-26: the mulligan came up mid-roll).
+  const showRoll = roll !== undefined && !rollDismissed && (roll.nextSeatID !== undefined || !snapshot || snapshot.turn <= 1);
   useEffect(() => {
     if (roll && roll.nextSeatID === undefined) { const t = window.setTimeout(() => setRollDismissed(true), 3500); return () => window.clearTimeout(t); }
   }, [roll?.nextSeatID, roll]);
@@ -1228,14 +1243,33 @@ export function GameScreen({ table, rankChange, rankNote, versus }: {
             })}
           </div>
         )}
-        {stack.length > 0 && (() => {
-          // A tab on the stack card's left edge opens the whole stack, with how many objects are on it.
+        {stack.length > 0 && stackTucked(stack[0].id) && (
+          // Tucked: a slim tab at the table's edge brings the card back (ArenaStackTuck).
+          <button type="button" className="astack-show" data-id="arena.stack.show" style={{ top: stackPlace(0, geo).y - 42 }}
+            aria-label={`Show the stack, ${stack.length} on it`}
+            onClick={(event) => { event.stopPropagation(); gameAudio.play("ui-open"); setStackTuckedTop(undefined); setStackPeekTop(stack[0].id); }}>
+            <i>{EYE}</i><i>‹</i>{stack.length > 1 && <b>{stack.length}</b>}
+          </button>
+        )}
+        {stack.length > 0 && !stackTucked(stack[0].id) && (() => {
+          // A tab on the stack card's left edge opens the whole stack, with how many objects are on it; the eye under it
+          // tucks the card aside (ArenaStackTuck).
           const top = stackPlace(0, geo);
           const height = stack.length > 1 ? 58 : 44;
           return (
             <button type="button" className="astack-tab" style={{ left: top.x - top.w / 2 - 26, top: top.y - height / 2, height }}
               aria-label={stack.length > 1 ? `Open the stack, ${stack.length} objects` : "Open the stack"} onClick={(event) => { event.stopPropagation(); setStackOpen(true); }}>
               {stack.length > 1 && <b>{stack.length}</b>}<i>‹</i>
+            </button>
+          );
+        })()}
+        {stack.length > 0 && !stackTucked(stack[0].id) && revealID !== stack[0].id && (() => {
+          const top = stackPlace(0, geo);
+          return (
+            <button type="button" className="astack-tab astack-tuck" data-id="arena.stack.tuck" style={{ left: top.x - top.w / 2 - 26, top: top.y + top.h / 2 - 46, height: 40 }}
+              aria-label="Tuck the stack away"
+              onClick={(event) => { event.stopPropagation(); gameAudio.play("ui-close"); setStackTuckedTop(stack[0].id); setStackPeekTop(undefined); }}>
+              <i>{EYE_OFF}</i>
             </button>
           );
         })()}
@@ -1594,6 +1628,17 @@ export function GameScreen({ table, rankChange, rankNote, versus }: {
                     onClick={() => { if (message === session?.state.errorMessage) setDismissedError(message); setBannerError(undefined); }}>✕</button>
                 </div>
               ) : <div className="line"><span>{table.state.status}</span></div>}
+              {!message && table.state.continueVote && (
+                // Everyone still at the table may vote to go on without a player who is away (TableLeaveRules).
+                <div className="actions">
+                  <button type="button" className="aplaque primary inline" data-id="ondevice.continueWithout" disabled={table.state.continueVote.voted}
+                    onClick={() => table.voteToContinue?.()}>
+                    {table.state.continueVote.voted
+                      ? `Waiting for the others (${table.state.continueVote.voters.length}/${table.state.continueVote.needed})`
+                      : TableLeaveRules.buttonTitle(table.state.continueVote)}
+                  </button>
+                </div>
+              )}
               <div className="actions">
                 {session && <button type="button" className="aplaque primary inline" disabled={session.state.working} onClick={() => { session.refresh().catch(fail); }}>Refresh</button>}
                 {session?.hasPending && (

@@ -37,6 +37,8 @@ struct MatchRecord: Codable, Equatable, Identifiable, Sendable {
     let deckBracket: Int
     let outcome: RankOutcome
     let turns: Int
+    /// How long the game ran, in seconds; nil for games from before 2026-10-26.
+    var durationSeconds: Int? = nil
     /// The phone's count at once; the server's once it answers (PlayerRecordStore.settleRanked).
     var rankChange: RankChange?
     let season: String?
@@ -314,7 +316,7 @@ final class PlayerRecordStore: ObservableObject {
     @discardableResult
     func record(mode: PlayMode, outcome: RankOutcome, opponents: [MatchRecord.Opponent], opponentBracket: Int?, aiSkill: Int?,
                 deckID: String, deckName: String, commander: String?, colors: [String], deckBracket: Int, turns: Int,
-                aiDeckID: String? = nil, engineMatchID: String? = nil, gameRecordFile: String? = nil) -> RankChange? {
+                durationSeconds: Int? = nil, aiDeckID: String? = nil, engineMatchID: String? = nil, gameRecordFile: String? = nil) -> RankChange? {
         refreshSeason()
         var change: RankChange?
         if mode == .ranked {
@@ -326,6 +328,7 @@ final class PlayerRecordStore: ObservableObject {
                                 deckID: deckID, deckName: deckName, commander: commander, colors: colors, deckBracket: deckBracket,
                                 outcome: outcome, turns: turns, rankChange: change, season: mode == .ranked ? rank.season : nil,
                                 engineMatchID: engineMatchID)
+        match.durationSeconds = durationSeconds.map { min(86_400, max(0, $0)) }
         if mode == .ranked, opponents.allSatisfy(\.isAI) { match.rankedTicket = rankedTicket }
         matches.insert(match, at: 0)
         if matches.count > Self.maxMatches { matches.removeLast(matches.count - Self.maxMatches) }

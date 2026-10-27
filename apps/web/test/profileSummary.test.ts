@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MatchRecord, PlayMode } from "../src/core/playerRecord";
-import { percent, portraitChoices, ProfileGame, type ProfileRankPoint, ProfileSummary, rankChartRange } from "../src/core/profileSummary";
+import { percent, portraitChoices, ProfileGame, ProfileInsights, type ProfileRankPoint, ProfileSummary, rankChartRange } from "../src/core/profileSummary";
 import { type RankOutcome, RankPosition } from "../src/core/rankLadder";
 
 const root = join(__dirname, "..", "..", "..");
@@ -142,5 +142,30 @@ describe("profile summary", () => {
     expect(choices.played).toEqual([...played.slice(0, 12), "Gone"]);
     expect(choices.decks).toEqual(["Deck One", "C13"]);
     expect(portraitChoices([], ["Deck One"], "Deck One")).toEqual({ played: [], decks: ["Deck One"] });
+  });
+});
+
+describe("profile insights (profile-cases.json insights)", () => {
+  it("reads form, modes, tiers, matchups and highlights from a player's own games", () => {
+    const round = (value: number | undefined) => (value === undefined ? null : Math.round(value * 10_000) / 10_000);
+    for (const item of cases.insights) {
+      const games: ProfileGame[] = item.games.map((row: any, index: number) => ({
+        id: `g${index}`, date: 1_000_000_000 - index * 60_000, mode: row.mode, outcome: row.result, deckName: row.deck, commanders: [], colors: [],
+        opponents: row.opponents.map((commander: string) => ({ name: "Foe", commander, isAI: true })),
+        ...(row.turns !== null ? { turns: row.turns } : {}), ...(row.durationSeconds !== null ? { durationSeconds: row.durationSeconds } : {}),
+        ...(row.tier !== null ? { rankTier: row.tier } : {}),
+      }));
+      const insights = ProfileInsights.of(games);
+      const expect_ = item.expect;
+      expect(insights.form, item.name).toEqual(expect_.form);
+      expect(insights.modes, item.name).toEqual(expect_.modes);
+      expect(insights.tiers, item.name).toEqual(expect_.tiers);
+      expect(insights.matchups, item.name).toEqual(expect_.matchups);
+      expect(insights.fastestWin ?? null, item.name).toEqual(expect_.fastestWin);
+      expect(round(insights.averageTurnsInWins), item.name).toEqual(expect_.averageTurnsInWins);
+      expect(round(insights.averageTurnsInLosses), item.name).toEqual(expect_.averageTurnsInLosses);
+      expect(round(insights.averageMinutes), item.name).toEqual(expect_.averageMinutes);
+      expect(insights.bestDeck ?? null, item.name).toEqual(expect_.bestDeck);
+    }
   });
 });

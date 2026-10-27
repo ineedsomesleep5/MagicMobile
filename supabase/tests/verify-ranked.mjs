@@ -58,6 +58,12 @@ try {
   await db.exec(await readFile(new URL('./ranked_ai_no_cap.sql', import.meta.url), 'utf8'));
   await db.exec(await migration('20261026220000_ranked_crushing_loss.sql'));
   await db.exec(await readFile(new URL('./ranked_crushing_loss.sql', import.meta.url), 'utf8'));
+  // The leaderboard's streaks, season end and champions read the quarterly seasons.
+  await db.exec(await migration('20261026140000_quarterly_seasons.sql'));
+  await db.exec(await migration('20261027000000_leaderboard_streaks_champions.sql'));
+  await db.exec(await readFile(new URL('./leaderboard_streaks_champions.sql', import.meta.url), 'utf8'));
+  await db.exec(await migration('20261027010000_app_config.sql'));
+  await db.exec(await readFile(new URL('./app_config.sql', import.meta.url), 'utf8'));
   console.log('PASS PGlite: ranked queue pairing (rank, bracket, protocol, blocks), host/guest table hand-off, late cancel, reports');
   console.log('PASS PGlite: ranked cards for friends and profile cards, blocked players hidden, no direct table access, account deletion');
   console.log('PASS PGlite: friend challenges (friends only, same-tier ranked with season rollover, replace, accept/decline/expiry, ranked reports, blocks, no direct access)');
@@ -67,6 +73,8 @@ try {
   console.log('PASS PGlite: ladder option B (Arena steps per tier, Bronze losses free, tier floors with Mythic falling to Diamond, no streak bonus, underdog kept, card mirrored, still internal)');
   console.log('PASS PGlite: ranked AI records (seeded tickets with the tier skill, a valid record counts, tampered/reseeded/unknown-build/easier-AI/wrong-winner/conceded/short/too-fast/missing records settle unverified, losses need none, older tickets unchanged, records kept, no direct access, anon refused)');
   console.log('PASS PGlite: ranked leaderboard (server standings order, current season with games only, public/friends-only/private and blocks respected both ways, friends scope, online flags, own row kept past the limit, limit cap, bad scope, anon refused)');
+  console.log('PASS PGlite: leaderboard streaks, season end and champions (last season\'s visible top three, October one month then quarters)');
+  console.log('PASS PGlite: app config (a notice aimed by platform and build, name fixes and switches as stored, the table out of reach, anon may read)');
   console.log('PASS PGlite: friend messages (friends only, trimmed 1-500 chars, unread and read state, conversations newest first, pages, 20/minute limit, message reports, blocks hide both ways, no direct access, helpers internal, anon refused, account deletion)');
   console.log('PASS PGlite: ranked AI tuning (server table per tier, Power rising through the divisions, mistakes from division IV to I, tickets carry and store them, records match the ticket or the skill standard, table internal)');
   console.log('PASS PGlite: no daily cap on ranked AI wins (a thirteenth win in a day counts)');

@@ -892,6 +892,47 @@ struct ArenaMenuCard: View {
     }
 }
 
+/// The stack card's eye (ArenaStackTuck): at the card's lower left, under the tab that opens the whole stack, it tucks the
+/// card aside; tucked, a slim tab at the table's edge with the stack's count brings it back.
+struct ArenaStackTab: View {
+    static let tuckedWidth: CGFloat = 30
+    let tucked: Bool
+    let count: Int
+    let action: () -> Void
+    @Environment(\.arenaSafeArea) private var safeArea
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: tucked ? "eye.fill" : "eye.slash.fill").font(.system(size: 12, weight: .bold))
+                if tucked {
+                    Image(systemName: "chevron.left").font(.system(size: 11, weight: .black))
+                    if count > 1 {
+                        Text("\(count)").font(.system(size: 12, weight: .black, design: .serif)).monospacedDigit()
+                    }
+                }
+            }
+            .foregroundStyle(ArenaMenuStyle.gold)
+            .frame(width: tucked ? Self.tuckedWidth : 26, height: tucked ? 84 : 40)
+            .background {
+                let shape = UnevenRoundedRectangle(topLeadingRadius: 12, bottomLeadingRadius: 12, bottomTrailingRadius: tucked ? 4 : 0,
+                                                   topTrailingRadius: tucked ? 4 : 0)
+                shape.fill(LinearGradient(colors: [ArenaGlass.top.opacity(0.96), ArenaGlass.bottom.opacity(0.96)], startPoint: .top, endPoint: .bottom))
+                    .overlay(shape.strokeBorder(ArenaMenuStyle.gold.opacity(0.55), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.5), radius: 6, y: 2)
+            }
+            // A 44 pt target around the slim tab, the tab at its right edge (against the card, or the table's edge).
+            .frame(width: 44, height: tucked ? 92 : 44, alignment: .trailing)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(BrandPressStyle())
+        // Tucked, it stays clear of a sideways phone's cutout.
+        .offset(x: tucked ? -safeArea.insets.trailing : 0)
+        .accessibilityLabel(tucked ? String(localized: "Show the stack, \(count) on it") : String(localized: "Tuck the stack away"))
+        .accessibilityIdentifier(tucked ? "arena.stack.show" : "arena.stack.tuck")
+    }
+}
+
 /// The top of the stack as a big card on the right (the reference's stack), with the count, and a tab that opens the
 /// whole stack. A tap shows the card's full text.
 struct ArenaStackCard: View {

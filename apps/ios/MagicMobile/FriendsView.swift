@@ -93,6 +93,7 @@ struct FriendsView: View {
                     if let friend = account.friends.first(where: { $0.username == name }) { handler(friend, mode) }
                 }
             }, myRankStep: myRankStep) { profileFor = nil }
+                .environment(\.joinFriendTable, { code in join(code); closePanel() })
         }
         .tavernConfirmation(active: true, title: String(localized: "Delete your profile?"),
                             message: String(localized: "Your player name, friends, blocks and game history are removed from MagicMobile's server for good. Your decks and games on this phone stay."),

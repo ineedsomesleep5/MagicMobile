@@ -234,6 +234,14 @@ object RankLadder {
         YearMonth.parse(season).plusMonths(seasonMonths(season)!!).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
     }.getOrNull()
 
+    /** "ends in 34 days", "ends today"; null once the season is over (the leaderboard's live strip; iOS seasonCountdown). */
+    fun seasonCountdown(season: String, now: Long): String? {
+        val end = seasonEnd(season) ?: return null
+        if (end <= now) return null
+        val days = kotlin.math.ceil((end - now) / 86_400_000.0).toInt()
+        return if (days <= 1) "ends today" else "ends in $days days"
+    }
+
     /** "October 2026", or a quarter's span: "Nov 2026 – Jan 2027". */
     fun seasonName(season: String): String = runCatching {
         val month = YearMonth.parse(season)
@@ -432,6 +440,8 @@ data class MatchRecord(
     /** How the server counted it (counted, too_soon, capped, unverified) and, for an unverified win, why. */
     val settlement: String? = null,
     val settlementCheck: String? = null,
+    /** How long the game ran, in seconds; null for games from before 2026-10-26. */
+    val durationSeconds: Int? = null,
 ) {
     val vsHuman: Boolean get() = opponents.any { !it.isAI }
     /** Why a ranked win left the ladder alone, as the player reads it; null when it counted. */
@@ -594,13 +604,21 @@ data class RankedStanding(
  * The season leaderboard from the server's standings (mm_ranked_leaderboard; RankedLeaderboard in RankLadder.swift): everyone
  * or friends, private profiles and blocked players already left out by the server, plus the caller's own row.
  */
-data class RankedLeaderboard(val season: String, val scope: String, val total: Int, val online: Int, val entries: List<Entry>, val me: Entry?) {
+data class RankedLeaderboard(val season: String, val scope: String, val total: Int, val online: Int, val entries: List<Entry>, val me: Entry?,
+                             /** Last season's top three; null from a server before 2026-10-27. */
+                             val champions: Champions? = null) {
     enum class Scope(val raw: String) { EVERYONE("everyone"), FRIENDS("friends") }
 
     data class Entry(val position: Int, val username: String, val title: String?, val commander: String?, val points: Int,
-                     val wins: Int, val losses: Int, val online: Boolean, val you: Boolean) {
+                     val wins: Int, val losses: Int, val online: Boolean, val you: Boolean,
+                     /** Straight wins right now; null from a server before 2026-10-27. */
+                     val streak: Int? = null) {
         val rank: RankPosition get() = RankPosition.ofPoints(points)
+        val winRate: Int? get() = if (wins + losses == 0) null else Math.round(wins * 100.0 / (wins + losses)).toInt()
     }
+
+    /** Last season's top three (the champions), by where they finished. */
+    data class Champions(val season: String, val entries: List<Entry>)
 
     /** The caller's row is pinned at the foot when it isn't among the shown entries. */
     val pinnedMe: Entry? get() = me?.takeIf { mine -> entries.none { it.username == mine.username } }
@@ -611,12 +629,19 @@ data class RankedLeaderboard(val season: String, val scope: String, val total: I
                 o ?: return null
                 fun s(key: String) = o[key]?.jsonPrimitive?.takeIf { it.isString }?.content
                 fun i(key: String) = o[key]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
-                return Entry(i("position"), s("username") ?: return null, s("title"), s("commander"), i("points"), i("wins"), i("losses"),
-                    o["online"]?.jsonPrimitive?.content == "true", o["you"]?.jsonPrimitive?.content == "true")
+                // A champion's row has its step and pips instead of points.
+                val points = o["points"]?.jsonPrimitive?.content?.toIntOrNull()
+                    ?: o["step"]?.jsonPrimitive?.content?.toIntOrNull()?.let { RankPosition.published(it, i("pips")).points } ?: 0
+                return Entry(i("position"), s("username") ?: return null, s("title"), s("commander"), points, i("wins"), i("losses"),
+                    o["online"]?.jsonPrimitive?.content == "true", o["you"]?.jsonPrimitive?.content == "true",
+                    o["streak"]?.jsonPrimitive?.content?.toIntOrNull())
+            }
+            val champions = (value["champions"] as? JsonObject)?.let { c ->
+                Champions(c["season"]?.jsonPrimitive?.content ?: "", (c["entries"] as? JsonArray).orEmpty().mapNotNull { entry(it as? JsonObject) })
             }
             return RankedLeaderboard(value["season"]?.jsonPrimitive?.content ?: "", value["scope"]?.jsonPrimitive?.content ?: "everyone",
                 value["total"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0, value["online"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
-                (value["entries"] as? JsonArray).orEmpty().mapNotNull { entry(it as? JsonObject) }, entry(value["me"] as? JsonObject))
+                (value["entries"] as? JsonArray).orEmpty().mapNotNull { entry(it as? JsonObject) }, entry(value["me"] as? JsonObject), champions)
         }
     }
 }
@@ -676,14 +701,16 @@ data class PlayerRecordFile(
     /** Records one finished game; a ranked game moves the ladder. */
     fun recording(now: Long, mode: PlayMode, outcome: RankOutcome, opponents: List<MatchOpponent>, opponentBracket: Int?, aiSkill: Int?,
                   deckID: String, deckName: String, commander: String?, colors: List<String>, deckBracket: Int, turns: Int,
-                  aiDeckID: String? = null, engineMatchID: String? = null, gameRecordFile: String? = null): Pair<PlayerRecordFile, RankChange?> {
+                  aiDeckID: String? = null, engineMatchID: String? = null, gameRecordFile: String? = null,
+                  durationSeconds: Int? = null): Pair<PlayerRecordFile, RankChange?> {
         var rank = RankLadder.rollover(rank, RankLadder.season(now))
         var change: RankChange? = null
         if (mode == PlayMode.RANKED) { val (next, c) = RankLadder.apply(outcome, rank, deckBracket); rank = next; change = c }
         val match = MatchRecord(date = now, mode = mode, opponents = opponents, opponentBracket = opponentBracket, aiSkill = aiSkill,
             deckID = deckID, deckName = deckName, commander = commander, colors = colors, deckBracket = deckBracket, outcome = outcome,
             turns = turns, rankChange = change, season = if (mode == PlayMode.RANKED) rank.season else null, engineMatchID = engineMatchID,
-            rankedTicket = rankedTicket.takeIf { mode == PlayMode.RANKED && opponents.all { it.isAI } })
+            rankedTicket = rankedTicket.takeIf { mode == PlayMode.RANKED && opponents.all { it.isAI } },
+            durationSeconds = durationSeconds?.coerceIn(0, 86_400))
         val recent = if (aiDeckID == null) recentAIDecks else (listOf(aiDeckID) + recentAIDecks.filter { it != aiDeckID }).take(4)
         val ticket = rankedTicket.takeIf { mode == PlayMode.RANKED && opponents.all { it.isAI } }
         val pending = if (ticket == null) pendingRankedResults

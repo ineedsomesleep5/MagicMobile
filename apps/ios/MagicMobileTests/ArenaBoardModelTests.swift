@@ -507,4 +507,16 @@ final class ArenaBoardModelTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(layout.stack.minY, layout.opponentLibrary.y + layout.opponentPile.height / 2)
         XCTAssertLessThan(layout.stack.maxY, layout.phaseStripRaisedY - 24)
     }
+
+    /// The stack card steps aside for the object the player tucked and while they pick on the table; brought back, it stays.
+    func testTheStackTucksForItsTopObjectAndWhilePicking() {
+        XCTAssertFalse(ArenaStackTuck.isTucked(top: "a", tuckedTop: nil, peekTop: nil, picking: false))
+        XCTAssertTrue(ArenaStackTuck.isTucked(top: "a", tuckedTop: "a", peekTop: nil, picking: false))
+        // The next spell or ability shows again.
+        XCTAssertFalse(ArenaStackTuck.isTucked(top: "b", tuckedTop: "a", peekTop: nil, picking: false))
+        // Picking a target tucks it; the tab brings it back for that object.
+        XCTAssertTrue(ArenaStackTuck.isTucked(top: "b", tuckedTop: nil, peekTop: nil, picking: true))
+        XCTAssertFalse(ArenaStackTuck.isTucked(top: "b", tuckedTop: nil, peekTop: "b", picking: true))
+        XCTAssertTrue(ArenaStackTuck.isTucked(top: "c", tuckedTop: nil, peekTop: "b", picking: true))
+    }
 }

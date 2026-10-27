@@ -2,7 +2,45 @@
  * Resolves deck lists to the exact compiled printings the engine accepts (OnDeviceDeckResolver.swift,
  * Catalogue.resolve in Decks.kt), from the same catalogue the phones ship. XMage decides legality.
  */
+import { appConfig } from "./appConfig";
 import { EngineError, type J } from "./json";
+
+/**
+ * The names a deck's card is looked up by, in order (NativeDeckCanonicalNames.candidates, parity/card-name-cases.json;
+ * Caleb, 2026-10-26: Archidekt links dropped cards that search then found). The exact name first, then plain letters for
+ * accents ("Troll of Khazad-dûm": XMage spells names without them), then the front of a two-part name ("Brazen Borrower //
+ * Petty Theft": adventure, omen and prepare cards, whose full name only Archidekt sends). An exact split-card name wins.
+ */
+export function cardNameCandidates(raw: string): string[] {
+  const name = raw.trim();
+  const found: string[] = [];
+  const add = (value: string) => { if (value && !found.includes(value)) found.push(value); };
+  add(name);
+  add(plainLetters(name));
+  const split = name.indexOf(" // ");
+  if (split > 0) {
+    const front = name.slice(0, split).trim();
+    add(front);
+    add(plainLetters(front));
+  }
+  return found;
+}
+
+/**
+ * Whether `candidate` is the front of the two-part `name` (as written or in plain letters). A double-faced card's front
+ * never stands in for a different back: its aliases name the real one ("Front // Wrong" stays unknown).
+ */
+export function isFrontOf(candidate: string, name: string): boolean {
+  const trimmed = name.trim();
+  const split = trimmed.indexOf(" // ");
+  if (split <= 0) return false;
+  const front = trimmed.slice(0, split).trim();
+  return candidate === front || candidate === plainLetters(front);
+}
+
+/** Accents off, Æ as Ae, a curly apostrophe straight. */
+export const plainLetters = (name: string) =>
+  name.replace(/\u2019/g, "'").replace(/Æ/g, "Ae").replace(/æ/g, "ae").normalize("NFKD").replace(/\p{Mn}+/gu, "");
 
 export interface DeckEntry { name: string; quantity: number; section: string }
 export interface DeckList { id: string; name: string; subtitle?: string; colors?: string; entries: DeckEntry[] }
@@ -13,6 +51,9 @@ export class DeckResolver {
   readonly upstreamCommit: string;
   private readonly cards = new Map<string, Printing>();
   private readonly aliases = new Map<string, string>();
+  /** Front faces with an attested back (double-faced cards). */
+  private fronts?: Set<string>;
+  private get aliasedFronts(): Set<string> { return (this.fronts ??= new Set(this.aliases.values())); }
 
   /** `printings.tsv` from scripts/prepare_data.py: a `#` header, printings, then `=` alias rows. */
   constructor(tsv: string) {
@@ -31,9 +72,18 @@ export class DeckResolver {
     if (this.cards.size === 0) throw EngineError.invalid("The card catalogue is empty.");
   }
 
+  /** The catalogue's name for a card, tried by cardNameCandidates (exact, plain letters, front face). */
   canonicalName(name: string): string | undefined {
-    if (this.cards.has(name)) return name;
-    return this.aliases.get(name);
+    for (const candidate of cardNameCandidates(name)) {
+      const found = this.cards.has(candidate) ? candidate : this.aliases.get(candidate);
+      if (found === undefined) continue;
+      // A double-faced card's front never stands in for a different back (isFrontOf).
+      if (isFrontOf(candidate, name) && this.aliasedFronts.has(found)) continue;
+      return found;
+    }
+    // A fix the server sent for a name a deck site spells its own way (appConfig), when that card is here.
+    const fixes = appConfig.current.nameFixes;
+    return cardNameCandidates(name).map((candidate) => fixes[candidate]).find((fixed) => fixed !== undefined && this.cards.has(fixed));
   }
 
   printing(name: string): Printing | undefined {

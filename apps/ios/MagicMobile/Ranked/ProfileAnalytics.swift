@@ -50,6 +50,10 @@ struct ProfileGame: Identifiable, Equatable, Sendable {
     var rankLine: String? = nil
     /// Why a ranked win left the ladder alone (own games only).
     var rankNote: String? = nil
+    /// How long it ran (own games from 2026-10-26 on).
+    var durationSeconds: Int? = nil
+    /// The tier a ranked game was played at (own games only).
+    var rankTier: RankTier? = nil
 
     var commander: String? { commanders.first }
     var vsHuman: Bool { opponents.contains { !$0.isAI } }
@@ -68,6 +72,8 @@ struct ProfileGame: Identifiable, Equatable, Sendable {
                   turns: match.turns > 0 ? match.turns : nil, rankDelta: match.rankChange?.pipDelta, engineMatchID: match.engineMatchID)
         rankLine = match.rankChange.map(Self.rankLine)
         rankNote = match.rankNote
+        durationSeconds = match.durationSeconds
+        rankTier = match.mode == .ranked ? match.rankChange?.before.tier : nil
     }
 
     static func rankLine(_ change: RankChange) -> String {
@@ -76,6 +82,73 @@ struct ProfileGame: Identifiable, Equatable, Sendable {
             return String(localized: "\(after.title): \(before.pips) → \(after.pips) pips")
         }
         return String(localized: "\(before.title) → \(after.title)")
+    }
+}
+
+/// More of the player's story from their own games (Caleb, 2026-10-26: "show a little more statistics"): the last ten
+/// results, records by mode and by ranked tier, how they do against each commander, and highlights. Rules shared with
+/// Android and the web (ProfileInsights.kt, profileSummary.ts; parity/profile-cases.json "insights").
+struct ProfileInsights: Equatable, Sendable {
+    struct Line: Identifiable, Equatable, Sendable {
+        let id: String
+        let games: Int
+        let wins: Int
+        let losses: Int
+        var winRate: Double { games == 0 ? 0 : Double(wins) / Double(games) }
+    }
+
+    static let formCount = 10
+    static let maxMatchups = 5
+    /// A deck needs this many games to be the best one.
+    static let bestDeckGames = 3
+
+    /// Newest first.
+    var form: [RankOutcome] = []
+    /// Ranked, Quick, Casual: the ones played.
+    var modes: [Line] = []
+    /// Ranked games by the tier they were played at, Bronze up.
+    var tiers: [Line] = []
+    /// Opponents' commanders, most faced first.
+    var matchups: [Line] = []
+    var fastestWin: Int?
+    var averageTurnsInWins: Double?
+    var averageTurnsInLosses: Double?
+    var averageMinutes: Double?
+    var bestDeck: Line?
+
+    /// Games newest first (the record's order).
+    init(games: [ProfileGame]) {
+        form = games.prefix(Self.formCount).map(\.outcome)
+        func line(_ id: String, _ list: [ProfileGame]) -> Line {
+            Line(id: id, games: list.count, wins: list.filter { $0.outcome == .win }.count, losses: list.filter { $0.outcome == .loss }.count)
+        }
+        modes = [PlayMode.ranked, .quick, .casual].compactMap { mode in
+            let list = games.filter { $0.mode == mode }
+            return list.isEmpty ? nil : line(mode.rawValue, list)
+        }
+        tiers = RankTier.allCases.compactMap { tier in
+            let list = games.filter { $0.mode == .ranked && $0.rankTier == tier }
+            return list.isEmpty ? nil : line(String(describing: tier), list)
+        }
+        var faced: [String: [ProfileGame]] = [:]
+        for game in games {
+            for commander in Set(game.opponents.compactMap(\.commander)) { faced[commander, default: []].append(game) }
+        }
+        matchups = faced.map { line($0.key, $0.value) }
+            .sorted { $0.games != $1.games ? $0.games > $1.games : $0.id < $1.id }
+            .prefix(Self.maxMatchups).map { $0 }
+        let wins = games.filter { $0.outcome == .win }.compactMap(\.turns)
+        let losses = games.filter { $0.outcome == .loss }.compactMap(\.turns)
+        fastestWin = wins.min()
+        averageTurnsInWins = wins.isEmpty ? nil : Double(wins.reduce(0, +)) / Double(wins.count)
+        averageTurnsInLosses = losses.isEmpty ? nil : Double(losses.reduce(0, +)) / Double(losses.count)
+        let lengths = games.compactMap(\.durationSeconds).filter { $0 > 0 }
+        averageMinutes = lengths.isEmpty ? nil : Double(lengths.reduce(0, +)) / Double(lengths.count) / 60
+        bestDeck = Dictionary(grouping: games.filter { !$0.deckName.isEmpty }, by: \.deckName)
+            .map { line($0.key, $0.value) }
+            .filter { $0.games >= Self.bestDeckGames }
+            .sorted { $0.winRate != $1.winRate ? $0.winRate > $1.winRate : ($0.games != $1.games ? $0.games > $1.games : $0.id < $1.id) }
+            .first
     }
 }
 

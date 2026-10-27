@@ -223,4 +223,14 @@ class ArenaBoardPresentationTest {
         assertFalse("your own spell", threat(spell("Destroy all creatures.", controller = "a")))
         assertFalse("you have nothing to lose", threat(spell("Destroy all creatures."), battlefield = "[]"))
     }
+
+    /** The stack card steps aside for the object the player tucked and while they pick on the table (iOS ArenaBoardModelTests). */
+    @Test fun theStackTucksForItsTopObjectAndWhilePicking() {
+        assertFalse(ArenaStackTuck.isTucked("a", null, null, false))
+        assertTrue(ArenaStackTuck.isTucked("a", "a", null, false))
+        assertFalse("the next one shows", ArenaStackTuck.isTucked("b", "a", null, false))
+        assertTrue("picking tucks it", ArenaStackTuck.isTucked("b", null, null, true))
+        assertFalse("brought back while picking", ArenaStackTuck.isTucked("b", null, "b", true))
+        assertTrue(ArenaStackTuck.isTucked("c", null, "b", true))
+    }
 }

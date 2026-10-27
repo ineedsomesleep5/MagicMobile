@@ -17,6 +17,8 @@ class MainActivity: ComponentActivity() {
         io.magicmobile.android.ui.AppPreferences.init(this,extras["MAGICMOBILE_UI_TEST_PREFERENCES"]?.let{"magicmobile.preferences.$it"} ?: "magicmobile.preferences")
         // Walnut Tavern is the only table (Caleb, 2026-10-11): a board saved from the retired picker goes back to it.
         io.magicmobile.android.ui.AppPreferences.remove(io.magicmobile.android.board.BoardAppearancePreference.key)
+        // The server's settings from the last launch (AppConfig) until this launch fetches them.
+        io.magicmobile.android.ui.AppConfigStore.load()
         io.magicmobile.android.ui.GameAudio.init(this)
         io.magicmobile.android.ui.DeviceHeat.init(this)
         io.magicmobile.android.ui.GamePerformanceRecorder.init(this)

@@ -336,6 +336,18 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
         }
     }
 
+    /**
+     * The server's settings for this build (mm_app_config): the menu's notice, card-name fixes and feature switches, kept in
+     * [AppConfigStore]. Best effort: the last copy stays when this fails.
+     */
+    suspend fun refreshAppConfig() {
+        if (phase != Phase.READY) return
+        runCatching {
+            api.rpc("mm_app_config", mapOf("p_platform" to JsonPrimitive("android"),
+                "p_build" to JsonPrimitive(io.magicmobile.android.BuildConfig.RELEASE_BUILD)))
+        }.getOrNull()?.let(io.magicmobile.android.ui.AppConfigStore::store)
+    }
+
     /** Sends one finished game. Never throws: the caller keeps what could not be sent and tries again later. */
     suspend fun recordGame(match: MatchRecord): GameUploadResult {
         if (phase != Phase.READY || username == null) return GameUploadResult.UNAVAILABLE
@@ -353,6 +365,7 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
                 "ai" to JsonPrimitive(opponent.isAI)))
         })
         if (match.turns > 0) params["p_turns"] = JsonPrimitive(minOf(1000, match.turns))
+        match.durationSeconds?.takeIf { it > 0 }?.let { params["p_duration_seconds"] = JsonPrimitive(minOf(86_400, it)) }
         match.rankChange?.let { params["p_rank_points"] = JsonPrimitive(it.after.points) }
         return try {
             api.rpc("mm_record_game", params)

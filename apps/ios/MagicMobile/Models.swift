@@ -165,6 +165,13 @@ struct GameSnapshot: Decodable {
         return id
     }
 
+    /// Another person at the table holds the decision or priority: the game waits on them, not on the engine.
+    var waitingOnPersonID: String? {
+        guard !isCompleted, let id = waitingOnPlayerId ?? priorityPlayerId, !isViewer(id),
+              let player = players.first(where: { $0.playerId == id }), player.isHuman == true, !player.isOut else { return nil }
+        return id
+    }
+
     /// Opponents still in the game.
     var remainingOpponents: [PlayerGameState] {
         players.filter { !isViewer($0.playerId) && !$0.isOut }

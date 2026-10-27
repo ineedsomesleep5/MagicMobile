@@ -286,6 +286,17 @@ struct ArenaCanvas: Equatable {
 /// battles and sagas in a section of their own at the table's right edge (planeswalkers and battles outermost); every
 /// other permanent (artifacts, enchantments, an unattached Equipment) in the back row right of the lands, with the mana
 /// rocks and Treasures. An Aura or Equipment goes wherever the permanent it is attached to goes.
+/// The stack card can step aside (Danny, 2026-10-26: sideways, the stack card covered what he wanted to tap). A tab on its
+/// left edge tucks it to the table's edge, a slim tab there brings it back, and it tucks itself while you pick something on
+/// the table. A tuck lasts for the spell or ability on top: the next one shows. Android's ArenaStackTuck matches.
+enum ArenaStackTuck {
+    /// `tuckedTop`: the top object the player tucked; `peekTop`: the one they brought back while picking.
+    static func isTucked(top: String, tuckedTop: String?, peekTop: String?, picking: Bool) -> Bool {
+        guard peekTop != top else { return false }
+        return tuckedTop == top || picking
+    }
+}
+
 enum ArenaFrontSection: Equatable {
     case creatures, side, support
 

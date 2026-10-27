@@ -201,6 +201,22 @@ final class RankedStandingTests: XCTestCase {
         XCTAssertNil(empty.pinnedMe)
     }
 
+    /// The 2026-10-27 reply adds streaks and last season's champions (20261027000000_leaderboard_streaks_champions.sql).
+    func testLeaderboardReadsStreaksChampionsAndTheCountdown() throws {
+        let json = #"{"season":"2026-11","seasonEnds":"2027-02-01T00:00:00+00:00","scope":"everyone","total":1,"online":0,"entries":[{"position":1,"username":"254DADDY","title":null,"commander":"Magus Lucea Kane","points":51,"step":12,"pips":3,"peakStep":13,"wins":37,"losses":22,"streak":3,"online":false,"you":false}],"me":null,"champions":{"season":"2026-10","entries":[{"position":1,"username":"254DADDY","step":12,"pips":3,"wins":37,"losses":22,"commander":"Magus Lucea Kane","you":false}]}}"#
+        let board = try RankedLeaderboard.parse(Data(json.utf8))
+        XCTAssertEqual(board.entries[0].streak, 3)
+        XCTAssertEqual(board.entries[0].winRate, 63)
+        XCTAssertEqual(board.champions?.season, "2026-10")
+        XCTAssertEqual(board.champions?.entries.first?.row.rank.title, RankPosition.published(step: 12, pips: 3).title)
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let midJanuary = utc.date(from: DateComponents(year: 2027, month: 1, day: 15, hour: 12))!
+        XCTAssertEqual(RankLadder.seasonCountdown("2026-11", now: midJanuary), "ends in 17 days")
+        XCTAssertEqual(RankLadder.seasonCountdown("2026-11", now: utc.date(from: DateComponents(year: 2027, month: 1, day: 31, hour: 20))!), "ends today")
+        XCTAssertNil(RankLadder.seasonCountdown("2026-10", now: midJanuary))
+    }
+
     /// The fixture leaderboard follows the server's visibility rules.
     func testFixtureLeaderboardHidesPrivateAndNonFriendRows() {
         let everyone = SocialFixtures.leaderboard(.everyone, own: "CalebM")

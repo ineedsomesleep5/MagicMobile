@@ -18,9 +18,10 @@ import java.nio.file.Files
 
 /** freeze-cases.json and the freeze log's pure parts (docs/FREEZE_LOG.md; iOS FreezeLogTests). */
 class FreezeLogTest {
-    private val cases = Json.parseToJsonElement(
+    private val root = Json.parseToJsonElement(
         File(generateSequence(File("").absoluteFile) { it.parentFile }.first { File(it, "apps/android").isDirectory },
-            "apps/android/core/src/test/resources/parity/freeze-cases.json").readText()).jsonObject["cases"]!!.jsonArray
+            "apps/android/core/src/test/resources/parity/freeze-cases.json").readText()).jsonObject
+    private val cases = root["cases"]!!.jsonArray
 
     @Test fun sharedCases() {
         assertTrue(cases.size >= 10)
@@ -30,9 +31,24 @@ class FreezeLogTest {
             val pending = input["answerPendingSeconds"].let { if (it == null || it is JsonNull) null else it.jsonPrimitive.double }
             val result = FreezeRules.stall(input["inGame"]!!.jsonPrimitive.boolean, input["over"]!!.jsonPrimitive.boolean,
                 input["waitingOnYou"]!!.jsonPrimitive.boolean, pending, input["quietSeconds"]!!.jsonPrimitive.double,
-                input["withPeople"]!!.jsonPrimitive.boolean)
+                input["withPeople"]!!.jsonPrimitive.boolean, input["waitingOnPerson"]?.jsonPrimitive?.boolean ?: false)
             val expected = case.jsonObject["expect"].let { if (it == null || it is JsonNull) null else (it as JsonPrimitive).content }
             assertEquals(name, expected, result)
+        }
+        val asks = root["askCases"]!!.jsonArray
+        assertTrue(asks.isNotEmpty())
+        for (case in asks) {
+            val fields = case.jsonObject
+            val duration = fields["duration"].let { if (it == null || it is JsonNull) null else it.jsonPrimitive.double }
+            assertEquals(fields["name"]!!.jsonPrimitive.content, fields["expect"]!!.jsonPrimitive.boolean,
+                FreezeRules.worthAsking(fields["kind"]!!.jsonPrimitive.content, duration))
+        }
+        val mayAsks = root["mayAskCases"]!!.jsonArray
+        assertTrue(mayAsks.isNotEmpty())
+        for (case in mayAsks) {
+            val fields = case.jsonObject
+            val since = fields["secondsSinceAsked"].let { if (it == null || it is JsonNull) null else it.jsonPrimitive.double }
+            assertEquals(fields["name"]!!.jsonPrimitive.content, fields["expect"]!!.jsonPrimitive.boolean, FreezeRules.mayAsk(since))
         }
     }
 

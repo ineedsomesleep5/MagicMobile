@@ -85,6 +85,35 @@ class ProfileAnalyticsTest {
         assertEquals(1, ProfileGame.of(record("2026-10-06T10:00:00Z", RankOutcome.WIN, 30)).rankDelta)
     }
 
+    /** ProfileInsights: form, modes, tiers, matchups and highlights from a player's own games (iOS testInsights). */
+    @Test fun insights() {
+        for (case in root.rows("insights")) {
+            val name = case.str("name")!!
+            val games = case.rows("games").mapIndexed { index, row ->
+                ProfileGame("g$index", 1_000_000_000L - index * 60_000L, PlayMode.entries.first { it.raw == row.str("mode") },
+                    RankOutcome.entries.first { it.raw == row.str("result") }, row.str("deck")!!, emptyList(), emptyList(),
+                    (row["opponents"] as JsonArray).map { ProfileOpponent("Foe", it.jsonPrimitive.content, true) }, row.int("turns"),
+                    durationSeconds = row.int("durationSeconds"), rankTier = row.str("tier")?.let { tier -> RankTier.entries.first { it.name.lowercase() == tier } })
+            }
+            val insights = ProfileInsights.of(games)
+            val expect = case["expect"]!!.jsonObject
+            fun lines(key: String) = expect.rows(key).map { listOf(it.str("id"), it.int("games"), it.int("wins"), it.int("losses")) }
+            fun plain(list: List<ProfileInsights.Line>) = list.map { listOf(it.id, it.games, it.wins, it.losses) }
+            fun rounded(value: Double?) = value?.let { Math.round(it * 10_000) / 10_000.0 }
+            fun number(key: String) = (expect[key] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.doubleOrNull
+            assertEquals(name, (expect["form"] as JsonArray).map { it.jsonPrimitive.content }, insights.form.map { it.raw })
+            assertEquals(name, lines("modes"), plain(insights.modes))
+            assertEquals(name, lines("tiers"), plain(insights.tiers))
+            assertEquals(name, lines("matchups"), plain(insights.matchups))
+            assertEquals(name, expect.int("fastestWin"), insights.fastestWin)
+            assertEquals(name, number("averageTurnsInWins"), rounded(insights.averageTurnsInWins))
+            assertEquals(name, number("averageTurnsInLosses"), rounded(insights.averageTurnsInLosses))
+            assertEquals(name, number("averageMinutes"), rounded(insights.averageMinutes))
+            val best = (expect["bestDeck"] as? JsonObject)?.let { listOf(it.str("id"), it.int("games"), it.int("wins"), it.int("losses")) }
+            assertEquals(name, best, insights.bestDeck?.let { plain(listOf(it)).first() })
+        }
+    }
+
     @Test fun publicProfiles() {
         for (item in root.rows("publicProfiles")) {
             val name = item.str("name")

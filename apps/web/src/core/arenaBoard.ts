@@ -180,3 +180,13 @@ export function combatPhase(snapshot: GameSnapshot): "attackers" | "blockers" | 
   if (step.includes("declare-block")) return "blockers";
   return undefined;
 }
+
+/**
+ * The stack card can step aside (ArenaStackTuck.swift / .kt; Danny, 2026-10-26: sideways, the stack card covered what he
+ * wanted to tap). The eye under its tab tucks it to the table's edge, a slim tab there brings it back, and it tucks itself
+ * while you pick something on the table. A tuck lasts for the object on top: the next one shows. `tuckedTop` is the top
+ * object the player tucked; `peekTop` the one they brought back while picking.
+ */
+export function arenaStackTucked(top: string, tuckedTop: string | undefined, peekTop: string | undefined, picking: boolean): boolean {
+  return peekTop !== top && (tuckedTop === top || picking);
+}

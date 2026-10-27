@@ -21,6 +21,10 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-27 (Claude, stack tab): in `board/ArenaBoardViews.kt` the imported `testTag` is the semantics property
+  (`androidx.compose.ui.semantics.testTag`), so `Modifier.testTag(...)` there fails to compile ("cannot be invoked as a
+  function"). **Rule:** set it inside `.semantics { testTag = ... }` in that file. Where: `ArenaStackTab`.
+
 - 2026-10-24 (Claude, Android freeze log): the app's JVM unit tests (`:app:testDebugUnitTest`) build `OnDeviceSession` without
   `unitTests.isReturnDefaultValues`, so any `android.*` call the session reaches (`SystemClock`, `Build`, `Debug`) throws there.
   **Rule:** code the session calls on every poll uses `System.nanoTime()` and wraps device lookups in `runCatching`; keep the
@@ -118,6 +122,23 @@ contradicting one.
   `board/InspectorViews.kt`.
 
 ## Gameplay
+
+- 2026-10-27 (Claude, tables): one guest leaving ended the match for everyone. The relay keeps the table; the apps failed it:
+  `beginLobby`'s `onDisconnect` (it replaces `attachRelay`'s once the lobby opens) and an `end` packet from any guest both
+  called `fail`. **Rule:** once the game is on, only the host leaving ends it; a guest's `end` or the relay's `gone` makes
+  the host concede that seat and send `left`, and an away guest can be voted out (TableLeaveRules on all three; PROTOCOL.md,
+  Players who leave). Packets from a player who left are dropped (`gonePeers`).
+
+- 2026-10-27 (Claude, starting roll): the Arena board's roll cover is see-through (black at 0.8), so anything the board draws
+  under it shows: the opening hand appeared behind a three-player roll because XMage asks the mulligan as soon as the host
+  answers the starting player. **Rule:** a board overlay that must wait for the roll checks `startingRollVisible`
+  (`OpeningHandOverlay` on iOS and Android); the web keeps the roll up until its result has shown.
+
+- 2026-10-27 (Claude, freeze log): testers saw "The last game froze" after every launch. `engine-quiet` counted another
+  person thinking for 3 minutes at a table, and every 2 s main-thread hitch was asked about. **Rule:** `FreezeRules.stall`
+  takes `waitingOnPerson`; the launch prompt asks only about stalls and hangs of 8 s or more, at most once in 3 days
+  (parity/freeze-cases.json). TestFlight feedback with screenshots: `asc testflight feedback list --app 6784735182
+  --include-screenshots --output json`, then fetch each screenshot's signed `url` (the bare `origin` link answers 400).
 
 - 2026-10-25 (Claude, hand and discard): two ways a gesture or a multi-card answer died partway. (1) The Arena hand's
   posture rule rested the hand whenever a card was dragged, so a card carried out of the *spread* hand collapsed the row
@@ -472,6 +493,30 @@ contradicting one.
   disagree, restore the package to the library's commit rather than rebuilding.
 
 ## Agent environment
+
+- 2026-10-26 (Claude, Android 42): the release build plus the emulator starved the 8 GB Mac into a watchdog kernel panic
+  ("no checkins from watchdogd in 92 seconds", compressor "100% of segments limit (BAD) … LOW swap space"), and the reboot
+  wiped `/private/tmp`, the scratchpad included. **Rule:** wait for idle and normal `memory_pressure` first, cap the Kotlin
+  daemon (`-Xmx1536m`), `gradle --stop` before the emulator, start it with `-memory 1536 -no-window -gpu host`, and run a
+  guard that kills qemu and Gradle if `kern.memorystatus_vm_pressure_level` stays at 4. Keep release scripts and evidence
+  outside `/private/tmp`. Template: `~/Documents/MagicMobile-releases/android-42/android42.sh`.
+
+- 2026-10-27 (Claude, leaderboard champions): `ranked_standings` has one row per player (primary key `user_id`); a finished
+  season moves to `ranked_season_history` when the player next plays. **Rule:** last season's results are history rows plus
+  standings still on that season (`mm_ranked_leaderboard` champions). In the PGlite suite players can't call
+  `mm_current_season`; read season names into a setting before `set local role authenticated`.
+
+- 2026-10-27 (Claude): adding three modifiers to `OnDeviceRootView.lifecycleContent` made Xcode give up on the chain ("unable
+  to type-check this expression in reasonable time"). **Fix:** split the chain (`syncedContent` → `lifecycleContent`).
+  `test/soloFlow.test.ts` on the web is flaky (random D20 ties stretch the roll past its 8 s wait): rerun before blaming a
+  change.
+
+- 2026-10-27 (Claude, Archidekt links): 18 of the 60 most-viewed Archidekt Commander decks lost cards on import. The bundled
+  aliases cover only double-faced cards, and Archidekt sends adventure, omen and prepare cards by their full two-part name
+  ("Brazen Borrower // Petty Theft") and accented names ("Troll of Khazad-dûm") that XMage spells in plain letters.
+  **Rule:** names are tried exact, then plain letters, then the front of a two-part name, never a double-faced front with a
+  different back (`NativeDeckCanonicalNames.candidates`, parity/card-name-cases.json); after that 3 of 60 decks miss only
+  cards the engine doesn't have yet. The server can add fixes (`name_fixes`, docs/SERVER_CONTROLS.md).
 
 - 2026-10-14 (Claude): REA on our own builds: `inspect_binary_layout` handles only Linux x86-64 ELF, and
   `decode_android_resources` / `inspect_android_package` need apktool or JADX, which aren't installed. For
