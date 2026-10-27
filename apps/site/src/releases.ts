@@ -9,7 +9,6 @@ export const releases = {
     version: sharedAppVersion,
     build: androidReleaseBuild,
     url: "https://github.com/ineedsomesleep5/MagicMobile/releases/download/android-v0.1.1-build.44/MagicMobile-Android-0.1.1-build44.apk",
-    notes: "https://github.com/ineedsomesleep5/MagicMobile/releases/tag/android-v0.1.1-build.44",
   },
   ios: {
     version: sharedAppVersion,

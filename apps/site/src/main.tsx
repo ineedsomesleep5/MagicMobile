@@ -106,8 +106,7 @@ function App() {
         <div className="row__what">
           <strong>Android</strong>
           <span>
-            APK · Version {releases.android.version} · Build {releases.android.build} · Android 8+, ARM64 ·{" "}
-            <a href={releases.android.notes}>Release notes</a>
+            APK · Version {releases.android.version} · Build {releases.android.build} · Android 8+, ARM64
           </span>
         </div>
         <a className={`pill ${mine === "android" ? "pill--primary" : "pill--glass"}`} href={releases.android.url}>Download APK</a>
@@ -341,7 +340,6 @@ function App() {
             <footer className="foot">
               <nav aria-label="More">
                 <a className="brand" href="#main"><img src="/site/mark.png" width="96" height="96" alt="" /><b>MagicMobile</b></a>
-                <a href="https://github.com/ineedsomesleep5/MagicMobile">GitHub</a>
                 <a href="/support/">Support</a>
                 <a href="/privacy/">Privacy</a>
               </nav>
