@@ -203,6 +203,14 @@ export const RankLadder = {
     return 2 + Math.floor((index - RankLadder.firstQuarter) / 3);
   },
 
+  /** "ends in 34 days", "ends today"; undefined once the season is over (the leaderboard's live strip; iOS seasonCountdown). */
+  seasonCountdown(season: string, now: number = Date.now()): string | undefined {
+    const end = RankLadder.seasonEnd(season);
+    if (end === undefined || end.getTime() <= now) return undefined;
+    const days = Math.ceil((end.getTime() - now) / DAY);
+    return days <= 1 ? "ends today" : `ends in ${days} days`;
+  },
+
   /** When a season ends (the next season starts, UTC); undefined for a malformed season. */
   seasonEnd(season: string): Date | undefined {
     const months = RankLadder.seasonMonths(season);

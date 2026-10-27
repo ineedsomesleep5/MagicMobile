@@ -61,6 +61,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import io.magicmobile.android.CardArtwork
 import io.magicmobile.android.game.Achievement
 import io.magicmobile.android.game.PlayMode
@@ -498,7 +499,10 @@ fun ProfileGameCard(game: ProfileGame, tag: String, openPlayer: ((String) -> Uni
                 Text(deck.ifEmpty { "Deck" }, Modifier.alpha(0.8f), color = parchment, style = ArenaMenuStyle.font(12f, SfWeight.semibold), maxLines = 1)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     TavernTag(modeText.uppercase(), leather = true)
-                    Text(formatShortDate(game.date), Modifier.alpha(0.65f), color = parchment, style = ArenaMenuStyle.font(11f, SfWeight.regular), maxLines = 1)
+                    // "Oct 26 · turn 9 · 24 min": what the record knows about the game.
+                    val facts = listOfNotNull(formatShortDate(game.date), game.turns?.let { "turn $it" },
+                        game.durationSeconds?.takeIf { it > 0 }?.let { "${maxOf(1, it / 60)} min" })
+                    Text(facts.joinToString(" · "), Modifier.alpha(0.65f), color = parchment, style = ArenaMenuStyle.font(11f, SfWeight.regular), maxLines = 1)
                 }
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -506,9 +510,14 @@ fun ProfileGameCard(game: ProfileGame, tag: String, openPlayer: ((String) -> Uni
                     Text(letter, color = Color.White, style = ArenaMenuStyle.font(17f, SfWeight.black))
                 }
                 if (game.rankNote != null) Text("Not ranked", Modifier.alpha(0.6f), color = parchment, style = ArenaMenuStyle.font(11f, SfWeight.heavy))
-                else if (delta != null) Text(if (delta > 0) "+$delta" else if (delta == 0) "±0" else "$delta",
-                    color = if (delta > 0) rgb(0.6, 0.95, 0.55) else if (delta == 0) parchment.copy(alpha = 0.7f) else rgb(1.0, 0.55, 0.45),
-                    style = ArenaMenuStyle.font(12f, SfWeight.heavy).copy(fontFeatureSettings = "tnum"))
+                else if (delta != null) {
+                    Text(if (delta > 0) "+$delta" else if (delta == 0) "±0" else "$delta",
+                        color = if (delta > 0) rgb(0.6, 0.95, 0.55) else if (delta == 0) parchment.copy(alpha = 0.7f) else rgb(1.0, 0.55, 0.45),
+                        style = ArenaMenuStyle.font(12f, SfWeight.heavy).copy(fontFeatureSettings = "tnum"))
+                    // A crushing loss (the AI kept 30 of its 40 life) costs two pips.
+                    if (delta <= -2 && game.outcome == RankOutcome.LOSS) Text("Crushing loss", Modifier.alpha(0.6f), color = parchment,
+                        style = ArenaMenuStyle.font(10f, SfWeight.heavy))
+                }
                 else if (detailed) SfImage("chart.bar.fill", BrandTheme.ember, 12.dp)
             }
         }
@@ -582,4 +591,38 @@ fun PersonGlyph(tint: Color, size: Dp) {
 fun ChipRow(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Row(modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).defaultMinSize(minHeight = 44.dp).padding(horizontal = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { content() }
+}
+
+/** The last ten results, newest first, as small gold, red and grey coins (iOS FormStrip). */
+@Composable
+fun FormStrip(results: List<RankOutcome>) {
+    Row(Modifier.semantics(mergeDescendants = true) {
+        contentDescription = "Last ${results.size} games: ${results.count { it == RankOutcome.WIN }} wins, ${results.count { it == RankOutcome.LOSS }} losses"
+    }, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        for (result in results) Box(Modifier.size(20.dp).background(when (result) {
+            RankOutcome.WIN -> ProfilePalette.win; RankOutcome.LOSS -> ProfilePalette.loss; RankOutcome.DRAW -> ProfilePalette.draw
+        }, CircleShape).clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
+            Text(when (result) { RankOutcome.WIN -> "W"; RankOutcome.LOSS -> "L"; RankOutcome.DRAW -> "D" },
+                color = if (result == RankOutcome.WIN) Color.Black.copy(alpha = 0.75f) else parchment, style = sf(10f, SfWeight.black, SfDesign.SERIF))
+        }
+    }
+}
+
+/** One line of a record: what (a mode, a tier, a commander), the record and the win rate's bar (iOS ProfileRecordLine). */
+@Composable
+fun ProfileRecordLine(title: String, line: io.magicmobile.android.game.ProfileInsights.Line, leading: @Composable () -> Unit) {
+    Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = "$title: ${line.wins} wins, ${line.losses} losses" },
+        horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(28.dp).clearAndSetSemantics {}, contentAlignment = Alignment.Center) { leading() }
+        Column(Modifier.weight(1f).clearAndSetSemantics {}, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f), color = parchment, style = ArenaMenuStyle.font(13.5f, SfWeight.bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${line.wins}–${line.losses}", color = io.magicmobile.android.menus.ArenaMenuStyle.gold,
+                    style = ArenaMenuStyle.font(13f, SfWeight.heavy).copy(fontFeatureSettings = "tnum"))
+            }
+            Box(Modifier.fillMaxWidth().height(5.dp).background(ProfilePalette.track, CircleShape)) {
+                Box(Modifier.fillMaxWidth(line.winRate.toFloat().coerceIn(0.03f, 1f)).height(5.dp).background(ProfilePalette.win, CircleShape))
+            }
+        }
+    }
 }

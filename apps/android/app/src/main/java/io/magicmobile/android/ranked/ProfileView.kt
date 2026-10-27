@@ -54,6 +54,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.magicmobile.android.game.Achievement
 import io.magicmobile.android.game.ArenaProfileRules
 import io.magicmobile.android.game.MatchRecord
@@ -157,7 +158,9 @@ fun PlayerProfileScreen(store: PlayerRecordStore, account: PlayerAccount, player
             ProfileChip("All decks", deckFilter == null, "profile.filter.deck.all", { deckFilter = null; showAll = false }, detail = "${file.matches.size}")
             for (deck in stats.decks.take(8)) ProfileChip(deck.label, deckFilter == deck.id, "profile.filter.deck.${deck.id}", { deckFilter = deck.id; showAll = false }, detail = "${deck.games}")
         }
-        RecordCard(deckFilter?.let { id -> stats.decks.firstOrNull { it.id == id }?.label } ?: "Record", summary)
+        val insights = io.magicmobile.android.game.ProfileInsights.of(scoped.map(ProfileGame::of))
+        RecordCard(deckFilter?.let { id -> stats.decks.firstOrNull { it.id == id }?.label } ?: "Record", summary, insights.form)
+        InsightCards(insights)
         WeeksCard(summary)
         if (summary.commanders.isNotEmpty()) Column(Modifier.leatherCard(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ProfileSectionTitle("Most played commanders")
@@ -452,7 +455,7 @@ private fun SeasonCard(store: PlayerRecordStore, summary: ProfileSummary) {
 }
 
 @Composable
-private fun RecordCard(title: String, summary: ProfileSummary) {
+private fun RecordCard(title: String, summary: ProfileSummary, form: List<RankOutcome>) {
     Column(Modifier.leatherCard().testTag("profile.stats"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         ProfileSectionTitle(title, "${summary.games} games")
         if (summary.games == 0) ProfileEmptyNote("Your games show here after you play.")
@@ -470,6 +473,50 @@ private fun RecordCard(title: String, summary: ProfileSummary) {
                 }
             }
             StreakRow(summary.currentStreak, summary.bestStreak)
+            if (form.size >= 3) Row(Modifier.testTag("profile.form"), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("RECENT FORM", Modifier.alpha(0.7f), color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(9f, SfWeight.heavy).copy(letterSpacing = 1.sp))
+                FormStrip(form)
+            }
+        }
+    }
+}
+
+/** Highlights, records by mode and by ranked tier, and how the player does against each commander (iOS insightCards). */
+@Composable
+private fun InsightCards(insights: io.magicmobile.android.game.ProfileInsights) {
+    if (insights.fastestWin != null || insights.averageMinutes != null || insights.bestDeck != null) {
+        Column(Modifier.leatherCard().testTag("profile.highlights"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ProfileSectionTitle("Highlights")
+            val tiles = listOfNotNull(insights.fastestWin?.let { "Fastest win" to "Turn $it" },
+                insights.averageMinutes?.let { "Avg. game" to "${Math.round(it)} min" },
+                insights.averageTurnsInWins?.let { "Turns in wins" to "%.1f".format(it) },
+                insights.averageTurnsInLosses?.let { "Turns in losses" to "%.1f".format(it) })
+            for (pair in tiles.chunked(2)) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((title, value) in pair) ProfileStatTile(title, value, Modifier.weight(1f))
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
+            }
+            insights.bestDeck?.let { best -> ProfileRecordLine("Best deck: ${best.id}", best) { SfImage("star.fill", ProfilePalette.win, 14.dp) } }
+        }
+    }
+    if (insights.modes.size > 1 || insights.tiers.isNotEmpty()) {
+        Column(Modifier.leatherCard().testTag("profile.records"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ProfileSectionTitle("Records")
+            for (line in insights.modes) ProfileRecordLine(when (line.id) { "ranked" -> "Ranked"; "quick" -> "Quick Match"; else -> "Casual" }, line) {
+                SfImage(when (line.id) { "ranked" -> "shield.lefthalf.filled"; "quick" -> "bolt.fill"; else -> "person.3.fill" }, ArenaMenuStyle.gold, 14.dp)
+            }
+            if (insights.tiers.isNotEmpty()) {
+                ArenaCaps("Ranked by tier")
+                for (line in insights.tiers) {
+                    val tier = RankTier.entries.firstOrNull { it.name.lowercase() == line.id } ?: RankTier.BRONZE
+                    ProfileRecordLine(tier.label, line) { RankEmblem(tier, 26.dp) }
+                }
+            }
+        }
+    }
+    if (insights.matchups.isNotEmpty()) {
+        Column(Modifier.leatherCard().testTag("profile.matchups"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ProfileSectionTitle("Matchups", "most faced")
+            for (line in insights.matchups) ProfileRecordLine("vs ${line.id}", line) { CommanderArtMedallion(line.id, 28.dp) }
         }
     }
 }

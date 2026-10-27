@@ -11,10 +11,10 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { type PlayerAccount, RankedLeaderboard, type RankedLeaderboardEntry, type RankedLeaderboardScope } from "../../core/account";
-import { RankLadder, RankPosition } from "../../core/rankLadder";
+import { RankLadder, RankPosition, RankTier } from "../../core/rankLadder";
 import { leaderboardLabel, onlineText, placeMoves, podiumOrder, TIER_TINT } from "../../core/socialText";
 import { gameAudio } from "../audio";
-import { OnlineDot, SocialGlyph, SocialTag, SocialWaiting } from "./FriendsPanel";
+import { Medallion, OnlineDot, SocialGlyph, SocialTag, SocialWaiting } from "./FriendsPanel";
 import { BackChevron, Segmented } from "./kit";
 import { RankEmblem } from "./TopBar";
 import "./social.css";
@@ -35,7 +35,9 @@ export function Leaderboard({ account, onBack, openProfile }: {
   /** Opens a player's profile from their row; rows don't open anything without it. */
   openProfile?: (username: string) => void;
 }) {
-  const [scope, setScope] = useState<RankedLeaderboardScope>("everyone");
+  // Everyone, friends, or last season's champions (from the everyone board).
+  const [tab, setTab] = useState<RankedLeaderboardScope | "champions">("everyone");
+  const scope: RankedLeaderboardScope = tab === "friends" ? "friends" : "everyone";
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   /** Places gained (positive) or lost since the last refresh. */
   const [moves, setMoves] = useState<Record<string, number>>({});
@@ -114,8 +116,10 @@ export function Leaderboard({ account, onBack, openProfile }: {
         className={`mleaderrow mrise ${entry.you ? "you" : ""} ${mythic ? "mythic" : ""} ${pinned ? "pinned" : ""}`}
         aria-label={leaderboardLabel(entry)} data-id={pinned ? "leaderboard.me" : `leaderboard.row.${entry.username}`} onClick={() => open(entry)}>
         <strong className="mleaderplace">{entry.position}</strong>
+        {/* Their commander's art, their rank's emblem on its rim. */}
         <span className="mleaderemblem">
-          <RankEmblem tier={rank.tier} size={40} />
+          <Medallion name={entry.commander} size={40} />
+          <span className="mleaderrank"><RankEmblem tier={rank.tier} size={20} /></span>
           {entry.online && <span className="mleaderdot"><OnlineDot size={9} /></span>}
         </span>
         <span className="grow">
@@ -124,6 +128,7 @@ export function Leaderboard({ account, onBack, openProfile }: {
         </span>
         <span className="mleaderend">
           {move !== undefined && <em className={move > 0 ? "up" : "down"}>{move > 0 ? "▲" : "▼"}{Math.abs(move)}</em>}
+          {move === undefined && (entry.streak ?? 0) >= 3 && <em className="streak" aria-label={`${entry.streak} wins in a row`}>🔥{entry.streak}</em>}
           <span className="mleaderrecord">{entry.wins}–{entry.losses}</span>
           <span className="mleaderrate">{winRate(entry) === undefined ? "–" : `${winRate(entry)}%`}</span>
           {!mythic && (
@@ -144,6 +149,18 @@ export function Leaderboard({ account, onBack, openProfile }: {
     body = (
       <p className="mcard msocialcard msocialtext" data-id="leaderboard.offline">
         <SocialGlyph name="wifi" size={16} />The leaderboard needs your profile and a connection. Sign in from your profile, then come back.
+      </p>
+    );
+  } else if (tab === "champions") {
+    const champions = load.board.champions;
+    body = champions && champions.entries.length > 0 ? (
+      <div className="mleaderbody mscroll" data-id="leaderboard.champions">
+        <p className="mleaderchampions mrise">{RankLadder.seasonName(champions.season)} champions</p>
+        <div className="mpodium mrise">{podiumOrder(champions.entries.slice(0, 3)).map(podiumStep)}</div>
+      </div>
+    ) : (
+      <p className="mcard msocialcard msocialtext" data-id="leaderboard.champions.empty">
+        <SocialGlyph name="sparkles" size={16} />The first champions are crowned when {RankLadder.seasonName(load.board.season)} ends.
       </p>
     );
   } else if (load.board.entries.length === 0) {
@@ -167,7 +184,13 @@ export function Leaderboard({ account, onBack, openProfile }: {
               <span className="mleaderend"><span className="mleaderrecord">Record</span><span className="mleaderrate">Win rate</span><span className="mleaderpipshead">Rank</span></span>
             </div>
             {me && row(me, true)}
-            {board.entries.slice(3).map((entry) => row(entry, false))}
+            {board.entries.slice(3).map((entry, index, rest) => {
+              // A tier's name over its first row.
+              const tier = RankedLeaderboard.rank(entry).tier;
+              const header = index === 0 || RankedLeaderboard.rank(rest[index - 1]).tier !== tier;
+              return [header ? <div key={`tier-${tier}-${index}`} className="mleadertier" role="heading" aria-level={3}><span>{RankTier.name(tier)}</span></div> : null,
+                row(entry, false)];
+            })}
           </div>
         )}
       </div>
@@ -182,15 +205,15 @@ export function Leaderboard({ account, onBack, openProfile }: {
       </header>
       <div className="mleadertop">
         <div className="mleaderscope" data-id="leaderboard.scope">
-          <Segmented stretch label="Leaderboard" value={scope} onChange={setScope}
-            options={RankedLeaderboard.scopes.map((value) => ({ value, label: value === "everyone" ? "Everyone" : "Friends" }))} />
+          <Segmented stretch label="Leaderboard" value={tab} onChange={setTab}
+            options={[{ value: "everyone" as const, label: "Everyone" }, { value: "friends" as const, label: "Friends" }, { value: "champions" as const, label: "Champions" }]} />
         </div>
         {loaded && (
           <div className="mleaderlive" data-id="leaderboard.live">
             <OnlineDot size={10} />
             <b>{onlineText(loaded.online)}</b>
             <span className="grow" />
-            <small>{loaded.total} ranked · {RankLadder.seasonName(loaded.season)}</small>
+            <small>{[`${loaded.total} ranked`, RankLadder.seasonName(loaded.season), RankLadder.seasonCountdown(loaded.season)].filter(Boolean).join(" · ")}</small>
           </div>
         )}
       </div>

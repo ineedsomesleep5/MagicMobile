@@ -531,6 +531,8 @@ export interface RankedLeaderboardEntry {
   losses: number;
   online: boolean;
   you: boolean;
+  /** Straight wins right now; absent from a server before 2026-10-27. */
+  streak?: number;
 }
 
 /**
@@ -544,26 +546,42 @@ export interface RankedLeaderboard {
   online: number;
   entries: RankedLeaderboardEntry[];
   me?: RankedLeaderboardEntry;
+  /** Last season's top three (the champions); absent from a server before 2026-10-27. */
+  champions?: { season: string; entries: RankedLeaderboardEntry[] };
 }
 
 const parseEntry = (row: J | undefined): RankedLeaderboardEntry => {
   const title = optional(get(row, "title"), str), commander = optional(get(row, "commander"), str);
+  const streak = optional(get(row, "streak"), int);
   return {
     position: required(get(row, "position"), int), username: required(get(row, "username"), str),
     ...(title !== undefined ? { title } : {}), ...(commander !== undefined ? { commander } : {}),
     points: required(get(row, "points"), int), wins: required(get(row, "wins"), int), losses: required(get(row, "losses"), int),
     online: required(get(row, "online"), bool), you: required(get(row, "you"), bool),
+    ...(streak !== undefined ? { streak } : {}),
+  };
+};
+
+/** A champion's row: its step and pips instead of points, never online. */
+const parseChampion = (row: J | undefined): RankedLeaderboardEntry => {
+  const commander = optional(get(row, "commander"), str);
+  return {
+    position: required(get(row, "position"), int), username: required(get(row, "username"), str), ...(commander !== undefined ? { commander } : {}),
+    points: RankPosition.points(RankPosition.published(required(get(row, "step"), int), required(get(row, "pips"), int))),
+    wins: required(get(row, "wins"), int), losses: required(get(row, "losses"), int), online: false, you: required(get(row, "you"), bool),
   };
 };
 
 export const RankedLeaderboard = {
   scopes: ["everyone", "friends"] as RankedLeaderboardScope[],
   parse(json: J): RankedLeaderboard {
-    const me = get(json, "me");
+    const me = get(json, "me"), champions = get(json, "champions");
     return {
       season: required(get(json, "season"), str), scope: required(get(json, "scope"), str), total: required(get(json, "total"), int),
       online: required(get(json, "online"), int), entries: required(get(json, "entries"), arr).map(parseEntry),
       ...(me !== undefined && me !== null ? { me: parseEntry(me) } : {}),
+      ...(champions !== undefined && champions !== null
+        ? { champions: { season: required(get(champions, "season"), str), entries: required(get(champions, "entries"), arr).map(parseChampion) } } : {}),
     };
   },
   rank: (entry: RankedLeaderboardEntry) => RankPosition.fromPoints(entry.points),
