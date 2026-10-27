@@ -187,6 +187,15 @@ enum RankLadder {
     }
 
     /// When a season ends (the next season starts, UTC).
+    /// "ends in 34 days", "ends today"; nil once the season is over (the leaderboard's live strip).
+    static func seasonCountdown(_ season: String, now: Date = Date()) -> String? {
+        guard let end = seasonEnd(season) else { return nil }
+        let seconds = end.timeIntervalSince(now)
+        guard seconds > 0 else { return nil }
+        let days = Int((seconds / 86_400).rounded(.up))
+        return days <= 1 ? String(localized: "ends today") : String(localized: "ends in \(days) days")
+    }
+
     static func seasonEnd(_ season: String) -> Date? {
         let parts = season.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 2, let months = seasonMonths(season) else { return nil }
@@ -379,9 +388,35 @@ struct RankedLeaderboard: Decodable, Equatable, Sendable {
         let losses: Int
         let online: Bool
         let you: Bool
+        /// Straight wins right now (the server's win streak); nil from a server before 2026-10-27.
+        var streak: Int? = nil
 
         var id: String { username }
         var rank: RankPosition { RankPosition(points: points) }
+        var winRate: Int? { wins + losses == 0 ? nil : Int((Double(wins) / Double(wins + losses) * 100).rounded()) }
+    }
+
+    /// Last season's top three (the champions), by where they finished.
+    struct Champions: Decodable, Equatable, Sendable {
+        struct Entry: Decodable, Equatable, Identifiable, Sendable {
+            let position: Int
+            let username: String
+            let step: Int
+            let pips: Int
+            let wins: Int
+            let losses: Int
+            let commander: String?
+            let you: Bool
+            var id: String { username }
+            /// As a leaderboard row, for the podium.
+            var row: RankedLeaderboard.Entry {
+                RankedLeaderboard.Entry(position: position, username: username, title: nil, commander: commander,
+                                        points: RankPosition.published(step: step, pips: pips).points, wins: wins, losses: losses,
+                                        online: false, you: you)
+            }
+        }
+        let season: String
+        let entries: [Entry]
     }
 
     let season: String
@@ -390,6 +425,8 @@ struct RankedLeaderboard: Decodable, Equatable, Sendable {
     let online: Int
     let entries: [Entry]
     let me: Entry?
+    /// Nil from a server before 2026-10-27.
+    var champions: Champions? = nil
 
     static func parse(_ data: Data) throws -> RankedLeaderboard { try JSONDecoder().decode(RankedLeaderboard.self, from: data) }
 

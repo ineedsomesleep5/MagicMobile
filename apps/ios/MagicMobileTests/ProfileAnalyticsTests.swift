@@ -75,6 +75,36 @@ final class ProfileAnalyticsTests: XCTestCase {
         XCTAssertEqual(ProfileGame(try record("2026-10-06T10:00:00Z", .win, after: 30)).rankDelta, 1)
     }
 
+    /// ProfileInsights: form, modes, tiers, matchups and highlights from a player's own games.
+    func testInsights() throws {
+        for item in try XCTUnwrap(root["insights"] as? [[String: Any]]) {
+            let name = item["name"] as? String ?? ""
+            let games = try XCTUnwrap(item["games"] as? [[String: Any]]).enumerated().map { index, row -> ProfileGame in
+                var game = ProfileGame(id: "g\(index)", date: Date(timeIntervalSince1970: Double(1_000_000 - index * 60)),
+                                       mode: PlayMode(rawValue: row["mode"] as! String)!, outcome: RankOutcome(rawValue: row["result"] as! String)!,
+                                       deckName: row["deck"] as! String, commanders: [], colors: [],
+                                       opponents: (row["opponents"] as! [String]).map { ProfileGame.Opponent(name: "Foe", commander: $0, isAI: true) },
+                                       turns: row["turns"] as? Int)
+                game.durationSeconds = row["durationSeconds"] as? Int
+                game.rankTier = (row["tier"] as? String).flatMap { tier in RankTier.allCases.first { String(describing: $0) == tier } }
+                return game
+            }
+            let insights = ProfileInsights(games: games)
+            let expect = try XCTUnwrap(item["expect"] as? [String: Any])
+            func lines(_ key: String) -> [[String: AnyHashable]] { (expect[key] as? [[String: Any]] ?? []).map { $0.mapValues { $0 as! AnyHashable } } }
+            func plain(_ list: [ProfileInsights.Line]) -> [[String: AnyHashable]] { list.map { ["id": $0.id, "games": $0.games, "wins": $0.wins, "losses": $0.losses] } }
+            XCTAssertEqual(insights.form.map(\.rawValue), expect["form"] as? [String], name)
+            XCTAssertEqual(plain(insights.modes), lines("modes"), name)
+            XCTAssertEqual(plain(insights.tiers), lines("tiers"), name)
+            XCTAssertEqual(plain(insights.matchups), lines("matchups"), name)
+            XCTAssertEqual(insights.fastestWin, expect["fastestWin"] as? Int, name)
+            XCTAssertEqual(insights.averageTurnsInWins.map { ($0 * 10_000).rounded() / 10_000 }, (expect["averageTurnsInWins"] as? NSNumber)?.doubleValue, name)
+            XCTAssertEqual(insights.averageTurnsInLosses.map { ($0 * 10_000).rounded() / 10_000 }, (expect["averageTurnsInLosses"] as? NSNumber)?.doubleValue, name)
+            XCTAssertEqual(insights.averageMinutes.map { ($0 * 10_000).rounded() / 10_000 }, (expect["averageMinutes"] as? NSNumber)?.doubleValue, name)
+            XCTAssertEqual(insights.bestDeck.map { plain([$0]) } ?? [], (expect["bestDeck"] as? [String: Any]).map { [$0.mapValues { $0 as! AnyHashable }] } ?? [], name)
+        }
+    }
+
     func testPublicProfiles() throws {
         for item in try XCTUnwrap(root["publicProfiles"] as? [[String: Any]]) {
             let name = item["name"] as? String ?? ""

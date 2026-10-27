@@ -615,7 +615,9 @@ struct OnDeviceRootView: View {
         #endif
     }
 
-    private var lifecycleContent: some View {
+    /// The presented content with deck sync, preferences and the app's comings and goings (split from lifecycleContent
+    /// to keep each modifier chain inside the type checker's budget).
+    private var syncedContent: some View {
         presentedContent.holdInspectionScope().task { await preparePresentation() }
         .onChange(of: library.decks.map(\.id)) { _, _ in
             if !activeGame { restoreSetupPreferences() }
@@ -652,9 +654,13 @@ struct OnDeviceRootView: View {
             MainThreadWatchdog.shared.setPaused(phase != .active)
         }
         .onAppear { if scenePhase == .active { account.setForeground(true) } }
-        // Freeze log (docs/FREEZE_LOG.md): what the game is, the ranked search's steps, and last session's freeze.
         // Each engine match's start, for the game's length on the profile.
         .onChange(of: session.matchID) { _, id in gameStartedAt = id == nil ? nil : Date() }
+    }
+
+    private var lifecycleContent: some View {
+        syncedContent
+        // Freeze log (docs/FREEZE_LOG.md): what the game is, the ranked search's steps, and last session's freeze.
         .onChange(of: activeMatch, initial: true) { _, match in
             session.freezeMode = match.map { "\($0.mode.rawValue)\($0.opponents.contains { $0.isAI } ? " vs AI" : " vs people")" }
                 ?? (setup.usingMultiplayer ? "table" : "custom")
