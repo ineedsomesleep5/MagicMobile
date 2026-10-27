@@ -7,6 +7,12 @@
 /** The server switch (mm_app_config). Off unless the server turns it on, unlike the older switches. */
 export const VOICE_SWITCH = "voiceChat";
 
+/** Push to talk (Options → Audio, the game's settings): the microphone stays off except while the mic or the key is held. */
+export const PUSH_TO_TALK_KEY = "mm.web.pushToTalk";
+/** The key held to talk, as a KeyboardEvent.code. */
+export const PUSH_TO_TALK_BIND_KEY = "mm.web.pushToTalkKey";
+export const DEFAULT_PUSH_TO_TALK_BIND = "KeyV";
+
 export type VoiceStage = "off" | "joining" | "live" | "unavailable";
 
 export interface VoiceState {
@@ -48,6 +54,13 @@ export const VoiceChat = {
   isSpeaking: (level: number) => level >= VoiceChat.speakingLevel,
 
   stillSpeaking: (heardAt: number | undefined, now: number) => heardAt !== undefined && now - heardAt <= VoiceChat.holdSeconds + 1e-9,
+
+  /** A key code as the settings show it: "KeyV" → "V", "Digit1" → "1", "Space" → "Space". */
+  keyLabel: (code: string) => code.replace(/^Key(?=[A-Z]$)/, "").replace(/^Digit(?=\d$)/, "").replace(/^Numpad/, "Num "),
+
+  /** A key that can be the push-to-talk key: not Space, Enter or Escape (the board's own), and no modifier on its own. */
+  bindable: (code: string) => !["Space", "Enter", "NumpadEnter", "Escape", "Tab", "MetaLeft", "MetaRight", "ControlLeft", "ControlRight",
+    "AltLeft", "AltRight", "ShiftLeft", "ShiftRight"].includes(code) && code !== "",
 
   /** Whether the board shows the mic: the switch on, a table with people, the game started, and the server able to answer. */
   shown: (p: { switchOn: boolean; solo: boolean; channel: boolean; account: boolean; unavailable: boolean }) =>

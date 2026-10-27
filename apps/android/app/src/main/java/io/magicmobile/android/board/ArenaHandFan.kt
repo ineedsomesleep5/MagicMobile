@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DontMemoize
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -149,7 +150,10 @@ fun ArenaHandFan(
         if (all.isEmpty()) return@run BoardRect.zero
         val union = all.indices.map(::homeFrame).reduce { a, b -> a.union(b) }
         val bottom = min(canvas.screen.height, layout.hand.touchBottom?.let(canvas::y) ?: canvas.screen.height)
-        BoardRect(union.minX, union.minY, union.width, max(0f, bottom - union.minY))
+        // Kept on screen: a spread row runs past both edges, and a surface wider than the screen is centred by Compose,
+        // which moved every touch sideways (a drag carried the card two places right of the finger).
+        val left = max(0f, union.minX); val right = min(canvas.screen.width, union.maxX)
+        BoardRect(left, union.minY, max(0f, right - left), max(0f, bottom - union.minY))
     }
 
     /** The card under a point: of the cards whose home slot spans its x, the top one; the popped card first. */
@@ -437,10 +441,19 @@ fun ArenaHandFan(
             }
         }
         if (all.isNotEmpty()) {
-            ArenaHandTouch(band, Modifier.zIndex(1500f), ::tapped, ::held, ::endHold, ::panned, ::panEnded, ::panStarted)
+            // New handlers every composition: Kotlin 2's strong skipping remembers `::tapped`-style references to these local
+            // functions, which then kept the first composition's posture, cards and actions (a spread hand picked its card by
+            // the resting fan's frames and carried the wrong one).
+            val tap = @DontMemoize { point: BoardPoint -> tapped(point) }
+            val hold = @DontMemoize { point: BoardPoint -> held(point) }
+            val holdEnded = @DontMemoize { point: BoardPoint, cancelled: Boolean -> endHold(point, cancelled) }
+            val pan = @DontMemoize { point: BoardPoint -> panned(point) }
+            val panEnd = @DontMemoize { point: BoardPoint, cancelled: Boolean -> panEnded(point, cancelled) }
+            val panStart = @DontMemoize { point: BoardPoint -> panStarted(point) }
+            ArenaHandTouch(band, Modifier.zIndex(1500f), tap, hold, holdEnded, pan, panEnd, panStart)
             // The popped card takes touches over its whole picture too, on a surface of its own that stays where it was while
             // the card is carried, so the drag that started on it keeps going.
-            (liftedRect ?: carrySurface)?.let { ArenaHandTouch(it, Modifier.zIndex(1501f), ::tapped, ::held, ::endHold, ::panned, ::panEnded, ::panStarted) }
+            (liftedRect ?: carrySurface)?.let { ArenaHandTouch(it, Modifier.zIndex(1501f), tap, hold, holdEnded, pan, panEnd, panStart) }
         }
         dragging?.let { (id, start, offset) ->
             val card = all.firstOrNull { it.id == id } ?: return@let

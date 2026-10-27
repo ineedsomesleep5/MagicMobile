@@ -21,6 +21,8 @@ final class VoiceRoom: NSObject, ObservableObject {
     private var heard: [String: Double] = [:]
     private var fade: Task<Void, Never>?
     private var closed = false
+    /// Push to talk: the microphone stays off except while talk(true) holds it open.
+    private(set) var pushToTalk = false
 
     init(channel: String, account: String, token: @escaping TokenSource) {
         self.channel = channel
@@ -56,10 +58,11 @@ final class VoiceRoom: NSObject, ObservableObject {
             options.clientRoleType = .broadcaster
             options.publishMicrophoneTrack = allowed
             options.autoSubscribeAudio = true
+            if allowed && pushToTalk { engine.muteLocalAudioStream(true) }
             let code = engine.joinChannel(byToken: ticket.token, channelId: channel, userAccount: account, mediaOptions: options)
             guard code == 0 else { throw SupabaseLite.Failure(code: "voice_join_\(code)") }
             state.stage = .live
-            state.muted = !allowed
+            state.muted = !allowed || pushToTalk
             state.micBlocked = !allowed
             state.inVoice.insert(account)
             startFading()
@@ -79,6 +82,21 @@ final class VoiceRoom: NSObject, ObservableObject {
         }
         state.muted.toggle()
         engine.muteLocalAudioStream(state.muted)
+        heard[account] = nil
+        refreshSpeaking()
+    }
+
+    /// Push to talk on or off; turning it on closes the microphone until it is held.
+    func setPushToTalk(_ on: Bool) {
+        pushToTalk = on
+        if on, !state.muted { talk(false, force: true) }
+    }
+
+    /// Push to talk: the microphone open while the mic is held, closed on release.
+    func talk(_ down: Bool, force: Bool = false) {
+        guard pushToTalk || force, state.stage == .live, !state.micBlocked, let engine, state.muted == down else { return }
+        state.muted = !down
+        engine.muteLocalAudioStream(!down)
         heard[account] = nil
         refreshSpeaking()
     }
@@ -185,7 +203,7 @@ final class VoiceRoom: NSObject, ObservableObject {
         leave()
         Task { @MainActor [weak self] in
             await self?.join()
-            if muted, self?.state.stage == .live, self?.state.muted == false { self?.toggleMute() }
+            if muted, self?.pushToTalk == false, self?.state.stage == .live, self?.state.muted == false { self?.toggleMute() }
         }
     }
 }

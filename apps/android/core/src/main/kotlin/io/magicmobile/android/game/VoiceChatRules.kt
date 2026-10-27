@@ -8,6 +8,8 @@ package io.magicmobile.android.game
 object VoiceChatRules {
     /** The server switch (mm_app_config). Off unless the server turns it on, unlike the older switches. */
     const val SWITCH = "voiceChat"
+    /** Push to talk (the audio settings): the microphone stays off except while the mic is held. */
+    const val PUSH_TO_TALK_KEY = "magicmobile.voice.pushToTalk"
     /** A level (0–1) at or past this is speech. */
     const val SPEAKING_LEVEL = 0.08
     /** A speaker stays lit this long after the last loud report, so a sentence doesn't flicker. */

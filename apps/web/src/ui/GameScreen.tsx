@@ -15,7 +15,7 @@ import type { RankChange } from "../core/rankLadder";
 import { rollPlates } from "../core/startingRoll";
 import { appConfig } from "../core/appConfig";
 import { TableLeaveRules } from "../core/tableLeave";
-import { VOICE_SWITCH, VoiceChat } from "../core/voiceChat";
+import { DEFAULT_PUSH_TO_TALK_BIND, PUSH_TO_TALK_BIND_KEY, PUSH_TO_TALK_KEY, VOICE_SWITCH, VoiceChat } from "../core/voiceChat";
 import { VoiceRoom, type VoiceTokenSource } from "../table/voiceRoom";
 import { loadSmartPass, saveSmartPass, type SmartPassSettings } from "../core/smartPass";
 import { GameEmotes, TableChatFilter } from "../core/tableChat";
@@ -30,6 +30,7 @@ import {
 import { isStackAbility } from "./arena/AbilityCard";
 import { AutoPayRun, autoPayReady, manaUndoActions, paymentPrompt } from "./arena/autoPayRun";
 import { Check, type MenuItem, MenuCard, Panel, PhaseStops } from "./arena/Menus";
+import { TalkKeyButton } from "./menus/kit";
 import { Inspector } from "./arena/Inspector";
 import { StatusBadge } from "./arena/StatusBadge";
 import { GameResult } from "./arena/GameResult";
@@ -360,6 +361,25 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
   const voiceState = useSyncExternalStore(subscribeVoice, () => voice?.state);
   const showMic = voiceState !== undefined && VoiceChat.shown({ switchOn: voiceOn, solo: table.solo, channel: voiceChannel !== undefined,
     account: voiceAccount !== undefined, unavailable: voiceState.stage === "unavailable" });
+  // Push to talk (Options → Audio, Game Settings): the mic stays off except while the mic or the talk key is held.
+  const [pushToTalk, setPushToTalk] = useState(() => storage.get(PUSH_TO_TALK_KEY) === "on");
+  const [talkKey, setTalkKey] = useState(() => storage.get(PUSH_TO_TALK_BIND_KEY) ?? DEFAULT_PUSH_TO_TALK_BIND);
+  useEffect(() => { void voice?.setPushToTalk(pushToTalk); }, [voice, pushToTalk]);
+  useEffect(() => {
+    if (!voice || !pushToTalk) return undefined;
+    const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+    const down = (event: KeyboardEvent) => {
+      if (event.code !== talkKey || typing(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+      event.preventDefault();
+      if (!event.repeat) void voice.talk(true);
+    };
+    const up = (event: KeyboardEvent) => { if (event.code === talkKey) void voice.talk(false); };
+    const release = () => { void voice.talk(false); };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", release);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); window.removeEventListener("blur", release); release(); };
+  }, [voice, pushToTalk, talkKey]);
   const pickingOnTable = appConfig.isOn("stackAutoTuck") && snapshot !== undefined && boardTargetableIds(snapshot).size > 0;
   const stackTucked = (id: string) => revealID !== id && arenaStackTucked(id, stackTuckedTop, stackPeekTop, pickingOnTable);
   const promptActions = (snapshot?.legalActions ?? []).filter((a) => a.cardInstanceId === undefined && a.sourceInstanceId === undefined);
@@ -944,14 +964,17 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
         </button>
         {mine && showMic && (
           <button type="button" className={`amic ${voiceState.stage} ${voiceState.muted ? "muted" : ""} ${talking ? "speaking" : ""}`}
-            style={{ left: at.x - d / 2 - 14, top: at.y + d * 0.3 }} data-id="board.voice.mic"
+            style={{ left: ARENA.menu.x, top: T(ARENA.menu.y) + 36 }} data-id="board.voice.mic"
             aria-label={voiceState.stage === "off" ? "Join voice chat" : voiceState.micBlocked ? "Microphone blocked, try again"
-              : voiceState.muted ? "Turn your microphone on" : "Turn your microphone off"}
+              : pushToTalk ? `Hold to talk (or hold ${VoiceChat.keyLabel(talkKey)})` : voiceState.muted ? "Turn your microphone on" : "Turn your microphone off"}
             aria-pressed={voiceState.stage === "live" && !voiceState.muted}
+            onPointerDown={(event) => { event.stopPropagation(); if (pushToTalk && voiceState.stage === "live" && !voiceState.micBlocked) { event.currentTarget.setPointerCapture(event.pointerId); void voice?.talk(true); } }}
+            onPointerUp={() => { if (pushToTalk) void voice?.talk(false); }}
+            onPointerCancel={() => { if (pushToTalk) void voice?.talk(false); }}
             onClick={(event) => {
               event.stopPropagation();
               if (voiceState.stage === "off") voice?.join().catch(() => showNotice("Voice chat didn't connect.", 3));
-              else void voice?.toggleMute();
+              else if (!pushToTalk || voiceState.micBlocked) void voice?.toggleMute();
             }}>
             {voiceState.stage === "live" && !voiceState.muted ? MIC : MIC_OFF}
           </button>
@@ -1487,6 +1510,8 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
               )}
               <label><Check on={soundsOn} label="Sounds" onToggle={() => { const on = !soundsOn; setSoundsOn(on); storage.set(SOUND_KEYS.effects, on ? "on" : "off"); }} />Sounds</label>
               <label><Check on={frames} label="Card Frames" onToggle={() => { const on = !frames; setFrames(on); storage.set("mm.web.cardFrames", on ? "on" : "off"); }} />Card Frames</label>
+              <label><Check on={pushToTalk} label="Push to Talk" onToggle={() => { const on = !pushToTalk; setPushToTalk(on); storage.set(PUSH_TO_TALK_KEY, on ? "on" : "off"); }} />Push to Talk</label>
+              {pushToTalk && <TalkKeyButton code={talkKey} id="settings.talkKey" onChange={(code) => { setTalkKey(code); storage.set(PUSH_TO_TALK_BIND_KEY, code); }} />}
               <div className="seg" role="group" aria-label="Game speed"><span>Game speed</span>
                 {GAME_SPEEDS.map((value) => (
                   <button key={value} type="button" aria-pressed={speed === value} onClick={() => { setSpeed(value); storage.set(GAME_SPEED_KEY, value); }}>

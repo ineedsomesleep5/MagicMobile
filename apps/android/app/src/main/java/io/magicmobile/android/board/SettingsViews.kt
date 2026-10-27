@@ -219,6 +219,9 @@ fun GameAudioSettings() {
             GameAudio.settingsChanged()
         }, color = TavernPalette.parchment)
         if (musicOn) TavernSlider(musicVolume.toFloat(), { musicVolume = it.toDouble(); GameAudio.settingsChanged() }, label = "Music volume")
+        var pushToTalk by AppPreferences.boolean(io.magicmobile.android.game.VoiceChatRules.PUSH_TO_TALK_KEY, false)
+        TavernToggle("Push to Talk", pushToTalk, { on -> pushToTalk = on }, Modifier.semantics { contentDescription = "settings.pushToTalk" },
+            color = TavernPalette.parchment)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             // The Arena look drops the helper line (AGENTS.md); the Hearth board's game menu keeps it.
             if (LocalArenaBoard.current) Spacer(Modifier.weight(1f))

@@ -504,6 +504,14 @@ contradicting one.
   (console.agora.io → Realtime Communications Builder → Projects → pencil → Security). A wrong certificate still mints a
   token; only a join proves it, so check with the web SDK joining a test channel, not the function's 200. The board finds
   a seat from `seatNames`, which solo games leave empty, so a solo preview of voice needs the seat faked.
+- 2026-10-27 (Claude, Android spread hand): dragging from the spread hand carried the wrong card, two places right of the
+  finger. Two causes. (1) Kotlin 2.0.2x's Compose compiler (strong skipping) remembers `::localFun` references passed to a
+  composable, so ArenaHandTouch kept the first composition's handlers: posture RESTING, the old cards and legal actions.
+  **Rule:** hand a composable fresh `@DontMemoize { … }` lambdas (or state-backed reads), never `::localFun`, when the
+  function reads parameters. (2) `Modifier.place` ends in `requiredSize`, and a surface wider than its parent is centred,
+  shifting every touch; keep touch surfaces on screen. The Oct 25 spread-drag fix had only been checked on iOS: check
+  Android's hand on the emulator (design preview `MAGICMOBILE_DESIGN_PREVIEW=normal-battlefield`, tap the hand's chevron,
+  `input swipe` for a flick, `input motionevent DOWN/MOVE/UP` with a pause for a hold).
 
 - 2026-10-26 (Claude, Android 42): the release build plus the emulator starved the 8 GB Mac into a watchdog kernel panic
   ("no checkins from watchdogd in 92 seconds", compressor "100% of segments limit (BAD) … LOW swap space"), and the reboot

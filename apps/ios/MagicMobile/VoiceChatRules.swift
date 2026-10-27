@@ -6,6 +6,8 @@ import Foundation
 enum VoiceChatRules {
     /// The server switch (mm_app_config). Off unless the server turns it on, unlike the older switches.
     static let switchName = "voiceChat"
+    /// Push to talk (the audio settings): the microphone stays off except while the mic is held.
+    static let pushToTalkKey = "magicmobile.voice.pushToTalk"
     /// A level (0–1) at or past this is speech.
     static let speakingLevel = 0.08
     /// A speaker stays lit this long after the last loud report, so a sentence doesn't flicker.

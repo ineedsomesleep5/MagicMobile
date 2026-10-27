@@ -22,9 +22,14 @@ Players at an online table (relay or Game Center, people only) can talk. It runs
 
 ## On the board (Arena)
 
-- A round glass **mic** at your medallion's lower left. Nobody is in voice until they tap it; the first tap asks for the
+- A round glass **mic** under the gear (top right; Caleb's pick 2026-10-27: by the medallion it ran off a phone's left edge,
+  and beside the chat button it covered the hand). Nobody is in voice until they tap it; the first tap asks for the
   microphone and joins with it on. Then it turns your microphone off and on (red when off). A refused microphone still
   joins to listen; the mic then opens the app's settings (iOS, Android) or asks again (web).
+- **Push to Talk** (the audio settings: Options → Audio and the game's settings; off by default): voice joins with the
+  microphone off and the mic is held to talk. The web also takes a key held to talk ("Talk Key", V by default, any key but
+  Space, Enter, Escape, Tab or a modifier; saved as `mm.web.pushToTalkKey`). Keys: `magicmobile.voice.pushToTalk` (iOS,
+  Android), `mm.web.pushToTalk` (web).
 - A green **halo** pulses round whoever is talking (level ≥ 0.08, held 0.6 s so a sentence doesn't flicker).
 - A small **mic badge** on an opponent who is in voice, red when they muted themselves or you muted them.
 - **Mute Voice / Unmute Voice** on an opponent's player card silences them for you alone.

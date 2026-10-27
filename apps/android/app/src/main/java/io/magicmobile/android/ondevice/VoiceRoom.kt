@@ -45,6 +45,8 @@ class VoiceRoom(
     private val heard = HashMap<String, Double>()
     private var fade: Job? = null
     private var closed = false
+    /** Push to talk: the microphone stays off except while talk(true) holds it open. */
+    var pushToTalk = false; private set
     private val main = Handler(Looper.getMainLooper())
 
     fun seatNamed(name: String?): String? = name?.let { n -> seatNames().entries.firstOrNull { it.value == n }?.key }
@@ -76,9 +78,10 @@ class VoiceRoom(
                     publishMicrophoneTrack = micAllowed
                     autoSubscribeAudio = true
                 }
+                if (micAllowed && pushToTalk) engine.muteLocalAudioStream(true)
                 val code = engine.joinChannelWithUserAccount(ticket, channel, account, options)
                 if (code != 0) throw SupabaseLite.Failure("voice_join_$code")
-                state = state.copy(stage = VoiceChatState.Stage.LIVE, muted = !micAllowed, micBlocked = !micAllowed, inVoice = state.inVoice + account)
+                state = state.copy(stage = VoiceChatState.Stage.LIVE, muted = !micAllowed || pushToTalk, micBlocked = !micAllowed, inVoice = state.inVoice + account)
                 startFading()
             } catch (error: Exception) {
                 teardown()
@@ -96,6 +99,22 @@ class VoiceRoom(
         engine.muteLocalAudioStream(muted)
         heard.remove(account)
         state = state.copy(muted = muted)
+        refreshSpeaking()
+    }
+
+    /** Push to talk on or off; turning it on closes the microphone until it is held. */
+    fun setPushToTalk(on: Boolean) {
+        pushToTalk = on
+        if (on && !state.muted) talk(false, force = true)
+    }
+
+    /** Push to talk: the microphone open while the mic is held, closed on release. */
+    fun talk(down: Boolean, force: Boolean = false) {
+        val engine = engine ?: return
+        if ((!pushToTalk && !force) || state.stage != VoiceChatState.Stage.LIVE || state.micBlocked || state.muted != down) return
+        engine.muteLocalAudioStream(!down)
+        heard.remove(account)
+        state = state.copy(muted = !down)
         refreshSpeaking()
     }
 
@@ -207,7 +226,7 @@ class VoiceRoom(
                 val allowed = !state.micBlocked
                 leave()
                 join(allowed)
-                if (muted) scope.launch { delay(1500); if (state.stage == VoiceChatState.Stage.LIVE && !state.muted) toggleMute() }
+                if (muted && !pushToTalk) scope.launch { delay(1500); if (state.stage == VoiceChatState.Stage.LIVE && !state.muted) toggleMute() }
             }
         }
     }

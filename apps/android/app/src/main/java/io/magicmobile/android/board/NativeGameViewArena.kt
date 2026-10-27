@@ -947,6 +947,8 @@ private fun ArenaOpponentSeat(host: ArenaBoardHost, canvas: ArenaCanvas, lean: A
             .background(Brush.verticalGradient(listOf(ArenaGlass.top, ArenaGlass.bottom)), CircleShape).border(1.dp, ArenaGlass.hairline, CircleShape),
             contentAlignment = Alignment.Center) { SfImage("gearshape.fill", ArenaGlass.text, 14.dp) }
     }
+    // Voice chat's mic under the gear, clear of the hand and the screen's edge (the iPhone's and the web's spot).
+    LocalVoiceRoom.current?.let { ArenaVoiceMic(it, Modifier.centerAt(gear.x, gear.y + 40f)) }
 }
 
 /** Your seat: piles, exile, your medallion with its glance, quick chat and floating mana. */
@@ -995,8 +997,6 @@ private fun ArenaViewerSeat(host: ArenaBoardHost, canvas: ArenaCanvas, lean: Are
         LocalTurnClock.current?.let { TurnClockRing(it, null, (diameter * 1.08f).dp) }
         LocalVoiceRoom.current?.let { room ->
             ArenaVoiceHalo(room, room.account, diameter.dp, badge = false)
-            // Voice chat's mic, by the medallion's lower left like the web's and the iPhone's.
-            ArenaVoiceMic(room, Modifier.align(Alignment.BottomStart).offset((-diameter * 0.42f).dp, (diameter * 0.12f).dp).wrapContentSize(unbounded = true))
         }
         // Poison and commander damage at a glance; the player's card lists every status.
         TavernStatusGlance(PlayerStatusSummary(human, snapshot), Modifier.align(Alignment.BottomEnd).offset((diameter * 0.3f).dp, (diameter * 0.05f).dp).wrapContentSize(unbounded = true))
