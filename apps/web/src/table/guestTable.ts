@@ -3,6 +3,7 @@
  * cross-play table by its code, ready up in the match room, take part in the shared D20 roll, then
  * play through the host's engine. The browser never hosts and runs no engine in this milestone.
  */
+import { VoiceChat } from "../core/voiceChat";
 import { EngineError, EngineJson, get, int, type J, keysEqual, obj, sameUuid, str } from "../core/json";
 import type { GameSnapshot } from "../core/models";
 import { loadSmartPass } from "../core/smartPass";
@@ -58,6 +59,7 @@ export class GuestTable implements GameTable {
   private remote?: RemoteEngineTransport;
   private submission?: J;
   private epoch?: string;
+  get voiceChannel() { return VoiceChat.channel(this.epoch); }
   private localReady = false;
   private reportedReady = new Map<string, string[]>();
   private playerNames = new Map<string, string>();

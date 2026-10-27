@@ -13,6 +13,7 @@
  * polls the host's session and the guests already made at the newest announced revision, and polls the engine itself
  * only for a seat whose read is older, whose clock ran out, or that has not been read for 5 s.
  */
+import { VoiceChat } from "../core/voiceChat";
 import { EngineClient, type EnginePrompt, type EngineTransport, MatchPoll } from "../core/engineClient";
 import { arr, EngineError, EngineJson, get, int, isUuid, type J, type JObject, keysEqual, newUuid, obj, sameUuid, str } from "../core/json";
 import type { GameSnapshot } from "../core/models";
@@ -134,6 +135,7 @@ export class HostTable implements GameTable {
   private aiSeats: AISeat[] = [];
   private seed?: bigint;
   private epoch?: string;
+  get voiceChannel() { return VoiceChat.channel(this.epoch); }
   private localReady = false;
   private playerNames = new Map<string, string>();
   private progress?: OnDeviceStartingRollProgress;

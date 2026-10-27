@@ -929,3 +929,24 @@ img.bprinted.facedown { filter: brightness(.62); }
   background: radial-gradient(circle, #29201a, #08080a 70%); box-shadow: 0 0 14px rgba(255,120,31,.75);
   opacity: 0; transform: scale(3.2); transition: transform .28s cubic-bezier(.3,1.6,.5,1), opacity .2s; }
 .aversus.p2 .vs, .aversus.p3 .vs { opacity: 1; transform: scale(1); }
+/* Voice chat (docs/VOICE_CHAT.md): the mic by your medallion (off, joining, live, muted), a green halo round whoever is
+   talking, and a small mic on an opponent in voice (red when they or you muted them) */
+.amic { position: absolute; z-index: 466; width: 30px; height: 30px; margin: -15px 0 0 -15px; display: grid; place-items: center; padding: 0;
+  border-radius: 50%; background: linear-gradient(#1a1c24, #0a0b0f); color: #fad584;
+  box-shadow: inset 0 0 0 1px rgba(232,190,110,.65), 0 2px 4px rgba(0,0,0,.5); }
+.amic svg { width: 15px; height: 15px; fill: currentColor; }
+.amic.off { color: #b9a27a; }
+.amic.joining { animation: amicwait .8s ease-in-out infinite alternate; }
+.amic.live.muted { color: #ff8a7a; box-shadow: inset 0 0 0 1px rgba(200,80,70,.85), 0 2px 4px rgba(0,0,0,.5); }
+.amic.speaking { color: #b8ffc6; box-shadow: inset 0 0 0 1px #9dffb0, 0 0 10px 2px rgba(120,255,150,.6); }
+@keyframes amicwait { from { opacity: .45; } to { opacity: 1; } }
+.amed .aspeak { position: absolute; inset: -8%; z-index: -1; border-radius: 50%; pointer-events: none;
+  box-shadow: 0 0 0 2px rgba(150,255,170,.9), 0 0 calc(var(--d) * .25) calc(var(--d) * .06) rgba(110,255,150,.55);
+  animation: aspeak .45s ease-in-out infinite alternate; }
+@keyframes aspeak { from { opacity: .6; } to { opacity: 1; } }
+.amed .avoice { position: absolute; right: -6%; top: -6%; z-index: 4; width: calc(var(--d) * .34); height: calc(var(--d) * .34); display: grid;
+  place-items: center; border-radius: 50%; background: #0d0d12; color: #fad584; box-shadow: inset 0 0 0 1px rgba(232,190,110,.7); }
+.amed .avoice svg { width: 62%; height: 62%; fill: currentColor; }
+.amed .avoice.muted { color: #ff8a7a; }
+.aplayercard .avoicemute { display: block; margin: 0 auto 10px; }
+@media (prefers-reduced-motion: reduce) { .amic.joining, .amed .aspeak { animation: none; } }

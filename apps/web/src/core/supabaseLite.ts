@@ -100,9 +100,14 @@ export class SupabaseLite {
   get hasSession(): boolean { return this.session !== undefined; }
 
   /** Calls rest/v1/rpc/<fn> as the player. Returns the parsed reply (null for an empty or non-JSON one). */
-  async rpc(fn: string, params: Record<string, J> = {}): Promise<J> {
+  rpc(fn: string, params: Record<string, J> = {}): Promise<J> { return this.post(`rest/v1/rpc/${fn}`, params); }
+
+  /** Calls the edge function functions/v1/<fn> as the player (agora-token). */
+  invoke(fn: string, params: Record<string, J> = {}): Promise<J> { return this.post(`functions/v1/${fn}`, params); }
+
+  private async post(path: string, params: Record<string, J>): Promise<J> {
     const token = await this.accessToken();
-    const { status, text } = await this.request(`rest/v1/rpc/${fn}`, {
+    const { status, text } = await this.request(path, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: SupabaseLite.publishableKey, Authorization: `Bearer ${token}` },
       body: JSON.stringify(params),

@@ -4,7 +4,7 @@
  * the corner plaques or on the table, and anything else in a full-table glass browser. Solo games and relay tables
  * share it; both answer through the same GuestSession.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { type BoardFXLevel, resolvedLevel } from "../core/boardEvents";
 import { EngineDisplayText } from "../core/displayText";
 import {
@@ -15,6 +15,8 @@ import type { RankChange } from "../core/rankLadder";
 import { rollPlates } from "../core/startingRoll";
 import { appConfig } from "../core/appConfig";
 import { TableLeaveRules } from "../core/tableLeave";
+import { VOICE_SWITCH, VoiceChat } from "../core/voiceChat";
+import { VoiceRoom, type VoiceTokenSource } from "../table/voiceRoom";
 import { loadSmartPass, saveSmartPass, type SmartPassSettings } from "../core/smartPass";
 import { GameEmotes, TableChatFilter } from "../core/tableChat";
 import type { GameTable } from "../table/gameTable";
@@ -61,6 +63,10 @@ const PHASE_TITLES = ["Beginning", "Main phase 1", "Declare attackers", "Declare
  * The phase strip (ArenaPhaseStrip): eight icons on a brass track, the part of the turn already played lit in the turn's
  * colour, the current step lit; moving on sends a spark along the track, then the icon ignites. A click opens Phase Stops.
  */
+/** Voice chat's mic, on and off (the mic button and the small badge on an opponent in voice). */
+const MIC = <svg viewBox="0 0 20 20"><rect x="7" y="2" width="6" height="10" rx="3" /><path d="M4.5 9a5.5 5.5 0 0 0 11 0" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M9.2 14.4h1.6V18H9.2z" /></svg>;
+const MIC_OFF = <svg viewBox="0 0 20 20"><rect x="7" y="2" width="6" height="10" rx="3" /><path d="M4.5 9a5.5 5.5 0 0 0 11 0" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M9.2 14.4h1.6V18H9.2z" /><path d="M3 2.5l14 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>;
+
 /** The player card's zone icons (ArenaPlayerCard.zones). */
 const ZONE_GLYPHS = {
   command: <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 15h16l1-9-5 4-4-6-4 6-5-4zM2 16.5h16V18H2z" /></svg>,
@@ -171,8 +177,10 @@ function phaseIndex(step: string | undefined): number | undefined {
  * chosen decks for the versus intro, when the table itself doesn't know its seats' commanders (a solo game); its
  * `you.tier` frames your seat in every intro, a table's own seats included.
  */
-export function GameScreen({ table, rankChange, rankNote, versus }: {
+export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: {
   table: GameTable; rankChange?: RankChange; rankNote?: string; versus?: { you: VersusSeat; opponents: VersusSeat[] };
+  /** Voice chat tokens (PlayerAccount.voiceToken); without it the board has no mic. */
+  voiceToken?: VoiceTokenSource;
 }) {
   useTable(table);
   const session = table.session;
@@ -336,6 +344,22 @@ export function GameScreen({ table, rankChange, rankNote, versus }: {
   }, [tableNotice, table, showNotice]);
   const activeIsMe = snapshot?.activePlayerId !== undefined && snapshot.activePlayerId === viewer;
   const stack = snapshot?.xmage?.stack ?? [];
+  // Voice chat (VoiceRoom; docs/VOICE_CHAT.md): a table with people gets a mic by your medallion once the game has its
+  // channel and the server's voiceChat switch is on. Nobody is in voice until they tap it.
+  const voiceOn = useSyncExternalStore(appConfig.subscribe, () => appConfig.isOn(VOICE_SWITCH, false));
+  const voiceChannel = table.voiceChannel;
+  const voiceAccount = VoiceChat.account(table.state.localSeatID);
+  const [voice, setVoice] = useState<VoiceRoom>();
+  useEffect(() => {
+    if (table.solo || !voiceOn || !voiceToken || !voiceChannel || !voiceAccount) return undefined;
+    const room = new VoiceRoom(voiceChannel, voiceAccount, voiceToken);
+    setVoice(room);
+    return () => { room.close(); setVoice(undefined); };
+  }, [table.solo, voiceOn, voiceToken, voiceChannel, voiceAccount]);
+  const subscribeVoice = useCallback((listener: () => void) => voice?.subscribe(listener) ?? (() => undefined), [voice]);
+  const voiceState = useSyncExternalStore(subscribeVoice, () => voice?.state);
+  const showMic = voiceState !== undefined && VoiceChat.shown({ switchOn: voiceOn, solo: table.solo, channel: voiceChannel !== undefined,
+    account: voiceAccount !== undefined, unavailable: voiceState.stage === "unavailable" });
   const pickingOnTable = appConfig.isOn("stackAutoTuck") && snapshot !== undefined && boardTargetableIds(snapshot).size > 0;
   const stackTucked = (id: string) => revealID !== id && arenaStackTucked(id, stackTuckedTop, stackPeekTop, pickingOnTable);
   const promptActions = (snapshot?.legalActions ?? []).filter((a) => a.cardInstanceId === undefined && a.sourceInstanceId === undefined);
@@ -850,6 +874,7 @@ export function GameScreen({ table, rankChange, rankNote, versus }: {
       lit: fullControl, action: () => session.toggleFullControl() }] : []),
     // Everything you can do right now, in one list (the prompt details iOS opens from More actions).
     ...(session && (snapshot?.legalActions ?? []).length > 0 ? [{ id: "more", title: "More actions", glyph: "more", action: () => setSheet("actions") }] : []),
+    ...(showMic && voiceState?.stage === "live" ? [{ id: "leave-voice", title: "Leave Voice Chat", glyph: "mic", action: () => { void voice?.leave(); } }] : []),
     { id: "settings", title: "Game Settings", glyph: "settings", action: () => setSheet("settings") },
   ];
   // Your commander on an opponent's battlefield is named, with why (ArenaCommanderSteal): 7 s in the caption.
@@ -888,6 +913,9 @@ export function GameScreen({ table, rankChange, rankNote, versus }: {
     const clock = rope && rope.seat === seat ? rope : undefined;
     const bubble = seat ? table.state.bubbles[seat] : undefined;
     const circumference = Math.PI * 2 * 46;
+    const talking = showMic && seat !== undefined && voiceState.speaking.includes(seat);
+    const inVoice = showMic && !mine && seat !== undefined && voiceState.stage === "live" && voiceState.inVoice.includes(seat);
+    const quiet = seat !== undefined && (voiceState?.selfMuted.includes(seat) || voiceState?.silenced.includes(seat));
     return (
       <div key={player.playerId}>
         <button type="button" className={`amed ${targetable ? (combat === "attackers" ? "targetable attack" : "targetable") : glowing ? "ready" : ""} ${isOut(player) ? "out" : ""} ${snapshot?.activePlayerId === player.playerId ? "active" : ""}`}
@@ -903,7 +931,9 @@ export function GameScreen({ table, rankChange, rankNote, versus }: {
             else setPlayerCard(playerCard === player.playerId ? undefined : player.playerId);
           }}>
           {glowing && !targetable && <i className="aready" aria-hidden="true"><b>♛</b></i>}
+          {talking && <i className="aspeak" aria-hidden="true" />}
           <div className="av"><Portrait player={player} viewer={mine} /></div>
+          {inVoice && <i className={`avoice ${quiet ? "muted" : ""}`} aria-hidden="true">{quiet ? MIC_OFF : MIC}</i>}
           <span className={`hp ${isOut(player) ? "out" : ""}`}>{isOut(player) ? "Out" : Math.max(0, player.life)}</span>
           {clock && (
             <svg className="rope" viewBox="0 0 100 100" aria-hidden="true">
@@ -912,6 +942,20 @@ export function GameScreen({ table, rankChange, rankNote, versus }: {
             </svg>
           )}
         </button>
+        {mine && showMic && (
+          <button type="button" className={`amic ${voiceState.stage} ${voiceState.muted ? "muted" : ""} ${talking ? "speaking" : ""}`}
+            style={{ left: at.x - d / 2 - 14, top: at.y + d * 0.3 }} data-id="board.voice.mic"
+            aria-label={voiceState.stage === "off" ? "Join voice chat" : voiceState.micBlocked ? "Microphone blocked, try again"
+              : voiceState.muted ? "Turn your microphone on" : "Turn your microphone off"}
+            aria-pressed={voiceState.stage === "live" && !voiceState.muted}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (voiceState.stage === "off") voice?.join().catch(() => showNotice("Voice chat didn't connect.", 3));
+              else void voice?.toggleMute();
+            }}>
+            {voiceState.stage === "live" && !voiceState.muted ? MIC : MIC_OFF}
+          </button>
+        )}
         {/* Several opponents need their names; iOS's one opponent seat shows none (its card names them). */}
         {!mine && opponents.length > 1 && (
           <div className="aname under" style={{ left: at.x, top: at.y + d / 2 + 4 }}>{player.displayName}{isOut(player) ? " (left)" : ""}</div>
@@ -1374,6 +1418,15 @@ export function GameScreen({ table, rankChange, rankNote, versus }: {
                   <div key={badge.id} className={badge.nearLethal ? "lethal" : ""}><StatusBadge badge={badge} size={26} /><span>{badge.label}</span></div>
                 ))}</div>
               )}
+              {(() => {
+                const seat = seatOf(player);
+                if (mine || !showMic || voiceState.stage !== "live" || seat === undefined || !voiceState.inVoice.includes(seat)) return null;
+                const silenced = voiceState.silenced.includes(seat);
+                return (
+                  <button type="button" className="aplaque secondary inline avoicemute" data-id="board.voice.silence"
+                    onClick={() => voice?.silence(seat, !silenced)}>{silenced ? "Unmute Voice" : "Mute Voice"}</button>
+                );
+              })()}
               <div className="zonegrid">{icons.map((icon) => {
                 const on = lit.has(icon.key);
                 return (

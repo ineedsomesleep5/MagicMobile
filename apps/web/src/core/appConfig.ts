@@ -30,8 +30,8 @@ export const AppConfig = {
     if (isObject(switches)) for (const [name, value] of Object.entries(switches)) if (typeof value === "boolean") config.switches[name] = value;
     return config;
   },
-  /** A switch the server hasn't named is on. */
-  isOn: (config: AppConfig, name: string) => config.switches[name] ?? true,
+  /** A switch the server hasn't named is on, unless the feature says otherwise (voiceChat). */
+  isOn: (config: AppConfig, name: string, fallback = true) => config.switches[name] ?? fallback,
 };
 
 let current: AppConfig = (() => {
@@ -50,7 +50,7 @@ export const appConfig = {
     try { globalThis.localStorage?.setItem(KEY, JSON.stringify(json)); } catch { /* the copy lasts this visit */ }
     listeners.forEach((l) => l());
   },
-  isOn: (name: string) => AppConfig.isOn(current, name),
+  isOn: (name: string, fallback = true) => AppConfig.isOn(current, name, fallback),
   /** The notice to show on the main menu, unless the player closed it. */
   shownNotice(): AppNotice | undefined {
     const notice = current.notice;

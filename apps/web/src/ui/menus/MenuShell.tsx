@@ -29,6 +29,10 @@ import { GameScreen } from "../GameScreen";
 import { storage } from "../storage";
 import { AccountSignInCard, PrivacyCard } from "./AccountCards";
 import { account, challenges, completeGoogleSignIn, connectRecord, rankedQueue, useAccount, useWatched } from "./accountSession";
+import type { VoiceTokenSource } from "../../table/voiceRoom";
+
+/** Voice chat tokens for the board (one function, so the board keeps its voice room across renders). */
+const voiceToken: VoiceTokenSource = (channel, seat) => account.voiceToken(channel, seat);
 import { ChallengeBanner } from "./ChallengeBanner";
 import { GuestRoom } from "./GuestRoom";
 import { Conversation } from "./Conversation";
@@ -671,7 +675,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   if (game) {
     const versus = { you: { id: "you", name: player.state.username ?? (name.trim() || "You"), commander: game.deck.commander || undefined, tier: rank.position.tier },
       opponents: game.opponents.map((deck, index) => ({ id: `ai-${index}`, name: deck.name, commander: deck.commander || undefined })) };
-    return <GameScreen key={game.key} table={game.table} versus={versus} rankChange={rankChange?.key === game.key ? rankChange.change : undefined}
+    return <GameScreen key={game.key} table={game.table} versus={versus} voiceToken={voiceToken} rankChange={rankChange?.key === game.key ? rankChange.change : undefined}
       rankNote={rankChange?.key === game.key ? rankChange.note : undefined} />;
   }
   if (online) return <OnlineScreen key={online.key} game={online} name={playerName()} tier={rank.position.tier} resolver={data.resolver} leave={() => leaveOnline(online)} cancelWait={() => challenges.cancelOutgoing()} />;
@@ -770,7 +774,7 @@ function OnlineScreen({ game, name, tier, resolver, leave, cancelWait }: {
   const table = game.table;
   useSyncExternalStore((listener) => table.subscribe(listener), () => table.version);
   const stage = table.state.stage;
-  if (stage === "playing" || stage === "starting" || (stage === "failed" && table.session)) return <GameScreen table={table} versus={{ you: { id: "you", name, tier }, opponents: [] }} />;
+  if (stage === "playing" || stage === "starting" || (stage === "failed" && table.session)) return <GameScreen table={table} versus={{ you: { id: "you", name, tier }, opponents: [] }} voiceToken={voiceToken} />;
   return <GuestRoom table={table} name={name} deck={game.deck.deckList} resolver={resolver} leave={leave} hosting={game.hosting}
     waitingFor={game.waitingFor} cancelWait={cancelWait} />;
 }
