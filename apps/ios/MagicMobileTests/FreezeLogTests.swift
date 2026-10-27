@@ -65,10 +65,12 @@ final class FreezeLogTests: XCTestCase {
 
     func testOnlyInGameIncidentsAreAskedAboutAndTheLastFiveAreKept() {
         let log = FreezeLog(directory: temporaryDirectory())
-        log.record(kind: "hang")
+        log.record(kind: "hang", duration: 9)
         XCTAssertNil(log.unsent, "a hang in the menus is kept but never asked about")
         log.setContext("Game: quick vs AI")
-        for _ in 1...6 { log.record(kind: "hang") }
+        log.record(kind: "hang", duration: 2.5)
+        XCTAssertNil(log.unsent, "a short hitch is kept but never asked about")
+        for _ in 1...6 { log.record(kind: "hang", duration: 9) }
         XCTAssertEqual(log.incidents.count, FreezeLog.incidentLimit)
         log.markSent(log.incidents.last!.id)
         XCTAssertEqual(log.unsent?.id, log.incidents[FreezeLog.incidentLimit - 2].id)
