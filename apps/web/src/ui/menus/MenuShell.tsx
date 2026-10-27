@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AIDeckPool, type AIDeck, playerDeckID } from "../../core/aiDeckPool";
+import { appConfig } from "../../core/appConfig";
 import { BracketRules, type BracketRulesFile, CommanderBracket, DeckBracketPreference } from "../../core/brackets";
 import { loadCatalogue } from "../../core/deckStudio/catalogue";
 import { draftFromDeck, DraftPresentation } from "../../core/deckStudio/draft";
@@ -140,6 +141,9 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
     }
   }, [deckSync, library, libraryChanged]);
   const accountReady = player.state.phase === "ready";
+  // The server's settings for the web (appConfig): the menu's notice, name fixes, feature switches.
+  useEffect(() => { if (accountReady) void player.refreshAppConfig(); }, [accountReady, player]);
+  const appNotice = useSyncExternalStore(appConfig.subscribe, () => appConfig.shownNotice());
   useEffect(() => {
     if (!accountReady) return;
     void syncDecks();
@@ -716,6 +720,13 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
         <ChallengeBanner challenge={challenges.incoming[0]} accept={() => { void acceptChallenge(challenges.incoming[0]); }} decline={() => { void challenges.decline(challenges.incoming[0]); }} />
       )}
       {notice && <button type="button" className="mtoast glass" role="status" onClick={() => setNotice(undefined)}>{notice}</button>}
+      {/* The server's notice on the main menu (appConfig): it stays until closed, then never comes back. */}
+      {!notice && appNotice && !game && !online && (
+        <div className="mtoast glass mappnotice" role="status" data-id="menu.notice">
+          <span>{appNotice.text}</span>
+          <button type="button" aria-label="Dismiss notification" onClick={() => appConfig.dismiss(appNotice)}>✕</button>
+        </div>
+      )}
       <MenuPanel open={panel === "friends"} onClose={() => setPanel(undefined)} placement="leading" label="Friends">
         <FriendsPanel account={player} onClose={() => setPanel(undefined)} join={joinTable}
           challenge={(friend, mode) => { window.setTimeout(() => { void challengeFriend(friend, mode); }, 300); }} myRankStep={RankPosition.step(rank.position)}

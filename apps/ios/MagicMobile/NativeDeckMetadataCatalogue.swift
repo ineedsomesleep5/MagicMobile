@@ -266,7 +266,9 @@ struct NativeDeckMetadataCatalogue {
             if NativeDeckCanonicalNames.isFront(candidate, of: name), aliasedFronts.contains(card.name) { continue }
             return card
         }
-        return nil
+        // A fix the server sent for a name a deck site spells its own way (AppConfig).
+        let fixes = AppConfigStore.shared.current.nameFixes
+        return NativeDeckCanonicalNames.candidates(name).lazy.compactMap { fixes[$0].flatMap { self.index[$0] } }.first
     }
 
     /// Front faces with an attested back (double-faced cards).

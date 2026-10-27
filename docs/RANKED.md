@@ -125,6 +125,18 @@ The profile picture is the favorite commander's illustration alone (`CommanderAr
 crop in the table's brass ring), chosen from commanders played or any of the player's decks (saved and
 included); "Most played" is the default. Friends' cards show the same picture.
 
+Since 2026-10-27 the profile also reads `ProfileInsights` from the player's own games (parity/profile-cases.json
+"insights"): the last ten results, records by mode and by the tier a ranked game was played at, the five commanders faced
+most, the fastest win, average turns in wins and losses, the average game length (games send `p_duration_seconds` from
+then on) and the best deck (three games or more). Game cards show the turn and length, and "Crushing loss" for a two-pip loss.
+
+## Leaderboard
+
+`mm_ranked_leaderboard` (everyone or friends) gives each row the player's commander, rank, record, online dot and current
+win streak, the season's end (`seasonEnds`) and last season's top three (`champions`, from `ranked_season_history` and
+standings not yet rolled over). The screens show commander portraits with the rank's emblem, tier dividers, a flame for
+three straight wins or more, "ends in N days" on the live strip, and a Champions tab.
+
 ## Friend challenges
 
 From the friends list an online friend can be challenged to a **Quick Match** (friendly, profile history

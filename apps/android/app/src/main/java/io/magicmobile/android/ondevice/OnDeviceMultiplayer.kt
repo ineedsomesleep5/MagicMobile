@@ -1332,8 +1332,10 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
         awaySince.keys.filter { it !in paused }.forEach { awaySince.remove(it); continueVoters.remove(it) }
         val eligible = lobby.peerIDs.filter { it !in gonePeers && it !in paused && it !in suspendedPeers }
             .mapNotNull { runCatching { lobby.seatID(it) }.getOrNull() }.toSet()
-        val candidate = paused.filter { now - (awaySince[it] ?: now) >= TableLeaveRules.VOTE_AFTER_SECONDS }
-            .minWithOrNull(compareBy<String>({ awaySince[it] ?: now }, { it }))
+        // The server can turn the vote off (AppConfig "leaveVote"); a player who leaves is still conceded.
+        val candidate = if (!io.magicmobile.android.game.AppConfigState.current.isOn("leaveVote")) null
+            else paused.filter { now - (awaySince[it] ?: now) >= TableLeaveRules.VOTE_AFTER_SECONDS }
+                .minWithOrNull(compareBy<String>({ awaySince[it] ?: now }, { it }))
         var vote: TableContinueVote? = null
         val seat = candidate?.let { runCatching { lobby.seatID(it) }.getOrNull() }
         if (candidate != null && seat != null && eligible.isNotEmpty()) {

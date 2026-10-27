@@ -120,6 +120,9 @@ class NativeDeckMetadataCatalogue(private val catalogue: Catalogue) {
     fun card(name: String): CardInfo? = NativeDeckCanonicalNames.candidates(name).firstNotNullOfOrNull { candidate ->
         (catalogue.find(candidate) ?: aliases[candidate]?.let(catalogue::find) ?: reverseFaces[candidate]?.let(catalogue::find))
             ?.takeUnless { NativeDeckCanonicalNames.isFront(candidate, name) && it.name in aliasedFronts }
+    } ?: NativeDeckCanonicalNames.candidates(name).firstNotNullOfOrNull { candidate ->
+        // A fix the server sent for a name a deck site spells its own way (AppConfig).
+        io.magicmobile.android.game.AppConfigState.current.nameFixes[candidate]?.let(catalogue::find)
     }
     /** Front faces with an attested back (double-faced cards). */
     private val aliasedFronts: Set<String> by lazy { aliases.values.toSet() }
@@ -263,6 +266,9 @@ class OnDeviceDeckResolver(private val index: PrintingIndex) {
         // A double-faced card's front never stands in for a different back (NativeDeckCanonicalNames.isFront).
         (if (candidate in index.names) candidate else nameAliases[candidate] ?: reverseFaces[candidate])
             ?.takeUnless { NativeDeckCanonicalNames.isFront(candidate, name) && it in aliasedFronts }
+    } ?: NativeDeckCanonicalNames.candidates(name).firstNotNullOfOrNull { candidate ->
+        // A fix the server sent for a name a deck site spells its own way (AppConfig), when that card is here.
+        io.magicmobile.android.game.AppConfigState.current.nameFixes[candidate]?.takeIf { it in index.names }
     }
     private val aliasedFronts: Set<String> = nameAliases.values.toSet()
     fun containsCard(name: String): Boolean = canonicalCardName(name) != null

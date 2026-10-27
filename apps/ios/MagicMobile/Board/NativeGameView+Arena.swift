@@ -600,7 +600,8 @@ extension NativeGameView {
             let revealing = arenaRevealID == top.id
             let count = snapshot.xmage?.stack.count ?? objects.count
             let tucked = !revealing && ArenaStackTuck.isTucked(top: top.id, tuckedTop: arenaStackTuckedTop, peekTop: arenaStackPeekTop,
-                                                                picking: !GameBoardInteractionState.boardTargetableIds(for: snapshot).isEmpty)
+                                                                picking: AppConfigStore.shared.current.isOn("stackAutoTuck")
+                                                                    && !GameBoardInteractionState.boardTargetableIds(for: snapshot).isEmpty)
             if tucked {
                 // The slim tab at the table's edge brings the card back.
                 ArenaStackTab(tucked: true, count: count) {

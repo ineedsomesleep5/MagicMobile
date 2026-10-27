@@ -80,3 +80,22 @@ struct GameResumeNoticeBanner: View {
         .accessibilityIdentifier("ondevice.resume.notice")
     }
 }
+
+/// The server's notice on the main menu (AppConfig, mm_app_config): it stays until the player closes it, then never comes back.
+struct AppNoticeBanner: View {
+    @State private var notice = AppConfigStore.shared.shownNotice
+
+    var body: some View {
+        Group {
+            if let notice {
+                GameResumeNoticeBanner(message: notice.text, symbol: "megaphone.fill") { AppConfigStore.shared.dismissNotice(notice) }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .accessibilityIdentifier("menu.notice")
+            }
+        }
+        .animation(.easeOut(duration: 0.24), value: notice)
+        .onReceive(NotificationCenter.default.publisher(for: AppConfigStore.didChange).receive(on: RunLoop.main)) { _ in
+            notice = AppConfigStore.shared.shownNotice
+        }
+    }
+}

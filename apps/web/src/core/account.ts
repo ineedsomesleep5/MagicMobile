@@ -11,6 +11,7 @@
  * PlayerAccount is framework-free (like GameTable): `state` is replaced on every change, `version` counts changes and
  * `subscribe(listener)` hears them, so React reads it with useSyncExternalStore.
  */
+import { appConfig } from "./appConfig";
 import { arr, bool, get, int, isObject, isUuid, type J, type JObject, str } from "./json";
 import { parseMyGames } from "./remoteGames";
 import { Achievement, type KeyValueStore, type MatchRecord, type PlayerRecordStore, type PlayMode } from "./playerRecord";
@@ -1171,6 +1172,12 @@ export class PlayerAccount {
   }
 
   /** Sends one finished game. Never throws: the caller keeps what could not be sent and tries again later. */
+  /** The server's settings for the web (mm_app_config): the menu's notice, name fixes and switches. Best effort. */
+  async refreshAppConfig(): Promise<void> {
+    if (this.state.phase !== "ready") return;
+    try { appConfig.store(await this.api.rpc("mm_app_config", { p_platform: "web", p_build: 0 })); } catch { /* the last copy stays */ }
+  }
+
   async recordGame(match: MatchRecord): Promise<GameUploadResult> {
     if (!this.hasName) return "unavailable";
     const params: Record<string, J> = {

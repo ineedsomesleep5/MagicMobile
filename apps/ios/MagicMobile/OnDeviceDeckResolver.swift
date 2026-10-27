@@ -44,7 +44,9 @@ struct OnDeviceDeckResolver {
             if NativeDeckCanonicalNames.isFront(candidate, of: name), aliasedFronts.contains(found) { continue }
             return found
         }
-        return nil
+        // A fix the server sent for a name a deck site spells its own way (AppConfig), when that card is here.
+        let fixes = AppConfigStore.shared.current.nameFixes
+        return NativeDeckCanonicalNames.candidates(name).lazy.compactMap { fixes[$0] }.first { self.cards[$0] != nil }
     }
 
     func containsCard(name: String) -> Bool { canonicalCardName(name) != nil }

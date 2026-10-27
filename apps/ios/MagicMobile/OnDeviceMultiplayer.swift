@@ -1559,8 +1559,10 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         for peer in awaySince.keys where !paused.contains(peer) { awaySince[peer] = nil; continueVoters[peer] = nil }
         let voters = lobby.peerIDs.filter { !gonePeers.contains($0) && !paused.contains($0) && !suspendedPeers.contains($0) }
         let eligible = Set(voters.compactMap { try? lobby.seatID(for: $0) })
-        let candidate = paused.filter { now - (awaySince[$0] ?? now) >= TableLeaveRules.voteAfterSeconds }
-            .min { (awaySince[$0] ?? now, $0) < (awaySince[$1] ?? now, $1) }
+        // The server can turn the vote off (AppConfig "leaveVote"); a player who leaves is still conceded.
+        let candidate = !AppConfigStore.shared.current.isOn("leaveVote") ? nil
+            : paused.filter { now - (awaySince[$0] ?? now) >= TableLeaveRules.voteAfterSeconds }
+                .min { (awaySince[$0] ?? now, $0) < (awaySince[$1] ?? now, $1) }
         var vote: TableContinueVote?
         if let candidate, !eligible.isEmpty, let seat = try? lobby.seatID(for: candidate) {
             let yes = (continueVoters[candidate] ?? []).intersection(eligible)

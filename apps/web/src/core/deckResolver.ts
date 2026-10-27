@@ -2,6 +2,7 @@
  * Resolves deck lists to the exact compiled printings the engine accepts (OnDeviceDeckResolver.swift,
  * Catalogue.resolve in Decks.kt), from the same catalogue the phones ship. XMage decides legality.
  */
+import { appConfig } from "./appConfig";
 import { EngineError, type J } from "./json";
 
 /**
@@ -80,7 +81,9 @@ export class DeckResolver {
       if (isFrontOf(candidate, name) && this.aliasedFronts.has(found)) continue;
       return found;
     }
-    return undefined;
+    // A fix the server sent for a name a deck site spells its own way (appConfig), when that card is here.
+    const fixes = appConfig.current.nameFixes;
+    return cardNameCandidates(name).map((candidate) => fixes[candidate]).find((fixed) => fixed !== undefined && this.cards.has(fixed));
   }
 
   printing(name: string): Printing | undefined {

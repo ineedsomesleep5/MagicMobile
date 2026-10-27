@@ -19,6 +19,7 @@ import type { GameSnapshot } from "../core/models";
 import { loadSmartPass } from "../core/smartPass";
 import { OnDeviceStartingPlayerChoice, OnDeviceStartingRoll, OnDeviceStartingRollProgress } from "../core/startingRoll";
 import { gameEmote, type GameEmote, TableChatText } from "../core/tableChat";
+import { appConfig } from "../core/appConfig";
 import { NO_VOTE, type TableContinueVote, TableLeaveRules, votePacket } from "../core/tableLeave";
 import { TurnClock, TurnClockBoard, TurnClockWire } from "../core/turnClock";
 import { type RelayPeer, RelayTransport } from "../relay/relayTransport";
@@ -815,7 +816,8 @@ export class HostTable implements GameTable {
     for (const peer of [...this.awaySince.keys()]) if (!paused.has(peer)) { this.awaySince.delete(peer); this.continueVoters.delete(peer); }
     const eligible = new Set(lobby.peerIDs.filter((p) => !this.gone.has(p) && !paused.has(p) && !this.suspendedPeers.has(p))
       .map((p) => this.seatOf(p)).filter((s): s is string => s !== undefined));
-    const candidate = [...paused].filter((p) => at - (this.awaySince.get(p) ?? at) >= TableLeaveRules.VOTE_AFTER_SECONDS)
+    // The server can turn the vote off (appConfig "leaveVote"); a player who leaves is still conceded.
+    const candidate = !appConfig.isOn("leaveVote") ? undefined : [...paused].filter((p) => at - (this.awaySince.get(p) ?? at) >= TableLeaveRules.VOTE_AFTER_SECONDS)
       .sort((a, b) => (this.awaySince.get(a)! - this.awaySince.get(b)!) || (a < b ? -1 : 1))[0];
     let vote: TableContinueVote | undefined;
     const seat = candidate === undefined ? undefined : this.seatOf(candidate);

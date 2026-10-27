@@ -13,6 +13,7 @@ import {
 } from "../core/models";
 import type { RankChange } from "../core/rankLadder";
 import { rollPlates } from "../core/startingRoll";
+import { appConfig } from "../core/appConfig";
 import { TableLeaveRules } from "../core/tableLeave";
 import { loadSmartPass, saveSmartPass, type SmartPassSettings } from "../core/smartPass";
 import { GameEmotes, TableChatFilter } from "../core/tableChat";
@@ -335,7 +336,7 @@ export function GameScreen({ table, rankChange, rankNote, versus }: {
   }, [tableNotice, table, showNotice]);
   const activeIsMe = snapshot?.activePlayerId !== undefined && snapshot.activePlayerId === viewer;
   const stack = snapshot?.xmage?.stack ?? [];
-  const pickingOnTable = snapshot !== undefined && boardTargetableIds(snapshot).size > 0;
+  const pickingOnTable = appConfig.isOn("stackAutoTuck") && snapshot !== undefined && boardTargetableIds(snapshot).size > 0;
   const stackTucked = (id: string) => revealID !== id && arenaStackTucked(id, stackTuckedTop, stackPeekTop, pickingOnTable);
   const promptActions = (snapshot?.legalActions ?? []).filter((a) => a.cardInstanceId === undefined && a.sourceInstanceId === undefined);
 

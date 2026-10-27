@@ -474,11 +474,13 @@ struct OnDeviceRootView: View {
             do { try await Task.sleep(for: .seconds(GameResumeText.noticeSeconds)) } catch { return }
             resume.notice = nil
         }
-        // A player left the table and the others play on (TableLeaveRules).
+        // A player left the table and the others play on (TableLeaveRules); on the menu, the server's notice (AppConfig).
         .overlay(alignment: .top) {
             if activeGame, let notice = setup.multiplayer?.tableNotice {
                 GameResumeNoticeBanner(message: notice, symbol: "figure.walk.departure") { setup.multiplayer?.tableNotice = nil }
                     .transition(.move(edge: .top).combined(with: .opacity))
+            } else if !activeGame && !showSetup && lobby == nil && resume.notice == nil {
+                AppNoticeBanner()
             }
         }
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: setup.multiplayer?.tableNotice)
@@ -673,6 +675,8 @@ struct OnDeviceRootView: View {
             }
         }
         .task(id: account.phase == .ready) {
+            // The server's settings for this build (AppConfig): the menu's notice, name fixes, feature switches.
+            await account.refreshAppConfig()
             guard account.phase == .ready, !activeGame, freezePrompt == nil,
                   ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_PREFERENCES"] == nil else { return }
             let now = Date().timeIntervalSince1970

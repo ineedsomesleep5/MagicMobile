@@ -585,7 +585,8 @@ fun ArenaBoard(host: ArenaBoardHost) {
                 val revealing = revealID == top.id
                 val reveal by animateFloatAsState(if (revealing) 1f else 0f, tween(300), label = "stackReveal")
                 val count = snapshot.xmage?.stack?.size ?: snapshot.stackTopFirst.size
-                val tucked = !revealing && ArenaStackTuck.isTucked(top.id, stackTuckedTop, stackPeekTop, targetableIds.isNotEmpty())
+                val tucked = !revealing && ArenaStackTuck.isTucked(top.id, stackTuckedTop, stackPeekTop,
+                    io.magicmobile.android.game.AppConfigState.current.isOn("stackAutoTuck") && targetableIds.isNotEmpty())
                 if (tucked) {
                     // The slim tab at the table's edge brings the card back.
                     ArenaStackTab(true, count, Modifier.zIndex(30f).alpha(if (screenUp) 0f else 1f)

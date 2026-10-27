@@ -906,6 +906,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // Deck sync (docs/DECK_SYNC.md): when the profile is ready or its name changes, on returning to the app and every
     // 5 minutes while it is open; a change here goes up a few seconds after the last one, when something waits to go up.
     val accountReady = vm.account.phase == PlayerAccount.Phase.READY
+    // The server's settings for this build (AppConfig): the menu's notice, name fixes, feature switches.
+    LaunchedEffect(accountReady) { if (accountReady) vm.account.refreshAppConfig() }
     LaunchedEffect(accountReady, vm.account.username, appForeground) {
         if (!accountReady || !appForeground) return@LaunchedEffect
         while (true) { vm.syncDecks(); delay(5 * 60_000L) }
@@ -1510,6 +1512,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 }
                 setup.resume.notice?.let { notice ->
                     ResumeNoticeBanner(notice, Modifier.align(Alignment.TopCenter)) { setup.resume.notice = null }
+                }
+                // The server's notice on the main menu (AppConfig): it stays until closed, then never comes back.
+                val appNotice = io.magicmobile.android.ui.AppConfigStore.shownNotice
+                if (appNotice != null && menuIsFree && setup.resume.notice == null) {
+                    ResumeNoticeBanner(appNotice.text, Modifier.align(Alignment.TopCenter).testTag("menu.notice"), autoDismiss = false) {
+                        io.magicmobile.android.ui.AppConfigStore.dismissNotice(appNotice)
+                    }
                 }
                 // A player left the table and the others play on (TableLeaveRules).
                 (setup.multiplayer as? RelayTable)?.let { table ->

@@ -336,6 +336,18 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
         }
     }
 
+    /**
+     * The server's settings for this build (mm_app_config): the menu's notice, card-name fixes and feature switches, kept in
+     * [AppConfigStore]. Best effort: the last copy stays when this fails.
+     */
+    suspend fun refreshAppConfig() {
+        if (phase != Phase.READY) return
+        runCatching {
+            api.rpc("mm_app_config", mapOf("p_platform" to JsonPrimitive("android"),
+                "p_build" to JsonPrimitive(io.magicmobile.android.BuildConfig.RELEASE_BUILD)))
+        }.getOrNull()?.let(io.magicmobile.android.ui.AppConfigStore::store)
+    }
+
     /** Sends one finished game. Never throws: the caller keeps what could not be sent and tries again later. */
     suspend fun recordGame(match: MatchRecord): GameUploadResult {
         if (phase != Phase.READY || username == null) return GameUploadResult.UNAVAILABLE

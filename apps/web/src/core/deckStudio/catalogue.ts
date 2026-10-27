@@ -2,6 +2,7 @@
  * Deck Studio's card catalogue (NativeDeckMetadataCatalogue.swift): selected-printing metadata, not live Oracle updates,
  * Commander legality or mana production. scripts/prepare_data.py writes it as public/generated/catalogue.json.
  */
+import { appConfig } from "../appConfig";
 import { cardNameCandidates, isFrontOf } from "../deckResolver";
 import { EngineDisplayText } from "../displayText";
 
@@ -77,6 +78,12 @@ export class Catalogue {
       // A double-faced card's front never stands in for a different back (isFrontOf).
       if (isFrontOf(candidate, name) && (this.fronts ??= new Set(this.aliases.values())).has(card.name)) continue;
       return card;
+    }
+    // A fix the server sent for a name a deck site spells its own way (appConfig).
+    const fixes = appConfig.current.nameFixes;
+    for (const candidate of cardNameCandidates(name)) {
+      const fixed = fixes[candidate] === undefined ? undefined : this.index.get(fixes[candidate]);
+      if (fixed) return fixed;
     }
     return undefined;
   }

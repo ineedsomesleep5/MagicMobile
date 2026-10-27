@@ -589,6 +589,14 @@ final class PlayerAccount: ObservableObject {
         } catch { return false }
     }
 
+    /// The server's settings for this build (mm_app_config): the menu's notice, card-name fixes and feature switches. Best
+    /// effort: the last copy stays when this fails.
+    func refreshAppConfig() async {
+        guard phase == .ready else { return }
+        let build = Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") ?? 0
+        if let data = try? await api.rpc("mm_app_config", ["p_platform": "ios", "p_build": build]) { AppConfigStore.shared.store(data) }
+    }
+
     func recordGame(_ match: MatchRecord) async -> GameUploadResult {
         guard phase == .ready, username != nil else { return .unavailable }
         #if DEBUG
