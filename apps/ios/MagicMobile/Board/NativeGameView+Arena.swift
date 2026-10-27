@@ -458,6 +458,11 @@ extension NativeGameView {
         }
         arenaGameMenu(snapshot: snapshot)
             .position(canvas.point(layout.menu))
+        // Voice chat's mic (ArenaVoiceMic) under the gear, clear of the hand and the screen's edge.
+        if let voiceRoom {
+            ArenaVoiceMic(room: voiceRoom)
+                .position(x: canvas.point(layout.menu).x, y: canvas.point(layout.menu).y + 40)
+        }
     }
 
     private func arenaOpponentMedallion(snapshot: GameSnapshot, opponent: PlayerGameState, canvas: ArenaCanvas) -> some View {
@@ -576,10 +581,6 @@ extension NativeGameView {
             // Poison and commander damage at a glance; the medallion's pop-over lists every status.
             TavernStatusGlance(summary: PlayerStatusSummary(player: human, snapshot: snapshot))
                 .offset(x: diameter * 0.3, y: diameter * 0.05)
-        }
-        .overlay(alignment: .bottomLeading) {
-            // Voice chat's mic (ArenaVoiceMic), by the medallion's lower left like the web's.
-            if let voiceRoom { ArenaVoiceMic(room: voiceRoom).offset(x: -diameter * 0.42, y: diameter * 0.12) }
         }
         .overlay(alignment: .top) {
             if let emoteCenter {

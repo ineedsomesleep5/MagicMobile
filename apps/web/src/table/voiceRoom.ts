@@ -37,6 +37,8 @@ export class VoiceRoom {
   private heard = new Map<string, number>();
   private ticker?: ReturnType<typeof setInterval>;
   private closed = false;
+  /** Push to talk: the microphone stays off except while talk(true) holds it open. */
+  private pushToTalk = false;
 
   constructor(readonly channel: string, readonly account: string, private token: VoiceTokenSource,
     private load: () => Promise<VoiceSDK> = loadAgora) {}
@@ -67,8 +69,9 @@ export class VoiceRoom {
       try {
         this.mic = await sdk.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true });
         if (this.closed) { this.mic.close(); return; }
+        if (this.pushToTalk) await this.mic.setMuted(true);
         await client.publish(this.mic);
-        this.set({ muted: false, micBlocked: false });
+        this.set({ muted: this.pushToTalk, micBlocked: false });
       } catch {
         this.set({ muted: true, micBlocked: true });
       }
@@ -131,7 +134,7 @@ export class VoiceRoom {
     await this.teardown();
     this.set({ ...VoiceChat.initial(), silenced: this.state.silenced });
     await this.join().catch(() => undefined);
-    if (muted && this.state.stage === "live") await this.toggleMute();
+    if (muted && !this.pushToTalk && this.state.stage === "live") await this.toggleMute();
   }
 
   /** Your microphone off or on; with a refused microphone, asks again. */
@@ -150,6 +153,21 @@ export class VoiceRoom {
     await this.mic?.setMuted(muted);
     this.heard.delete(this.account);
     this.set({ muted });
+    this.fade();
+  }
+
+  /** Push to talk on or off; turning it on closes the microphone until it is held. */
+  async setPushToTalk(on: boolean): Promise<void> {
+    this.pushToTalk = on;
+    if (on && this.state.stage === "live" && !this.state.muted && !this.state.micBlocked) await this.talk(false, true);
+  }
+
+  /** Push to talk: the microphone open while the mic or the key is held, closed on release. */
+  async talk(down: boolean, force = false): Promise<void> {
+    if ((!this.pushToTalk && !force) || this.state.stage !== "live" || this.state.micBlocked || !this.mic || this.state.muted === !down) return;
+    this.set({ muted: !down });
+    await this.mic.setMuted(!down);
+    this.heard.delete(this.account);
     this.fade();
   }
 

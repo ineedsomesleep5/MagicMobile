@@ -5,6 +5,7 @@
  */
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { gameAudio } from "../audio";
+import { VoiceChat } from "../../core/voiceChat";
 import { ManaSymbol } from "../arena/Symbols";
 
 /** The SF Symbols the menus use, drawn as small filled glyphs in a 24-unit box. */
@@ -359,5 +360,28 @@ export function PanelHeader({ title, onBack, onClose, centered }: { title: strin
       <h2>{title}</h2>
       <CloseButton onClose={onClose} />
     </header>
+  );
+}
+
+/** Push to talk's key, beside its label: a click, then the next key pressed becomes it (Escape keeps the old one). */
+export function TalkKeyButton({ code, onChange, id }: { code: string; onChange: (code: string) => void; id?: string }) {
+  const [listening, setListening] = useState(false);
+  useEffect(() => {
+    if (!listening) return undefined;
+    const key = (e: KeyboardEvent) => {
+      e.preventDefault(); e.stopPropagation();
+      if (e.code === "Escape") { setListening(false); return; }
+      if (!VoiceChat.bindable(e.code)) return;
+      onChange(e.code);
+      setListening(false);
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [listening, onChange]);
+  return (
+    <span className="mtalkkey"><span>Talk Key</span>
+      <button type="button" data-id={id} aria-label={`Push-to-talk key: ${VoiceChat.keyLabel(code)}`} className={listening ? "on" : ""}
+        onClick={() => { gameAudio.play("ui-tap"); setListening(true); }}>{listening ? "Press a key" : VoiceChat.keyLabel(code)}</button>
+    </span>
   );
 }

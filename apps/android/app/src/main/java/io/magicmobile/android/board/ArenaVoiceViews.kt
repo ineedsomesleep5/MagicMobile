@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -17,11 +18,14 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -30,6 +34,7 @@ import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import io.magicmobile.android.game.VoiceChatRules
 import io.magicmobile.android.game.VoiceChatState
 import io.magicmobile.android.menus.ArenaButton
 import io.magicmobile.android.menus.ArenaButtonKind
@@ -37,6 +42,7 @@ import io.magicmobile.android.menus.ArenaButtonText
 import io.magicmobile.android.menus.ArenaGlass
 import io.magicmobile.android.menus.ArenaMenuStyle
 import io.magicmobile.android.ondevice.VoiceRoom
+import io.magicmobile.android.ui.AppPreferences
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.rgb
@@ -54,6 +60,10 @@ fun ArenaVoiceMic(room: VoiceRoom, modifier: Modifier = Modifier) {
     if (state.stage == VoiceChatState.Stage.UNAVAILABLE) return
     val context = LocalContext.current
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> room.join(granted) }
+    val pushToTalk by AppPreferences.boolean(VoiceChatRules.PUSH_TO_TALK_KEY, false)
+    LaunchedEffect(room, pushToTalk) { room.setPushToTalk(pushToTalk) }
+    // Push to talk while live: held, the microphone is open; let go, it closes.
+    val holdToTalk = pushToTalk && state.stage == VoiceChatState.Stage.LIVE && !state.micBlocked
     val live = state.stage == VoiceChatState.Stage.LIVE
     val talking = live && room.account in state.speaking
     val tint = when {
@@ -64,11 +74,14 @@ fun ArenaVoiceMic(room: VoiceRoom, modifier: Modifier = Modifier) {
     }
     val label = when {
         state.stage == VoiceChatState.Stage.OFF -> "Join voice chat"
+        holdToTalk -> "Hold to talk"
         state.micBlocked -> "Microphone not allowed, open settings"
         state.muted -> "Turn your microphone on"
         else -> "Turn your microphone off"
     }
-    Box(modifier.size(44.dp).clickable(enabled = state.stage != VoiceChatState.Stage.JOINING) {
+    val press = if (holdToTalk) Modifier.pointerInput(room) {
+        detectTapGestures(onPress = { room.talk(true); tryAwaitRelease(); room.talk(false) })
+    } else Modifier.clickable(enabled = state.stage != VoiceChatState.Stage.JOINING) {
         when {
             state.stage == VoiceChatState.Stage.OFF ->
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) room.join(true)
@@ -77,7 +90,8 @@ fun ArenaVoiceMic(room: VoiceRoom, modifier: Modifier = Modifier) {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             else -> room.toggleMute()
         }
-    }.semantics { contentDescription = label; testTag = "board.voice.mic" }, contentAlignment = Alignment.Center) {
+    }
+    Box(modifier.size(44.dp).then(press).semantics { contentDescription = label; testTag = "board.voice.mic" }, contentAlignment = Alignment.Center) {
         Box(Modifier.size(30.dp).alpha(if (state.stage == VoiceChatState.Stage.JOINING) 0.5f else 1f)
             .glow(if (talking) ArenaVoice.talking.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.5f), if (talking) 6.dp else 2.dp, 15.dp)
             .background(Brush.verticalGradient(listOf(ArenaGlass.top, ArenaGlass.bottom)), CircleShape)

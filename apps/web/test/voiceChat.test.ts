@@ -20,6 +20,14 @@ describe("voice chat rules", () => {
     for (const c of cases.shown) expect(VoiceChat.shown(c)).toBe(c.shown);
   });
 
+  it("names push to talk's key and keeps the board's own keys free", () => {
+    expect(VoiceChat.keyLabel("KeyV")).toBe("V");
+    expect(VoiceChat.keyLabel("Digit3")).toBe("3");
+    expect(VoiceChat.keyLabel("Backquote")).toBe("Backquote");
+    expect(VoiceChat.bindable("KeyT")).toBe(true);
+    for (const code of ["Space", "Enter", "Escape", "ShiftLeft", ""]) expect(VoiceChat.bindable(code)).toBe(false);
+  });
+
   it("stays off until the server names the switch", () => {
     expect(AppConfig.isOn(AppConfig.empty(), VOICE_SWITCH, false)).toBe(false);
     expect(AppConfig.isOn(AppConfig.parse({ switches: { voiceChat: true } })!, VOICE_SWITCH, false)).toBe(true);
@@ -105,5 +113,28 @@ describe("voice room", () => {
       async () => fakeAgora().sdk);
     await expect(unset.join()).rejects.toThrow();
     expect(unset.state.stage).toBe("unavailable");
+  });
+
+  it("push to talk joins with the microphone closed and opens it only while held", async () => {
+    const agora = fakeAgora();
+    const room = new VoiceRoom(channel, "player1", async () => ({ appId: "app", token: "007abc" }), async () => agora.sdk);
+    await room.setPushToTalk(true);
+    await room.join();
+    expect(agora.mic.setMuted).toHaveBeenCalledWith(true);
+    expect(room.state).toMatchObject({ stage: "live", muted: true });
+    await room.talk(true);
+    expect(agora.mic.setMuted).toHaveBeenLastCalledWith(false);
+    expect(room.state.muted).toBe(false);
+    await room.talk(false);
+    expect(agora.mic.setMuted).toHaveBeenLastCalledWith(true);
+    expect(room.state.muted).toBe(true);
+    // Off again, holding does nothing; turning it back on mid-game closes an open microphone.
+    await room.setPushToTalk(false);
+    await room.toggleMute();
+    expect(room.state.muted).toBe(false);
+    await room.talk(false);
+    expect(room.state.muted).toBe(false);
+    await room.setPushToTalk(true);
+    expect(room.state.muted).toBe(true);
   });
 });
