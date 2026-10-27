@@ -597,6 +597,8 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
     private var lobby: OnDeviceMultiplayerLobby? = null
     private var submission: J? = null
     private var epoch: UUID? = null
+    /** The game's voice channel (VoiceChatRules) once it has an epoch; null before. */
+    val voiceChannel: String? get() = io.magicmobile.android.game.VoiceChatRules.channel(epoch?.toString())
     private var hostEngine: EngineClient? = null
     private var nativeMatchID: String? = null
     private var startup: Job? = null

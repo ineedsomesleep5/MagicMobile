@@ -591,6 +591,11 @@ final class PlayerAccount: ObservableObject {
 
     /// The server's settings for this build (mm_app_config): the menu's notice, card-name fixes and feature switches. Best
     /// effort: the last copy stays when this fails.
+    /// A voice chat token for one seat of one game (the agora-token edge function; VoiceRoom).
+    func voiceToken(channel: String, account seat: String) async throws -> (appId: String, token: String) {
+        try await api.voiceToken(channel: channel, account: seat)
+    }
+
     func refreshAppConfig() async {
         guard phase == .ready else { return }
         let build = Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") ?? 0
@@ -759,8 +764,20 @@ final class SupabaseLite: @unchecked Sendable {
     }
 
     func rpc(_ function: String, _ params: [String: Any] = [:]) async throws -> Data {
+        try await post("rest/v1/rpc/\(function)", params)
+    }
+
+    /// A voice chat token for one seat of one game (the agora-token edge function; VoiceRoom).
+    func voiceToken(channel: String, account: String) async throws -> (appId: String, token: String) {
+        let data = try await post("functions/v1/agora-token", ["channel": channel, "account": account])
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let appId = json["appId"] as? String, let token = json["token"] as? String else { throw Failure(code: "error") }
+        return (appId, token)
+    }
+
+    private func post(_ path: String, _ params: [String: Any]) async throws -> Data {
         let token = try await accessToken()
-        var request = URLRequest(url: Self.baseURL.appendingPathComponent("rest/v1/rpc/\(function)"))
+        var request = URLRequest(url: Self.baseURL.appendingPathComponent(path))
         request.httpMethod = "POST"
         request.timeoutInterval = 15
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

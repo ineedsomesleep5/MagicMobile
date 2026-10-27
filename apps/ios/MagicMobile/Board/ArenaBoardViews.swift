@@ -2115,6 +2115,7 @@ struct ArenaPlayerCard: View {
     var swap: ((String) -> Void)? = nil
     let open: (BoardZoneReference) -> Void
     let close: () -> Void
+    @Environment(\.voiceRoom) private var voiceRoom
 
     private struct ZoneIcon: Identifiable {
         let zone: BoardZoneReference.PlayerZone
@@ -2176,6 +2177,9 @@ struct ArenaPlayerCard: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Close \(name)'s card")
+            }
+            if let voiceRoom, !snapshot.isViewer(player.playerId), let seat = voiceRoom.seat(named: player.displayName) {
+                ArenaVoiceSilenceButton(room: voiceRoom, seat: seat)
             }
             let summary = PlayerStatusSummary(player: player, snapshot: snapshot)
             if !summary.orbit.isEmpty {

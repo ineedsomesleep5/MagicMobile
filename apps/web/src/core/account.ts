@@ -17,7 +17,7 @@ import { parseMyGames } from "./remoteGames";
 import { Achievement, type KeyValueStore, type MatchRecord, type PlayerRecordStore, type PlayMode } from "./playerRecord";
 import { ProfileGame, ProfileSummary } from "./profileSummary";
 import { RankLadder, type RankOutcome, RankPosition, type RankState, type SeasonBadge, type SeasonRecord, type ServerRankChange } from "./rankLadder";
-import { SupabaseLite, type LinkedIdentity } from "./supabaseLite";
+import { SupabaseFailure, SupabaseLite, type LinkedIdentity } from "./supabaseLite";
 import { TableChatFilter, TableChatText, TableJoinLink } from "./tableChat";
 
 // MARK: Rules
@@ -1176,6 +1176,14 @@ export class PlayerAccount {
   async refreshAppConfig(): Promise<void> {
     if (this.state.phase !== "ready") return;
     try { appConfig.store(await this.api.rpc("mm_app_config", { p_platform: "web", p_build: 0 })); } catch { /* the last copy stays */ }
+  }
+
+  /** A voice chat token for one seat of one game (the agora-token function; VoiceRoom). */
+  async voiceToken(channel: string, account: string): Promise<{ appId: string; token: string }> {
+    const reply = await this.api.invoke("agora-token", { channel, account });
+    const appId = str(get(reply, "appId")), token = str(get(reply, "token"));
+    if (!appId || !token) throw new SupabaseFailure("error");
+    return { appId, token };
   }
 
   async recordGame(match: MatchRecord): Promise<GameUploadResult> {

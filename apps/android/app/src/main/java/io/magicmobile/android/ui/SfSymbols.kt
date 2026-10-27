@@ -116,6 +116,8 @@ object SfSymbols {
         "exclamationmark.bubble" -> Icons.Filled.Feedback
         "paperplane.fill" -> Icons.AutoMirrored.Filled.Send
         "speaker.slash" -> Icons.AutoMirrored.Filled.VolumeOff
+        "mic.fill" -> Icons.Filled.Mic
+        "mic.slash.fill" -> Icons.Filled.MicOff
         "person.badge.plus" -> Icons.Filled.PersonAdd
         "person.crop.circle.badge.checkmark" -> Icons.Filled.HowToReg
         "link" -> Icons.Filled.Link

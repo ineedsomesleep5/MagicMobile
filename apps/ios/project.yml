@@ -15,6 +15,10 @@ settings:
 packages:
   OnDeviceCore:
     path: ../../packages/ondevice-engine/swift
+  # Voice chat at online tables (VoiceRoom.swift, docs/VOICE_CHAT.md); the voice-only SDK, same version as Android's.
+  AgoraAudio:
+    url: https://github.com/AgoraIO/AgoraAudio_iOS
+    exactVersion: 4.6.4
 targets:
   MagicMobile:
     type: application
@@ -37,6 +41,8 @@ targets:
     dependencies:
       - package: OnDeviceCore
         product: MagicMobileOnDevice
+      - package: AgoraAudio
+        product: RtcBasic
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.calebfeliciano.magicmobile

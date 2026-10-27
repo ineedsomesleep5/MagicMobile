@@ -63,6 +63,8 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import io.magicmobile.android.game.ArenaAutoPay
+import io.magicmobile.android.ondevice.LocalVoiceRoom
+import io.magicmobile.android.ondevice.VoiceRoom
 import io.magicmobile.android.game.ArenaCanvas
 import io.magicmobile.android.game.ArenaCombatPhase
 import io.magicmobile.android.game.ArenaCommanderSteal
@@ -683,7 +685,8 @@ fun ArenaBoard(host: ArenaBoardHost) {
                     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.25f)).clearAndSetSemantics { }
                         .clickable(remember { MutableInteractionSource() }, null) { cornerMenu = null })
                     val reportFreeze = io.magicmobile.android.ondevice.LocalFreezeReport.current
-                    val items = if (menu == "game") arenaGameMenuItems(snapshot, turnControl, host, { host.setStackOpen(true) }, { showPhaseStops = true }, reportFreeze)
+                    val items = if (menu == "game") arenaGameMenuItems(snapshot, turnControl, host, { host.setStackOpen(true) }, { showPhaseStops = true }, reportFreeze,
+                        LocalVoiceRoom.current)
                         else turnControl?.let(::arenaPassAheadItems) ?: emptyList()
                     val gear = canvas.point(layout.menu)
                     val modifier = if (menu == "game") Modifier.align(Alignment.TopEnd).padding(top = (gear.y + 26).dp, end = max(12f, canvas.screen.width - gear.x - 22).dp)
@@ -806,7 +809,7 @@ fun ArenaBoard(host: ArenaBoardHost) {
 
 /** The gear's menu, as an Arena menu card on the table. */
 private fun arenaGameMenuItems(snapshot: GameSnapshot, control: NativeTurnControl?, host: ArenaBoardHost, openStack: () -> Unit,
-                               openStops: () -> Unit, reportFreeze: (() -> Unit)?): List<ArenaMenuItem> = buildList {
+                               openStops: () -> Unit, reportFreeze: (() -> Unit)?, voice: VoiceRoom?): List<ArenaMenuItem> = buildList {
     add(ArenaMenuItem("log", "Game Log", symbol = "list.bullet.rectangle", action = host.openLog))
     if (snapshot.stackTopFirst.isNotEmpty()) add(ArenaMenuItem("stack", "Stack (${snapshot.stackTopFirst.size})", symbol = "square.stack.3d.up", action = openStack))
     add(ArenaMenuItem("stops", "Phase Stops", symbol = "pause.circle", action = openStops))
@@ -815,6 +818,9 @@ private fun arenaGameMenuItems(snapshot: GameSnapshot, control: NativeTurnContro
             lit = it.isFullControl, action = it.toggleFullControl))
     }
     if (snapshot.source == "xmage-ondevice") add(ArenaMenuItem("more", "More actions", symbol = "ellipsis", action = host.openPromptDetails))
+    voice?.takeIf { it.state.stage == io.magicmobile.android.game.VoiceChatState.Stage.LIVE }?.let { room ->
+        add(ArenaMenuItem("leave-voice", "Leave Voice Chat", symbol = "mic.slash.fill", action = { room.leave() }))
+    }
     add(ArenaMenuItem("settings", "Game Settings", symbol = "gearshape.fill", action = host.openSettings))
     reportFreeze?.let { add(ArenaMenuItem("report-freeze", "Report a freeze", symbol = "exclamationmark.bubble", action = it)) }
 }
@@ -921,6 +927,7 @@ private fun ArenaOpponentSeat(host: ArenaBoardHost, canvas: ArenaCanvas, lean: A
                 glow = if (attackID != null) ArenaPalette.attackGlow else if (targetID != null) ArenaPalette.targetGlow else null)
         }
         LocalTurnClock.current?.let { feed -> opponent.displayName?.let { TurnClockRing(feed, it, (diameter * 1.08f).dp) } }
+        LocalVoiceRoom.current?.let { room -> room.seatNamed(opponent.displayName)?.let { ArenaVoiceHalo(room, it, diameter.dp, badge = true) } }
         LocalEmoteCenter.current?.let { center ->
             OpponentEmoteSlot(center, snapshot, opponent.playerId, Modifier.align(Alignment.BottomCenter).offset(y = (diameter * 0.9f).dp).wrapContentSize(unbounded = true))
         }
@@ -986,6 +993,11 @@ private fun ArenaViewerSeat(host: ArenaBoardHost, canvas: ArenaCanvas, lean: Are
                 commanderReady = castable.isNotEmpty())
         }
         LocalTurnClock.current?.let { TurnClockRing(it, null, (diameter * 1.08f).dp) }
+        LocalVoiceRoom.current?.let { room ->
+            ArenaVoiceHalo(room, room.account, diameter.dp, badge = false)
+            // Voice chat's mic, by the medallion's lower left like the web's and the iPhone's.
+            ArenaVoiceMic(room, Modifier.align(Alignment.BottomStart).offset((-diameter * 0.42f).dp, (diameter * 0.12f).dp).wrapContentSize(unbounded = true))
+        }
         // Poison and commander damage at a glance; the player's card lists every status.
         TavernStatusGlance(PlayerStatusSummary(human, snapshot), Modifier.align(Alignment.BottomEnd).offset((diameter * 0.3f).dp, (diameter * 0.05f).dp).wrapContentSize(unbounded = true))
         LocalEmoteCenter.current?.let { center ->
