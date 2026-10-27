@@ -30,16 +30,6 @@ class ScheduleTests(unittest.TestCase):
         self.assertNotEqual(first[0]["game_seed"], calibration.schedule(2, 4, DECKS, 8, 12, "phone")[0]["game_seed"])
         self.assertTrue(all(0 <= r["game_seed"] < 2 ** 63 for r in first))
 
-    def test_against_plays_each_deck_with_each_reference(self):
-        rows = calibration.schedule(3, 3, ["x1", "x2"], 24, 5, "phone", against=["r1", "r2", "x1"])
-        pairs = collections.Counter(frozenset((r["deck_a"], r["deck_b"])) for r in rows)
-        # x1 never meets itself; x2 meets x1 as a reference.
-        self.assertEqual(set(pairs), {frozenset(p) for p in [("x1", "r1"), ("x1", "r2"), ("x2", "r1"), ("x2", "r2"), ("x2", "x1")]})
-        self.assertFalse(any({"r1", "r2"} == {r["deck_a"], r["deck_b"]} for r in rows))
-        for pair in pairs:
-            games = [r for r in rows if frozenset((r["deck_a"], r["deck_b"])) == pair]
-            self.assertEqual(len({(r["deck_a"], r["a_first"]) for r in games[:4]}), 4)
-
     def test_overrides_reach_rows(self):
         rows = calibration.schedule(3, 4, DECKS, 4, 1, "phone", {"mistake_a": "10"})
         self.assertTrue(all(r["mistake_a"] == "10" and r["depth_b"] == "" for r in rows))

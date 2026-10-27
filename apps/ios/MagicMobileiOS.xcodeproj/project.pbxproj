@@ -228,6 +228,7 @@
 		81ECA8FA322072BB981F7170 /* PublicProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 816467D39B7879657F44ADEC /* PublicProfileView.swift */; };
 		8243CBF59D10FFF29450B881 /* DeckStudioScryfallViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 414BA1EAB2335B7591A6228A /* DeckStudioScryfallViews.swift */; };
 		844B57B284E797BBF126E0EE /* ParityGoldenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EA5ECC621D4E6094CABD432 /* ParityGoldenTests.swift */; };
+		854D2E623A6B06AA1CDB0F09 /* graal_far_calls.S in Sources */ = {isa = PBXBuildFile; fileRef = 7A446528551A274633A4DD7B /* graal_far_calls.S */; };
 		862537656A79598B0D65BDF0 /* SocialComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AA4BE32E20CCDE498416F95 /* SocialComponents.swift */; };
 		86B8A7C74336B1F0191650C2 /* OnDeviceSnapshotAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82174CD2213C389DEF7B246E /* OnDeviceSnapshotAdapterTests.swift */; };
 		875E1236463DE53AB3B8902B /* OpeningHandOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69C8F0A6F568D2C9EBD0A6B4 /* OpeningHandOverlay.swift */; };
@@ -333,6 +334,7 @@
 		CCA94CD345D5729F3DE896A3 /* music-game-2.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 062EC23FFFBBEA16B6775A9C /* music-game-2.m4a */; };
 		CD1FC2298F4569D9276391CD /* DeckStudioOrganizationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8228132EF1ECF344A0504C /* DeckStudioOrganizationView.swift */; };
 		CD4A30EAF319EE316111E072 /* RankedUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26A6830D69E6016C5187744A /* RankedUITests.swift */; };
+		CD5B6023C3D5D9771AEF754F /* mm_graal_backend_far.c in Sources */ = {isa = PBXBuildFile; fileRef = E9F5A56B34259B0BDEB31AF6 /* mm_graal_backend_far.c */; };
 		CDF4E6B6232FF4F1C78C3E59 /* AIDeckPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3572CF391B01366995DFCEF2 /* AIDeckPool.swift */; };
 		CF2D93FD6E4F2783976AA07A /* cast-instant.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 27782E6F9232B4B6BA28D7E5 /* cast-instant.m4a */; };
 		CF6C549AB785EB96F74C9E09 /* DeckStudioScryfall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 327B6E116B54238C1BF459E0 /* DeckStudioScryfall.swift */; };
@@ -629,6 +631,7 @@
 		786781880D40A88BA056AE67 /* ArenaBoardPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArenaBoardPresentation.swift; sourceTree = "<group>"; };
 		79AEE33A42096E2A875A9C73 /* ProfileAnalyticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileAnalyticsTests.swift; sourceTree = "<group>"; };
 		7A3744BFB3A7C96C1932C6CB /* BattlefieldRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BattlefieldRow.swift; sourceTree = "<group>"; };
+		7A446528551A274633A4DD7B /* graal_far_calls.S */ = {isa = PBXFileReference; path = graal_far_calls.S; sourceTree = "<group>"; };
 		7BEB3BACBB61F8B8EC0A2881 /* creature-horror-3.m4a */ = {isa = PBXFileReference; path = "creature-horror-3.m4a"; sourceTree = "<group>"; };
 		7C9CE37525D6289CCBF098B8 /* GameBoardPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardPreviewFixtures.swift; sourceTree = "<group>"; };
 		7D2A95C621DD4B41BF695F5C /* PerformanceAwareness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceAwareness.swift; sourceTree = "<group>"; };
@@ -809,6 +812,7 @@
 		E93DDA5DDE754A2653B689CA /* ProfileAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileAnalytics.swift; sourceTree = "<group>"; };
 		E9613A6EF338027A5A1EAF77 /* AccountSignInCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSignInCard.swift; sourceTree = "<group>"; };
 		E9EA8000919F2ECA54F8B7A5 /* ArenaVoiceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArenaVoiceViews.swift; sourceTree = "<group>"; };
+		E9F5A56B34259B0BDEB31AF6 /* mm_graal_backend_far.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = mm_graal_backend_far.c; sourceTree = "<group>"; };
 		EA124147012DA10EF22B7484 /* land-mountain.m4a */ = {isa = PBXFileReference; path = "land-mountain.m4a"; sourceTree = "<group>"; };
 		EAD8E45FEB2F53AE9F7E397A /* DeckStudioCompletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioCompletionTests.swift; sourceTree = "<group>"; };
 		EB38F40A6C6EA976434A4305 /* DeckStudioPinnedTabsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioPinnedTabsUITests.swift; sourceTree = "<group>"; };
@@ -863,6 +867,15 @@
 				511505348524C12C4E7EC72C /* DeckStudioImportScreen.swift */,
 			);
 			path = Import;
+			sourceTree = "<group>";
+		};
+		1215FB47085CBC02BCF4FFE3 /* NativeLink */ = {
+			isa = PBXGroup;
+			children = (
+				7A446528551A274633A4DD7B /* graal_far_calls.S */,
+				E9F5A56B34259B0BDEB31AF6 /* mm_graal_backend_far.c */,
+			);
+			path = NativeLink;
 			sourceTree = "<group>";
 		};
 		15FA9C2961B1C0D119A8DCCF /* DeckStudio */ = {
@@ -1436,6 +1449,7 @@
 				545B5AB13CF2F1913730E238 /* MagicMobile */,
 				6E268242740097E706C9C7DF /* MagicMobileTests */,
 				71923E79EF5BF3BF6690B7CE /* MagicMobileUITests */,
+				1215FB47085CBC02BCF4FFE3 /* NativeLink */,
 				7B1DA9F199954B3D6E419655 /* Packages */,
 				579A87D6C3BF95DC45F889A9 /* Products */,
 			);
@@ -1448,6 +1462,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = B8EB6F1C3B37B7CE7DEFF9A2 /* Build configuration list for PBXNativeTarget "MagicMobile" */;
 			buildPhases = (
+				E1F4489298BF71CEE58BEACC /* Verify staged native input hashes (device only) */,
 				08275B628476837D8B65D70B /* Sources */,
 				3CA38CCFE04DA6072CCD0720 /* Compress the card catalogue into the app */,
 				69B18D5EF2E089E9AB3F0995 /* Resources */,
@@ -1709,6 +1724,25 @@
 			shellPath = /bin/sh;
 			shellScript = "set -eu\nmkdir -p \"$(dirname \"${SCRIPT_OUTPUT_FILE_0}\")\"\n/usr/bin/compression_tool -encode -a lzfse -i \"${SCRIPT_INPUT_FILE_0}\" -o \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 		};
+		E1F4489298BF71CEE58BEACC /* Verify staged native input hashes (device only) */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Verify staged native input hashes (device only)";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nif [ \"${PLATFORM_NAME}\" = \"iphoneos\" ]; then\n  python3 -B \"${SRCROOT}/../../packages/ondevice-engine/scripts/prepare_ios_app_native.py\" --verify-installed > /dev/null\nfi\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -1906,6 +1940,8 @@
 				FB5E7AE659CED2E8E3A88191 /* TurnRope.swift in Sources */,
 				748D1EEACFBC4CB4B91490DA /* VoiceChatRules.swift in Sources */,
 				DFF31EEC297D596C52BF0B1B /* VoiceRoom.swift in Sources */,
+				854D2E623A6B06AA1CDB0F09 /* graal_far_calls.S in Sources */,
+				CD5B6023C3D5D9771AEF754F /* mm_graal_backend_far.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2040,14 +2076,30 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
 				CODE_SIGN_ENTITLEMENTS = MagicMobile/MagicMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=iphonesimulator*]" = "$(inherited) mm_graal_backend_far.c graal_far_calls.S";
+				"GCC_PREPROCESSOR_DEFINITIONS[sdk=iphoneos*]" = "$(inherited) XMAGE_NATIVE_LINKED=1";
+				"HEADER_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"\"$(SRCROOT)/NativeEngine/include\"",
+					"\"$(SRCROOT)/../../packages/ondevice-engine/native\"",
+					"\"$(SRCROOT)/../../packages/ondevice-engine/swift/Sources/CMagicEngine/include\"",
+				);
 				INFOPLIST_FILE = MagicMobile/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"\"$(SRCROOT)/NativeEngine/lib\"",
+				);
+				"MM_ENGINE_MODE[sdk=iphoneos*]" = "embedded-xmage";
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = "$(inherited) -lmmengine -ljava -lnio -lzip -lnet -lprefs -ljvm -lfdlibm -Wl,-order_file,\"$(SRCROOT)/NativeLink/graal-first.order\" -lz -ldl -lj2pkcs11 -ljaas -lextnet -lc++ -lpthread -llibchelper -lffi -ldarwin -framework Foundation -framework UIKit -framework CoreGraphics -framework Security";
 				PRODUCT_BUNDLE_IDENTIFIER = com.calebfeliciano.magicmobile;
 				PRODUCT_NAME = MagicMobile;
 				SDKROOT = iphoneos;
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos*]" = "$(inherited) XMAGE_NATIVE_LINKED";
+				"SWIFT_OBJC_BRIDGING_HEADER[sdk=iphoneos*]" = "$(SRCROOT)/MagicMobile/NativeEngine-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -2093,14 +2145,30 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
 				CODE_SIGN_ENTITLEMENTS = MagicMobile/MagicMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=iphonesimulator*]" = "$(inherited) mm_graal_backend_far.c graal_far_calls.S";
+				"GCC_PREPROCESSOR_DEFINITIONS[sdk=iphoneos*]" = "$(inherited) XMAGE_NATIVE_LINKED=1";
+				"HEADER_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"\"$(SRCROOT)/NativeEngine/include\"",
+					"\"$(SRCROOT)/../../packages/ondevice-engine/native\"",
+					"\"$(SRCROOT)/../../packages/ondevice-engine/swift/Sources/CMagicEngine/include\"",
+				);
 				INFOPLIST_FILE = MagicMobile/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"\"$(SRCROOT)/NativeEngine/lib\"",
+				);
+				"MM_ENGINE_MODE[sdk=iphoneos*]" = "embedded-xmage";
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = "$(inherited) -lmmengine -ljava -lnio -lzip -lnet -lprefs -ljvm -lfdlibm -Wl,-order_file,\"$(SRCROOT)/NativeLink/graal-first.order\" -lz -ldl -lj2pkcs11 -ljaas -lextnet -lc++ -lpthread -llibchelper -lffi -ldarwin -framework Foundation -framework UIKit -framework CoreGraphics -framework Security";
 				PRODUCT_BUNDLE_IDENTIFIER = com.calebfeliciano.magicmobile;
 				PRODUCT_NAME = MagicMobile;
 				SDKROOT = iphoneos;
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos*]" = "$(inherited) XMAGE_NATIVE_LINKED";
+				"SWIFT_OBJC_BRIDGING_HEADER[sdk=iphoneos*]" = "$(SRCROOT)/MagicMobile/NativeEngine-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -2140,7 +2208,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 64;
+				CURRENT_PROJECT_VERSION = 65;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -2225,7 +2293,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 64;
+				CURRENT_PROJECT_VERSION = 65;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_NS_ASSERTIONS = NO;
