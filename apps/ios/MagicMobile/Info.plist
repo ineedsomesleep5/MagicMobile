@@ -35,6 +35,8 @@
 	<true/>
 	<key>MagicMobileEngineMode</key>
 	<string>$(MM_ENGINE_MODE)</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Talk with the other players at an online table when you turn on voice chat.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choose an image to use as your MagicMobile player icon.</string>
 	<key>UIAppFonts</key>

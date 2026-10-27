@@ -197,7 +197,27 @@ class OnDeviceViewModel(application: Application) : AndroidViewModel(application
     /** A deck changed here or a tombstone waits to go up. */
     fun deckSyncPending(): Boolean = runCatching { deckSync.hasPending() }.getOrDefault(false)
 
+    /** Voice chat for this online game (VoiceRoom); null in solo games and while the server's switch is off. */
+    var voiceRoom by mutableStateOf<VoiceRoom?>(null); private set
+
+    /**
+     * Voice chat (VoiceRoom; docs/VOICE_CHAT.md): one room per online game once it has its channel and the server's
+     * voiceChat switch is on. Nobody is in voice until they tap the mic; leaving the game leaves the channel.
+     */
+    fun syncVoiceRoom(table: RelayTable?) {
+        val channel = table?.voiceChannel
+        val seat = io.magicmobile.android.game.VoiceChatRules.account(table?.endpoint?.seatID)
+        val on = io.magicmobile.android.game.AppConfigState.current.isOn(io.magicmobile.android.game.VoiceChatRules.SWITCH, default = false)
+        voiceRoom?.let { if (on && it.channel == channel && it.account == seat) return }
+        voiceRoom?.close()
+        voiceRoom = null
+        if (!on || table == null || channel == null || seat == null) return
+        voiceRoom = VoiceRoom(getApplication(), channel, seat, viewModelScope) { c, s -> account.voiceToken(c, s) }
+            .also { room -> room.seatNames = { table.seatNames } }
+    }
+
     override fun onCleared() {
+        voiceRoom?.close()
         // The engine must stop its workers even when the activity is finished for good.
         MainScope().launch { runCatching { setup.close() } }
         super.onCleared()
@@ -1010,7 +1030,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         val room = table?.room ?: return@LaunchedEffect
         if (activeMatch?.isPersonTable == true && !room.localReady) selectedDeck?.let { setup.readyForMatch(playerDisplayName, it) }
     }
-    LaunchedEffect(table?.endpoint?.matchID) { if (table?.endpoint != null) setup.attachTable(table, selectedDeckID, selectedDeck) }
+    LaunchedEffect(table?.endpoint?.matchID) {
+        vm.syncVoiceRoom(table)
+        if (table?.endpoint != null) setup.attachTable(table, selectedDeckID, selectedDeck)
+    }
     LaunchedEffect(table?.isConnected, table?.isSuspended) { setup.updateSessionForeground() }
     // Relay tables carry quick chat between phones; solo games only answer from the AI.
     LaunchedEffect(session.snapshot?.id, table) {
@@ -1280,6 +1303,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         LocalGameConcede provides GameConcedeHandler { concede() },
                         LocalFreezeReport provides { confirmFreezeReport = true },
                         LocalEmoteCenter provides vm.emotes,
+                        LocalVoiceRoom provides vm.voiceRoom,
                         // Messages from friends inside a game too: the game menu's Messages button.
                         io.magicmobile.android.social.LocalFriendMessages provides
                             if (vm.account.phase == io.magicmobile.android.social.PlayerAccount.Phase.READY && vm.account.username != null && vm.account.messagesAvailable)

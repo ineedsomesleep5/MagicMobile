@@ -16,8 +16,8 @@ struct AppConfig: Equatable, Sendable {
     var nameFixes: [String: String] = [:]
     var switches: [String: Bool] = [:]
 
-    /// A switch the server hasn't named is on.
-    func isOn(_ name: String) -> Bool { switches[name] ?? true }
+    /// A switch the server hasn't named is on, unless the feature says otherwise (voiceChat).
+    func isOn(_ name: String, default fallback: Bool = true) -> Bool { switches[name] ?? fallback }
 
     /// mm_app_config's reply; nil when it isn't one.
     static func parse(_ data: Data) -> AppConfig? {

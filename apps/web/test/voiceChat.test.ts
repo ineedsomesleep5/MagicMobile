@@ -7,7 +7,7 @@ import { AppConfig } from "../src/core/appConfig";
 import { VOICE_SWITCH, VoiceChat } from "../src/core/voiceChat";
 import { type VoiceSDK, VoiceRoom } from "../src/table/voiceRoom";
 
-const cases = JSON.parse(readFileSync(join(__dirname, "..", "..", "..", "parity", "voice-cases.json"), "utf8"));
+const cases = JSON.parse(readFileSync(join(__dirname, "..", "..", "..", "apps/android/core/src/test/resources/parity/voice-cases.json"), "utf8"));
 
 describe("voice chat rules", () => {
   it("matches the parity cases", () => {

@@ -340,6 +340,15 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
      * The server's settings for this build (mm_app_config): the menu's notice, card-name fixes and feature switches, kept in
      * [AppConfigStore]. Best effort: the last copy stays when this fails.
      */
+    /** A voice chat token for one seat of one game (the agora-token function; VoiceRoom): the App ID and the token. */
+    suspend fun voiceToken(channel: String, seat: String): Pair<String, String> {
+        val reply = api.invoke("agora-token", mapOf("channel" to JsonPrimitive(channel), "account" to JsonPrimitive(seat)))
+        val json = kotlinx.serialization.json.Json.parseToJsonElement(reply) as? JsonObject ?: throw SupabaseLite.Failure("error")
+        val appId = (json["appId"] as? JsonPrimitive)?.content ?: throw SupabaseLite.Failure("error")
+        val token = (json["token"] as? JsonPrimitive)?.content ?: throw SupabaseLite.Failure("error")
+        return appId to token
+    }
+
     suspend fun refreshAppConfig() {
         if (phase != Phase.READY) return
         runCatching {
@@ -572,9 +581,14 @@ internal class SupabaseLite(context: Context) {
         prefs.getString("refresh", null)?.let { refresh -> Session(access, refresh, prefs.getLong("expiresAt", 0)) }
     }
 
-    suspend fun rpc(function: String, params: Map<String, JsonElement> = emptyMap()): String {
+    suspend fun rpc(function: String, params: Map<String, JsonElement> = emptyMap()): String = call("$BASE/rest/v1/rpc/$function", params)
+
+    /** Calls the edge function functions/v1/[function] as the player (agora-token). */
+    suspend fun invoke(function: String, params: Map<String, JsonElement> = emptyMap()): String = call("$BASE/functions/v1/$function", params)
+
+    private suspend fun call(url: String, params: Map<String, JsonElement>): String {
         val token = accessToken()
-        val (status, body) = post("$BASE/rest/v1/rpc/$function", JsonObject(params).toString(), token)
+        val (status, body) = post(url, JsonObject(params).toString(), token)
         if (status == 401) session = session?.copy(expiresAt = 0)
         if (status !in 200..299) throw Failure(errorCode(body) ?: if (status == 401) "not_signed_in" else if (status == 404) "feature_unavailable" else "error")
         return body

@@ -219,6 +219,7 @@ struct NativeGameView: View {
     /// The starting roll covers the board and answers its starting-player prompt itself.
     @Environment(\.startingRollVisible) var startingRollVisible
     @Environment(\.emoteCenter) var emoteCenter
+    @Environment(\.voiceRoom) var voiceRoom
 
     /// The prompt-detail panel opens by itself for this question; the Arena board answers ability choices, trigger
     /// order and modes in its own browsers (ArenaAbilityBrowser, ArenaModeBrowser) instead.

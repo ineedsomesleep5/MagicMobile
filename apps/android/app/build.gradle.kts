@@ -136,6 +136,9 @@ dependencies {
     // models. Only the arm64 libraries ship (abiFilters above), about 3 MB.
     implementation("com.google.android.filament:filament-android:1.75.1")
     implementation("com.google.android.filament:gltfio-android:1.75.1")
+    // Voice chat at online tables (ondevice/VoiceRoom.kt, docs/VOICE_CHAT.md): Agora's basic voice SDK, the version iOS uses.
+    // Only its arm64 library ships (abiFilters above), about 14 MB.
+    implementation("io.agora.rtc:voice-rtc-basic:4.6.4")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }
 tasks.register<JavaExec>("artworkCatalogueChecks") {

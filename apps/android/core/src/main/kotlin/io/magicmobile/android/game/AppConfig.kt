@@ -13,8 +13,8 @@ import kotlinx.serialization.json.booleanOrNull
 data class AppConfig(val notice: Notice? = null, val nameFixes: Map<String, String> = emptyMap(), val switches: Map<String, Boolean> = emptyMap()) {
     data class Notice(val id: String, val text: String)
 
-    /** A switch the server hasn't named is on. */
-    fun isOn(name: String): Boolean = switches[name] ?: true
+    /** A switch the server hasn't named is on, unless the feature says otherwise (voiceChat). */
+    fun isOn(name: String, default: Boolean = true): Boolean = switches[name] ?: default
 
     companion object {
         const val MAX_NAME_FIXES = 500

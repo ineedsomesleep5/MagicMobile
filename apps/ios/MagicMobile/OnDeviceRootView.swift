@@ -60,6 +60,8 @@ struct OnDeviceRootView: View {
     /// When this game's engine match began, for the game's length on the profile.
     @State private var gameStartedAt: Date?
     @StateObject private var emotes = EmoteCenter()
+    /// Voice chat for this online game (VoiceRoom); nil in solo games and while the server's switch is off.
+    @State private var voiceRoom: VoiceRoom?
     @State private var showDiagnostics = false
     @State private var confirmDeleteReport = false
     @State private var bannerError: String?
@@ -800,6 +802,7 @@ struct OnDeviceRootView: View {
         .onChange(of: setup.multiplayer?.isSuspended) { _, _ in setup.updateSessionForeground() }
         .onChange(of: setup.multiplayer?.endpoint?.matchID) { _, matchID in
             if matchID != nil { Task { await setup.attachMultiplayer(deckID: selectedDeckID, deck: selectedDeck) } }
+            syncVoiceRoom()
         }
         .onChange(of: session.snapshot?.bridgeRevision) { _, _ in
             refreshInspections()
@@ -1135,6 +1138,7 @@ struct OnDeviceRootView: View {
         .environment(\.gameConcede, GameConcedeHandler(concede: concede))
         .environment(\.gameFreezeReport, GameFreezeReportHandler(report: reportFreezeNow))
         .environment(\.emoteCenter, emotes)
+        .environment(\.voiceRoom, voiceRoom)
         // Messages from friends inside a game too: the game menu's Messages button, and a banner for a new one.
         .environment(\.friendMessages, account.phase == .ready && account.username != nil && account.messagesAvailable
                      ? FriendMessagesEntry(unread: account.unreadMessages, hub: { [account] in AnyView(FriendMessagesHub(account: account)) })
@@ -1188,6 +1192,24 @@ struct OnDeviceRootView: View {
         }
         .onAppear { connectEmotes() }
         .onChange(of: session.snapshot?.id) { _, _ in emotes.reset(); connectEmotes() }
+    }
+
+    /// Voice chat (VoiceRoom; docs/VOICE_CHAT.md): one room per online game once it has its channel and the server's
+    /// voiceChat switch is on. Nobody is in voice until they tap the mic; leaving the game leaves the channel.
+    private func syncVoiceRoom() {
+        let multiplayer = setup.usingMultiplayer ? setup.multiplayer : nil
+        let channel = multiplayer?.voiceChannel
+        let seat = VoiceChatRules.account(seat: multiplayer?.endpoint?.seatID)
+        let on = AppConfigStore.shared.current.isOn(VoiceChatRules.switchName, default: false)
+        if let room = voiceRoom, on, room.channel == channel, room.account == seat { return }
+        voiceRoom?.close()
+        voiceRoom = nil
+        guard on, let channel, let seat else { return }
+        let room = VoiceRoom(channel: channel, account: seat) { [account] channel, seat in
+            try await account.voiceToken(channel: channel, account: seat)
+        }
+        room.table = multiplayer
+        voiceRoom = room
     }
 
     /// Game Center games carry quick chat between devices; solo games only answer from the AI.

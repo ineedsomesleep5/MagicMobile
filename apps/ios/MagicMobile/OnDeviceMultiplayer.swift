@@ -660,6 +660,8 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     private var lobby: OnDeviceMultiplayerLobby?
     private var submission: MagicMobileOnDevice.JSONValue?
     private var epoch: UUID?
+    /// The game's voice channel (VoiceChatRules) once it has an epoch; nil before.
+    var voiceChannel: String? { VoiceChatRules.channel(epoch: epoch?.uuidString) }
     private var hostEngine: EngineClient?
     private var nativeMatchID: String?
     private var startup: Task<Void, Never>?

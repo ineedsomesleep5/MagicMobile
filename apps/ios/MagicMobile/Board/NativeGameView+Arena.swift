@@ -473,6 +473,7 @@ extension NativeGameView {
             .overlay { if let turnClockFeed, let playerName = opponent.displayName {
                 TurnClockRing(feed: turnClockFeed, playerName: playerName, diameter: diameter * 1.08)
             } }
+            .overlay { arenaVoiceHalo(seat: voiceRoom?.seat(named: opponent.displayName), diameter: diameter, badge: true) }
             .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [TavernSeatAnchor.top: $0] }
         let label = opponent.isOut ? "\(name), out of the game" : "\(name), \(opponent.life) life"
         return Group {
@@ -556,6 +557,7 @@ extension NativeGameView {
         let medallion = ArenaHeroMedallion(player: human, diameter: diameter, active: snapshot.isViewer(snapshot.activePlayerId),
                                            glow: targetID != nil ? ArenaPalette.targetGlow : nil, commanderReady: !castable.isEmpty)
             .overlay { if let turnClockFeed { TurnClockRing(feed: turnClockFeed, diameter: diameter * 1.08) } }
+            .overlay { arenaVoiceHalo(seat: voiceRoom?.account, diameter: diameter, badge: false) }
             .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [TavernSeatAnchor.bottom: $0] }
         return Group {
             if let targetID {
@@ -574,6 +576,10 @@ extension NativeGameView {
             // Poison and commander damage at a glance; the medallion's pop-over lists every status.
             TavernStatusGlance(summary: PlayerStatusSummary(player: human, snapshot: snapshot))
                 .offset(x: diameter * 0.3, y: diameter * 0.05)
+        }
+        .overlay(alignment: .bottomLeading) {
+            // Voice chat's mic (ArenaVoiceMic), by the medallion's lower left like the web's.
+            if let voiceRoom { ArenaVoiceMic(room: voiceRoom).offset(x: -diameter * 0.42, y: diameter * 0.12) }
         }
         .overlay(alignment: .top) {
             if let emoteCenter {
@@ -852,8 +858,16 @@ extension NativeGameView {
         if snapshot.source == "xmage-ondevice" {
             items.append(ArenaMenuItem(id: "more", title: "More actions", symbol: "ellipsis") { openPromptDetails() })
         }
+        if let voiceRoom, voiceRoom.state.stage == .live {
+            items.append(ArenaMenuItem(id: "leave-voice", title: "Leave Voice Chat", symbol: "mic.slash.fill") { voiceRoom.leave() })
+        }
         items.append(ArenaMenuItem(id: "settings", title: "Game Settings", symbol: "gearshape.fill") { isGameMenuOpen = true })
         return items
+    }
+
+    @ViewBuilder
+    private func arenaVoiceHalo(seat: String?, diameter: CGFloat, badge: Bool) -> some View {
+        if let voiceRoom, let seat { ArenaVoiceHalo(room: voiceRoom, seat: seat, diameter: diameter, badge: badge) }
     }
 
     private func arenaGameMenu(snapshot: GameSnapshot) -> some View {

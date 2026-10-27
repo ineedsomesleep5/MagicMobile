@@ -1039,6 +1039,9 @@ fun ArenaPlayerCard(player: PlayerGameState, snapshot: GameSnapshot, pendingActi
                 SfImage("xmark", ArenaGlass.text.copy(alpha = 0.8f), 13.dp)
             }
         }
+        io.magicmobile.android.ondevice.LocalVoiceRoom.current?.takeIf { !viewer }?.let { room ->
+            room.seatNamed(player.displayName)?.let { ArenaVoiceSilenceButton(room, it) }
+        }
         val summary = PlayerStatusSummary(player, snapshot)
         if (summary.orbit.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             for (badge in summary.orbit) Row(Modifier.semantics(mergeDescendants = true) { contentDescription = badge.label },

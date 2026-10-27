@@ -494,6 +494,13 @@ contradicting one.
 
 ## Agent environment
 
+- 2026-10-26 (Claude, voice chat): iPhones write the game's epoch upper case (`UUID().uuidString`), Android and the web
+  lower case, so anything named from the raw epoch splits a mixed table. **Rule:** lowercase it (`VoiceChatRules.channel`).
+  Agora's Android `io.agora.rtc:voice-sdk` pulls every extension (AI noise, spatial audio…); use `voice-rtc-basic` and iOS
+  `RtcBasic`, both 4.6.4 (iOS has 4.7.0, Maven Central stops at 4.6.4). Shared case files live in
+  `apps/android/core/src/test/resources/parity/`, not a root `parity/`. Claude never pastes the Agora certificate: Caleb sets
+  `AGORA_APP_CERTIFICATE` in Supabase. Where: docs/VOICE_CHAT.md.
+
 - 2026-10-26 (Claude, Android 42): the release build plus the emulator starved the 8 GB Mac into a watchdog kernel panic
   ("no checkins from watchdogd in 92 seconds", compressor "100% of segments limit (BAD) … LOW swap space"), and the reboot
   wiped `/private/tmp`, the scratchpad included. **Rule:** wait for idle and normal `memory_pressure` first, cap the Kotlin
