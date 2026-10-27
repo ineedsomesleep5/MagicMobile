@@ -41,13 +41,15 @@ Players at an online table (relay or Game Center, people only) can talk. It runs
 The shared cases are `apps/android/core/src/test/resources/parity/voice-cases.json` (iOS `VoiceChatRulesTests`, Android
 `VoiceChatRulesTest`, web `voiceChat.test.ts`, which also runs the web room against a stand-in for Agora).
 
-## Turning it on
+## Turning it on (done 2026-10-27)
 
-1. Caleb adds `AGORA_APP_CERTIFICATE` in Supabase (Agora console → Default Project → Primary Certificate).
-2. Builds with voice chat reach the phones.
+1. Caleb adds `AGORA_APP_CERTIFICATE` in Supabase (legacy Agora console → Projects → pencil → Security → Primary
+   Certificate; the new console shows only the App ID). Set 2026-10-27; a test join with a minted token worked.
+2. Builds with voice chat reach the phones: TestFlight 65, Android 43, the web deploy `dpl_F2mkVtEy96juVChN9woevMCbrkex`.
 3. `update public.app_settings set value = value || '{"voiceChat": true}', updated_at = now() where key = 'switches';`
+   (on since 2026-10-27; set it `false` to hide the mic everywhere without a build).
 
 ## Not verified yet
 
-A real channel (needs the certificate), two phones hearing each other, the game's sounds while voice is on (Agora takes
+Two phones hearing each other, the game's sounds while voice is on (Agora takes
 the audio session; `chatRoom` scenario, speaker by default), Bluetooth headsets on Android (no `BLUETOOTH_CONNECT`).

@@ -500,6 +500,10 @@ contradicting one.
   `RtcBasic`, both 4.6.4 (iOS has 4.7.0, Maven Central stops at 4.6.4). Shared case files live in
   `apps/android/core/src/test/resources/parity/`, not a root `parity/`. Claude never pastes the Agora certificate: Caleb sets
   `AGORA_APP_CERTIFICATE` in Supabase. Where: docs/VOICE_CHAT.md.
+- 2026-10-27 (Claude, voice chat): Agora's new console shows only the App ID; the Primary Certificate is in the legacy one
+  (console.agora.io → Realtime Communications Builder → Projects → pencil → Security). A wrong certificate still mints a
+  token; only a join proves it, so check with the web SDK joining a test channel, not the function's 200. The board finds
+  a seat from `seatNames`, which solo games leave empty, so a solo preview of voice needs the seat faked.
 
 - 2026-10-26 (Claude, Android 42): the release build plus the emulator starved the 8 GB Mac into a watchdog kernel panic
   ("no checkins from watchdogd in 92 seconds", compressor "100% of segments limit (BAD) … LOW swap space"), and the reboot

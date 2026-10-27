@@ -12,7 +12,7 @@ before TestFlight 64 / Android 42 don't read it.
 | --- | --- | --- |
 | `notice` | A banner on the main menu, shown once per `id` until the player closes it. `platforms` limits it to `ios`, `android`, `web`; `maxBuild` shows it only to builds at or below a number (to ask older builds to update). `null` shows nothing. | below |
 | `name_fixes` | Deck-import name fixes: the name a deck site sends → the app's card name. Used only when that card is in the app's catalogue, after the app's own matching (exact name, plain letters, front of a two-part name). | `{"Some Archidekt Name": "Engine Name"}` |
-| `switches` | Turns newer features off without a build. A switch that isn't named is on, except `voiceChat`. `leaveVote`: the vote to go on without a player who is away (a player who leaves is still conceded). `stackAutoTuck`: the stack card tucking itself while you pick a target. `voiceChat`: the mic at online tables (docs/VOICE_CHAT.md), off unless named on. | `{"leaveVote": true, "stackAutoTuck": true, "voiceChat": false}` |
+| `switches` | Turns newer features off without a build. A switch that isn't named is on, except `voiceChat`. `leaveVote`: the vote to go on without a player who is away (a player who leaves is still conceded). `stackAutoTuck`: the stack card tucking itself while you pick a target. `voiceChat`: the mic at online tables (docs/VOICE_CHAT.md), off unless named on. | `{"leaveVote": true, "stackAutoTuck": true, "voiceChat": true}` (voice on since 2026-10-27) |
 
 ```sql
 -- A notice for iPhones on build 63 or older and Android on 41 or older.

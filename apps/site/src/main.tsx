@@ -302,9 +302,9 @@ function App() {
               <details>
                 <summary>What to expect from the alpha</summary>
                 <p>
-                  Android build 42 keeps online tables going when a player leaves (the others can vote to go on without someone
-                  who dropped), lets you tuck the stack card aside, joins a friend's table from their profile, imports more
-                  Archidekt decks whole, and adds a richer leaderboard and profile. AI opponents match your rank, and your decks stay in
+                  Android build 43 adds voice chat at online tables: tap the mic by your portrait to talk with the other players,
+                  on Android, iPhone or the web. Tables keep going when a player leaves, and the leaderboard and profile show
+                  more of your games. AI opponents match your rank, and your decks stay in
                   sync across every phone signed in to the same profile. Arena stays the default board, with Hearth in Options. It keeps the lighter engine from
                   build 31. Android is an early alpha; physical-phone acceptance is still pending.
                 </p>
