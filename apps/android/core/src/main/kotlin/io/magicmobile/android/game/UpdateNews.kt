@@ -20,6 +20,11 @@ object UpdateNews {
     fun isNew(index: Int): Boolean = index == 0
 
     val messages: List<UpdateNewsMessage> = listOf(
+        UpdateNewsMessage("own-art", "Your own card art", 27, "Zur the Enchanter", listOf("W", "U", "B"),
+            "Put your own picture on any card in Deck Studio. It fills the card's art box, and only you see it.",
+            listOf("The art you chose shows from a game's first moment, without the default art swapping in.",
+                "Smart Auto-Pass waits on your own trigger when you have an ability that can use it, like Gogo copying Zur's attack trigger.",
+                "The starting roll says \"You roll\" when it's your turn to roll.")),
         UpdateNewsMessage("arena-menus", "The menus follow the Arena board", 22, "Rhystic Study", listOf("U"),
             "Every menu now matches the Arena board: Play opens a panel beside your deck boxes, and the boxes open when you choose one.",
             listOf(

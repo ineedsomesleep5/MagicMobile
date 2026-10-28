@@ -4,6 +4,8 @@
  * Requests are spaced ~80 ms apart, as Scryfall asks, and every image is cached for the session.
  */
 import { createElement, useEffect, useState } from "react";
+import { artKey, type ChosenPrinting } from "../core/artChoices";
+import { composedCardURL, customPictureURL, hasCustomArt } from "./customArt";
 import type { DeckResolver } from "../core/deckResolver";
 import { tokenArtworkName } from "../core/gameStats";
 import type { CardIdentity, TokenArtworkIdentity, ZoneCard } from "../core/models";
@@ -14,14 +16,30 @@ export type ArtVersion = "normal" | "large" | "art_crop";
 
 let resolver: DeckResolver | undefined;
 export const setArtResolver = (value: DeckResolver) => { resolver = value; };
+/** The player's chosen printings by card (core/artChoices.ts); they win over the catalogue's printing. */
+let chosenArt = new Map<string, ChosenPrinting>();
+export const setChosenArt = (value: Map<string, ChosenPrinting>) => { chosenArt = value; };
 
-export const cardImageURL = (name: string, version: ArtVersion): string => {
+/** The card's own image from Scryfall: the chosen printing, else the catalogue's, else by name. */
+const printedImageURL = (name: string, version: ArtVersion): string => {
   const front = name.split(" // ")[0];
+  const chosen = chosenArt.get(artKey(name));
+  if (chosen) {
+    return `https://api.scryfall.com/cards/${encodeURIComponent(chosen.setCode.toLowerCase())}/${encodeURIComponent(chosen.collectorNumber)}?format=image&version=${version}`;
+  }
   const printing = resolver?.printing(name) ?? resolver?.printing(front);
   if (printing) {
     return `https://api.scryfall.com/cards/${encodeURIComponent(printing.setCode.toLowerCase())}/${encodeURIComponent(printing.collectorNumber)}?format=image&version=${version}`;
   }
   return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(front)}&format=image&version=${version}`;
+};
+
+/** A card's picture: with your own picture (customArt.ts) the art crop is that picture, and the full card wears it. */
+export const cardImageURL = (name: string, version: ArtVersion): string => {
+  const printed = printedImageURL(name, version);
+  if (!hasCustomArt(name)) return printed;
+  if (version === "art_crop") return customPictureURL(name) ?? printed;
+  return composedCardURL(name, version, printed) ?? printed;
 };
 
 /**

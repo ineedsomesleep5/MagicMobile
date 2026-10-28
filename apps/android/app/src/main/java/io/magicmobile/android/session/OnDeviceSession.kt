@@ -424,7 +424,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         val owner = view["players"].array?.firstOrNull { it["playerId"].string == context.viewerID } ?: return null
         return OnDeviceSmartPass.Situation(context, view["step"].string, OnDeviceSmartPass.hasPlay(view), OnDeviceSmartPass.manaFloating(owner),
             OnDeviceSmartPass.topStackIsMine(poll?.snapshot, context.viewerID), OnDeviceSmartPass.hasResponse(view),
-            !context.emptyStack && (snapshot?.let(OnDeviceSmartPass::threatensViewer) ?: false))
+            !context.emptyStack && (snapshot?.let(OnDeviceSmartPass::threatensViewer) ?: false), OnDeviceSmartPass.hasAbilityResponse(view))
     }
 
     private fun smartPassPrompt(): OnDeviceYieldPolicy.Prompt? {

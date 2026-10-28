@@ -215,6 +215,25 @@ final class OnDeviceYieldPolicyTests: XCTestCase {
         XCTAssertNil(OnDeviceSmartPass.passPrompt(value("PRECOMBAT_MAIN", empty: true, mine: nil, response: false), settings: settings))
     }
 
+    /// Caleb, 2026-10-27: Zur's attack trigger resolved before Gogo could copy it. Your own trigger stops when an
+    /// ability of yours could answer it, and still resolves with only a counterspell in hand.
+    func testOwnTriggerStopsForAnAbilityThatCanUseIt() {
+        var v = situation(hasPlay: true, step: "DECLARE_ATTACKERS", emptyStack: false)
+        v.topStackIsMine = true; v.hasResponse = true
+        let settings = OnDeviceSmartPass.Settings()
+        XCTAssertNotNil(OnDeviceSmartPass.passPrompt(v, settings: settings), "a counterspell alone doesn't stop your trigger")
+        v.hasAbilityResponse = true
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(v, settings: settings), "Gogo gets the chance to copy it")
+        typealias J = MagicMobileOnDevice.JSONValue
+        func view(_ rows: [J]) -> J { .object(["canPlayObjects": .object(["objects": .object(["c1": .object(["other": .array(rows)])])])]) }
+        let gogo: J = .object(["spellAbility": .bool(false), "manaAbility": .bool(false), "respondsToStack": .bool(true)])
+        let counterspell: J = .object(["spellAbility": .bool(true), "manaAbility": .bool(false), "respondsToStack": .bool(true)])
+        XCTAssertTrue(OnDeviceSmartPass.hasAbilityResponse(view([counterspell, gogo])))
+        XCTAssertFalse(OnDeviceSmartPass.hasAbilityResponse(view([counterspell])), "spells don't count")
+        XCTAssertFalse(OnDeviceSmartPass.hasAbilityResponse(view([.object(["spellAbility": .bool(false)])])), "only an explicit flag counts")
+        XCTAssertFalse(OnDeviceSmartPass.hasAbilityResponse(view([.object(["spellAbility": .bool(false), "manaAbility": .bool(true), "respondsToStack": .bool(true)])])))
+    }
+
     /// Caleb, 2026-10-21: an opponent's board wipe resolved before he could read it. Their removal or sweeper stops for
     /// you, answer or not, unless you turn Stop for Removal off; a skip that passes responses stops for it too.
     func testSmartPassStopsForAnOpponentsRemovalEvenWithoutAnAnswer() {

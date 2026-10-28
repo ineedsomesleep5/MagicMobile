@@ -113,6 +113,8 @@ export interface Situation {
   hasResponse: boolean;
   /** The top of the stack is an opponent's and threatens what you control (`threatensViewer`). */
   threatensMe?: boolean;
+  /** An activated ability (not a spell, not mana) could answer the stack: Gogo copying your own trigger. */
+  hasAbilityResponse?: boolean;
 }
 
 /** The prompt to pass, or undefined when the player should decide. */
@@ -129,7 +131,9 @@ export function passPrompt(value: Situation, settings: SmartPassSettings): Yield
   // Something on the stack: your own spell or trigger resolves (unless you asked to stop for those);
   // otherwise stop only when you hold a play that actually answers it.
   if (!context.emptyStack) {
-    if (value.topStackIsMine === true && !settings.stopForOwnSpells) return prompt;
+    // Your own trigger still stops when an ability of yours could use it (Caleb, 2026-10-27: Gogo copying Zur's
+    // attack trigger never got the chance); a counterspell in hand doesn't stop it.
+    if (value.topStackIsMine === true && !settings.stopForOwnSpells) return value.hasAbilityResponse === true ? undefined : prompt;
     return value.hasResponse ? undefined : prompt;
   }
   const step = stepFromEngine(value.step);
@@ -177,6 +181,14 @@ export const hasPlay = (gameView: J | undefined) => playableRows(gameView).some(
 /** Whether some non-mana play could answer what is pending (engine `respondsToStack`, missing means yes). */
 export const hasResponse = (gameView: J | undefined) =>
   playableRows(gameView).some(([category, row]) => !isManaRow(category, row) && bool(get(row, "respondsToStack")) !== false);
+
+/**
+ * Whether an activated ability (engine `spellAbility` false, not a mana ability) could answer the stack. Only an explicit
+ * `respondsToStack` counts, so older engines keep passing on your own triggers.
+ */
+export const hasAbilityResponse = (gameView: J | undefined) =>
+  playableRows(gameView).some(([category, row]) =>
+    !isManaRow(category, row) && bool(get(row, "spellAbility")) === false && bool(get(row, "respondsToStack")) === true);
 
 /** Whether the top stack object is the viewer's own; undefined when the engine doesn't send controllers. */
 export function topStackIsMine(root: J | undefined, viewer: string): boolean | undefined {
@@ -228,6 +240,7 @@ export function situation(poll: MatchPoll, foreground: boolean, snapshot?: GameS
     context, step: str(get(view, "step")), hasPlay: hasPlay(view), manaFloating: manaFloating(owner),
     topStackIsMine: topStackIsMine(poll.snapshot, context.viewerID), hasResponse: hasResponse(view),
     threatensMe: !context.emptyStack && snapshot !== undefined && threatensViewer(snapshot),
+    hasAbilityResponse: hasAbilityResponse(view),
   };
 }
 
