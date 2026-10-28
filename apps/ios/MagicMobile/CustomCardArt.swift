@@ -1,6 +1,7 @@
 import CryptoKit
 import ImageIO
-import UIKit
+import CoreGraphics
+import Foundation
 import UniformTypeIdentifiers
 
 /// Pictures the player chose for cards (Deck Studio, "Use my own picture"): kept on this device only, one per card

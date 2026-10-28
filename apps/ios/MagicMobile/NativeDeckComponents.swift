@@ -294,11 +294,6 @@ enum NativeDeckDisplay {
     }
 }
 
-enum NativeArtworkPreference {
-    /// One spelling of the consent key, so a new surface cannot drift onto its own store.
-    static let key = "magicmobile.deckArtworkNetworkEnabled"
-}
-
 struct NativeArtworkPreferenceView: View {
     @AppStorage(NativeArtworkPreference.key) private var remoteArtwork = false
     var body: some View {
