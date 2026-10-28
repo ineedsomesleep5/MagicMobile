@@ -1,14 +1,14 @@
 // Published release metadata. Bump iOS only after the new TestFlight build is verified live.
 export const sharedAppVersion = "0.1.1";
-const androidReleaseBuild = "46";
-const iosTestFlightBuild = "68";
+const androidReleaseBuild = "47";
+const iosTestFlightBuild = "69";
 
 // Keep platform build numbers independent; the TestFlight invitation URL is stable.
 export const releases = {
   android: {
     version: sharedAppVersion,
     build: androidReleaseBuild,
-    url: "https://github.com/ineedsomesleep5/MagicMobile/releases/download/android-v0.1.1-build.46/MagicMobile-Android-0.1.1-build46.apk",
+    url: "https://github.com/ineedsomesleep5/MagicMobile/releases/download/android-v0.1.1-build.47/MagicMobile-Android-0.1.1-build47.apk",
   },
   ios: {
     version: sharedAppVersion,

@@ -39,6 +39,14 @@
         "--strictPort"
       ],
       "port": 5181
+    },
+    {
+      "name": "deck-helper",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "scripts/deck-helper/serve.py"
+      ],
+      "port": 8765
     }
   ]
 }
