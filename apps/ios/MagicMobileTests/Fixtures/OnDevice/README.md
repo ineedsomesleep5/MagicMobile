@@ -23,6 +23,7 @@ Swift-model conversion. JSON whitespace/key ordering may differ from wire text.
 | `2p-battlefield.json` | The creature after normal spell resolution |
 | `2p-attackers.json` | Real attacker selection, including upstream button/selection metadata |
 | `2p-combat.json` | Declared combat after attacker selection, including actual attacker and defender identities |
+| `target-*.json` | Target questions whose choices aren't on the table as shown (2026-10-28): `stack-ability` (Gogo copying Zur's attack trigger), `stack-spell` (Counterspell, two spells), `graveyard`, `any-graveyard`, `four-player` (Shock), `four-player-creature` (Doom Blade, creatures only on hidden opponents). Staged with the lesson recorder's test cheat, so unlike the polls above they use arbitrary game-state setup; `scripts/lessons/capture_targets.py` re-records them |
 
 The manifest records `matches[].seatToEnginePlayerId`, derived directly from each
 seat's `snapshot.enginePlayerId`; use that mapping to associate protocol seat IDs

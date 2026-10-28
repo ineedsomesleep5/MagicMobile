@@ -562,7 +562,8 @@ fun TavernPlayerZoneMenu(player: PlayerGameState, viewZone: (String, List<ZoneCa
             }
         }
         if (swapOpponents.size > 1 && swap != null) {
-            TavernOpponentSwap(swapOpponents, player.playerId, { game?.playerLabel(it) ?: "Opponent" }, swap)
+            TavernOpponentSwap(swapOpponents, player.playerId, { game?.playerLabel(it) ?: "Opponent" }, swap,
+                game?.let { io.magicmobile.android.game.ArenaTargetReach.of(it).hiddenOpponents.toSet() } ?: emptySet())
         }
     }
 }

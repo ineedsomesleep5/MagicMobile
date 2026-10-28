@@ -189,3 +189,12 @@ export function combatPhase(snapshot: GameSnapshot): "attackers" | "blockers" | 
 export function arenaStackTucked(top: string, tuckedTop: string | undefined, peekTop: string | undefined, picking: boolean): boolean {
   return peekTop !== top && (tuckedTop === top || picking);
 }
+
+/**
+ * A target question's choices on the stack (iOS ArenaTargetReach; Caleb, 2026-10-28: Gogo copying Zur's attack trigger
+ * offered only abilities on the stack, so nothing could be clicked): the stack browser opens to choose them, the one that
+ * resolves next first. The web board shows every opponent, so it never needs to turn to one.
+ */
+export function stackChoices(snapshot: GameSnapshot | undefined, targetable: Set<string>): string[] {
+  return targetable.size === 0 ? [] : (snapshot?.xmage?.stack ?? []).map((s) => s.id).filter((id) => targetable.has(id));
+}

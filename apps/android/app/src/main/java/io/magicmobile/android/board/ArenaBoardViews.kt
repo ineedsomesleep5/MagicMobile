@@ -1075,7 +1075,8 @@ fun ArenaPlayerCard(player: PlayerGameState, snapshot: GameSnapshot, pendingActi
                 Text("${reference.cards(snapshot).size}", color = ArenaGlass.text, style = ArenaMenuStyle.font(13f, SfWeight.heavy).copy(fontFeatureSettings = "tnum"))
             }
         }
-        if (opponents.size > 1 && swap != null) TavernOpponentSwap(opponents, player.playerId, { snapshot.playerLabel(it) }, swap)
+        if (opponents.size > 1 && swap != null) TavernOpponentSwap(opponents, player.playerId, { snapshot.playerLabel(it) }, swap,
+            io.magicmobile.android.game.ArenaTargetReach.of(snapshot).hiddenOpponents.toSet())
     }
 }
 

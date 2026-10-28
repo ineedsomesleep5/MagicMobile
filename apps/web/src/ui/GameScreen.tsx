@@ -41,7 +41,7 @@ import { CombatLogReasons } from "../core/gameLog";
 import { TriggerPlan, type TriggerPick } from "./arena/triggerPlan";
 import type { CardChoicePlan } from "../core/cardChoicePlan";
 import { allAttackTargets, AttackQueue, boardTargetableIds, combatArrows, declaredCount, finishTitle } from "./arena/combat";
-import { arenaStackTucked, combatPhase, commandersTaken, commanderTakenNotice, extraHandCards } from "../core/arenaBoard";
+import { arenaStackTucked, combatPhase, stackChoices, commandersTaken, commanderTakenNotice, extraHandCards } from "../core/arenaBoard";
 import { GameStats } from "../core/gameStats";
 import { BoardFXOverlay, FXBoundary, type FXAnchors } from "./arena/BoardFX";
 import { fxNow, useBoardFX } from "./arena/useBoardFX";
@@ -232,6 +232,8 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
     session?.setSmartPass(next);
   };
   const [stackOpen, setStackOpen] = useState(false);
+  /** The target question whose stack choices the player stepped away from (Done): the browser waits for the stack card. */
+  const [stackPickDismissed, setStackPickDismissed] = useState<string>();
   /** When each stack object first showed, so its landing plays once. */
   const stackSeen = useRef(new Map<string, number>());
   // Card Frames (iOS Settings, per board mode): off by default on the Arena board, the reference game's cards.
@@ -320,6 +322,11 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
   const envelope = snapshot?.promptEnvelopeV2;
   const finished = snapshot !== undefined && isCompleted(snapshot);
   const targetIDs = new Set([...(envelope?.targetIds ?? []), ...(envelope?.targets ?? []).map((t) => t.id)]);
+  // A target question whose choices are on the stack opens the stack to choose them (stackChoices).
+  const stackPicks = stackChoices(snapshot, targetIDs);
+  const stackPick = stackPicks.length > 0 && envelope ? `${envelope.id}:${envelope.messageId}` : undefined;
+  const stackShown = stackOpen || (stackPick !== undefined && stackPick !== stackPickDismissed);
+  const closeStack = () => { setStackOpen(false); setStackPickDismissed(stackPick); };
   // Which combat declaration the table asks for (ArenaCombatPhase): XMage's target prompt in the declare steps.
   const combat = snapshot ? combatPhase(snapshot) : undefined;
   const combatSelect = combat !== undefined;
@@ -385,7 +392,8 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
     window.addEventListener("blur", release);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); window.removeEventListener("blur", release); release(); };
   }, [voice, pushToTalk, talkKey]);
-  const pickingOnTable = appConfig.isOn("stackAutoTuck") && snapshot !== undefined && boardTargetableIds(snapshot).size > 0;
+  // It tucks itself while you pick on the table, never when the choices are on the stack.
+  const pickingOnTable = appConfig.isOn("stackAutoTuck") && snapshot !== undefined && boardTargetableIds(snapshot).size > 0 && stackPicks.length === 0;
   const stackTucked = (id: string) => revealID !== id && arenaStackTucked(id, stackTuckedTop, stackPeekTop, pickingOnTable);
   const promptActions = (snapshot?.legalActions ?? []).filter((a) => a.cardInstanceId === undefined && a.sourceInstanceId === undefined);
 
@@ -510,7 +518,7 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
     return (id: string) => ids.has(id);
   }, [snapshot, me]);
   // With a D20 roll the table answers XMage's starting-player question itself, so that question never shows.
-  const rawBrowser = browserKind(envelope, onTable, (name) => snapshot !== undefined && cardNamed(snapshot, name) !== undefined);
+  const rawBrowser = stackPicks.length > 0 ? undefined : browserKind(envelope, onTable, (name) => snapshot !== undefined && cardNamed(snapshot, name) !== undefined);
   const browser = playerPanel !== undefined && playerPanel === envelope?.id ? "players"
     : rawBrowser === "players" && table.state.roll !== undefined ? undefined : rawBrowser;
   // Auto Pay answers its own colour question; it never opens the choice browser.
@@ -680,7 +688,7 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
   }, [handIDs.join(",")]);
   useEffect(() => () => arrivalTimers.current.forEach((t) => window.clearTimeout(t)), []);
   // A browser over the table keeps the hand resting under its veil.
-  const covered = showBrowser || zone !== undefined || stackOpen || commanderView !== undefined;
+  const covered = showBrowser || zone !== undefined || stackShown || commanderView !== undefined;
   const carrying = carry?.moved === true;
   // The hand rests tucked along the bottom edge; the card under the pointer pops up whole (ArenaHandPosture: the
   // landscape board never opens the fan). A browser over the table or a carried card puts the pop down.
@@ -1084,7 +1092,7 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
   const undoMana = snapshot && paying && !autoPaying ? manaUndoActions(snapshot).find((a) => a.type === "undo_mana") : undefined;
   const closeTop = menu ? () => setMenu(undefined) : cornerMenu ? () => setCornerMenu(undefined)
     : playerCard ? () => setPlayerCard(undefined) : confirmConcede ? () => setConfirmConcede(false) : sheet ? () => setSheet(undefined)
-    : commanderView ? () => setCommanderView(undefined) : zone ? () => setZone(undefined) : stackOpen ? () => setStackOpen(false)
+    : commanderView ? () => setCommanderView(undefined) : zone ? () => setZone(undefined) : stackShown ? closeStack
     : panel ? () => setPanel(undefined) : undefined;
   const keys = useRef<{ primary?: () => void; fullControl?: () => void; undo?: () => void; close?: () => void; reading: boolean }>({ reading: false });
   keys.current = {
@@ -1234,7 +1242,7 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
             })}
           </svg>
         )}
-        {snapshot && stack[0] && revealID !== stack[0].id && !showBrowser && !reading && !playerCard && !stackOpen && !zone && !commanderView && (() => {
+        {snapshot && stack[0] && revealID !== stack[0].id && !showBrowser && !reading && !playerCard && !stackShown && !zone && !commanderView && (() => {
           // The top of the stack points at its targets, a spell as well as an ability, with a reticle on each target while it
           // waits; an ability without targets points back at its source (ArenaStackArc, ArenaTargetReticle).
           const top = stack[0];
@@ -1634,9 +1642,15 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
           <Inspector card={reading.card} name={reading.name} battlefield={snapshot.players.flatMap((p) => p.zones.battlefield)} height={geo.height}
             holding={reading.held} close={() => setReading(undefined)} />
         )}
-        {stackOpen && snapshot && (
+        {stackShown && snapshot && stack.length > 0 && (
           <div onClick={stop}>
-            <StackBrowser snapshot={snapshot} height={geo.height} inspect={reader} close={() => setStackOpen(false)}
+            <StackBrowser snapshot={snapshot} height={geo.height} inspect={reader} close={closeStack}
+              choosable={pending ? undefined : new Set(stackPicks)}
+              choose={stackPick ? (id) => {
+                setStackOpen(false);
+                send({ type: "choose_target", targetIds: [id] }, `Choose ${stack.find((s) => s.id === id)?.sourceName ?? "it"}`);
+              } : undefined}
+              answers={stackPick ? promptActions.filter((a) => a.type === "answer_yes_no").map((a) => ({ id: a.id, title: a.label, action: () => sendAction(a) })) : undefined}
               resolveAll={secondary?.label === "Resolve All" ? secondary.onClick : undefined}
               stopSkipping={skipping && session ? () => session.stopAutoPass() : undefined} />
           </div>

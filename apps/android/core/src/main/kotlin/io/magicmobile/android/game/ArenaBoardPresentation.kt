@@ -315,6 +315,39 @@ object ArenaStackTuck {
         peekTop != top && (tuckedTop == top || picking)
 }
 
+/**
+ * Where a target question's choices are when the table can't show them (iOS ArenaTargetReach; Caleb, 2026-10-28: Gogo
+ * copying Zur's attack trigger offered only abilities on the stack, so nothing could be tapped). Spells and abilities on
+ * the stack are chosen in the stack browser. With four players the board shows one opponent: when it offers nothing to
+ * choose and another opponent's permanents do, the board turns to that opponent.
+ */
+data class ArenaTargetReach(
+    /** Stack objects that can be chosen, the one that resolves next first. */
+    val stack: List<String>,
+    /** Opponents the board doesn't show whose permanents can be chosen, in seat order. */
+    val hiddenOpponents: List<String>,
+    /** Something on the table as shown can be chosen: a permanent on your side or the shown opponent's, or one of you. */
+    val onTable: Boolean,
+) {
+    /** The opponent to show for this question: the first hidden one with choices, when the table as shown has none. */
+    val opponentToShow: String? get() = if (onTable || stack.isNotEmpty()) null else hiddenOpponents.firstOrNull()
+
+    companion object {
+        fun of(snapshot: GameSnapshot, targetable: Set<String> = GameBoardInteractionState.boardTargetableIds(snapshot)): ArenaTargetReach {
+            if (targetable.isEmpty()) return ArenaTargetReach(emptyList(), emptyList(), false)
+            fun chosen(card: ZoneCard) = card.id in targetable || card.instanceId in targetable
+            val shown = listOfNotNull(snapshot.seat?.playerId, snapshot.opponent?.playerId)
+            val onTable = snapshot.players.any { player ->
+                player.playerId in shown && (player.playerId in targetable || player.zones.battlefield.any(::chosen))
+            }
+            val hidden = snapshot.players.filter { player ->
+                player.playerId !in shown && !snapshot.isViewer(player.playerId) && player.zones.battlefield.any(::chosen)
+            }.map { it.playerId }
+            return ArenaTargetReach(snapshot.stackTopFirst.map { it.id }.filter { it in targetable }, hidden, onTable)
+        }
+    }
+}
+
 object ArenaTableRules {
     /** The library's top card when it is revealed; the design fixtures' "Hidden card" placeholders stay face down. */
     fun revealedTop(player: PlayerGameState): ZoneCard? = player.zones.library.firstOrNull()?.takeIf { it.card.name != "Hidden card" }

@@ -96,7 +96,7 @@ const checkAmount = (value: number, min: number, max: number) => {
 
 export const OnDevicePromptAdapter = {
   presentation(prompt: EnginePrompt, viewerPlayerID: string, cards: ZoneCard[], players: PlayerGameState[] = [],
-    actingAttackerPlayerID?: string): PromptPresentation {
+    actingAttackerPlayerID?: string, stack: { id: string; sourceName?: string; sourceCardID?: string }[] = []): PromptPresentation {
     validate(prompt, viewerPlayerID);
     const revision = prompt.revision;
     const payload = prompt.payload;
@@ -114,7 +114,10 @@ export const OnDevicePromptAdapter = {
     });
     const targetLabel = (id: string): string => {
       if (id === viewerPlayerID) return "You";
-      return EngineDisplayText.label(players.find((p) => p.playerId === id)?.displayName ?? cards.find((c) => c.instanceId === id)?.card.name ?? id);
+      // An ability on the stack has no card of its own: it goes by its source ("Zur the Enchanter’s ability").
+      const object = stack.find((s) => s.id === id && s.sourceCardID !== id);
+      const ability = object ? `${object.sourceName ?? "Source unavailable"}’s ability` : undefined;
+      return EngineDisplayText.label(players.find((p) => p.playerId === id)?.displayName ?? cards.find((c) => c.instanceId === id)?.card.name ?? ability ?? id);
     };
     const has = (type: string) => prompt.responseTypes.includes(type);
     const selectMode = str(payload.selectMode);

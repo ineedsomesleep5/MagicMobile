@@ -1506,14 +1506,22 @@ struct ArenaAbilityBrowser: View {
 /// browser, the one that resolves next first. Spells show as their card, abilities as ability cards; whose each is and
 /// what it targets sits underneath. A tap reads a card; Resolve All and Done below. Landscape lays them in one row,
 /// portrait in two columns, so many show at once.
+/// A target question whose choices are on the stack (ArenaTargetReach; Gogo copying Zur's trigger) opens it to choose:
+/// its message is the title, the choices glow, the rest dim, and a tap chooses. Done steps aside to the table.
 struct ArenaStackBrowser: View {
     @Environment(\.arenaSafeArea) private var safeArea
     let snapshot: GameSnapshot
     let screen: CGSize
     var resolveAll: (() -> Void)?
     var stopSkipping: (() -> Void)?
+    var choosable: Set<String> = []
+    /// XMage's own answers beside the choices (Cancel for an optional target).
+    var answers: [(id: String, title: String, action: () -> Void)] = []
+    var choose: ((String) -> Void)?
     let inspect: (ZoneCard) -> Void
     let close: () -> Void
+
+    private var choosing: Bool { choose != nil && !choosable.isEmpty }
 
     private var objects: [XmageStackObject] { snapshot.stackTopFirst }
     private var landscape: Bool { screen.width > screen.height }
@@ -1550,8 +1558,9 @@ struct ArenaStackBrowser: View {
                     }
                 } else {
                     ScrollView(.vertical, showsIndicators: false) {
-                        LazyVGrid(columns: [GridItem(.fixed(cardSize.width), spacing: 18), GridItem(.fixed(cardSize.width), spacing: 18)],
-                                  spacing: 26) {
+                        LazyVGrid(columns: [GridItem(.fixed(cardSize.width), spacing: 18, alignment: .top),
+                                            GridItem(.fixed(cardSize.width), spacing: 18, alignment: .top)],
+                                  alignment: .center, spacing: 26) {
                             ForEach(Array(objects.enumerated()), id: \.element.id) { index, object in entry(object, position: index) }
                         }
                         .padding(.vertical, 20)
@@ -1572,18 +1581,26 @@ struct ArenaStackBrowser: View {
     private var header: some View {
         VStack(spacing: 6) {
             HStack(spacing: 10) {
-                Text("The Stack")
-                    .font(.system(size: 22, weight: .bold, design: .serif))
+                Text(choosing ? PromptDisplayText.clean(snapshot.promptEnvelopeV2?.message ?? "Choose one") : "The Stack")
+                    .font(.system(size: choosing ? 19 : 22, weight: .bold, design: .serif))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
                     .foregroundStyle(ArenaGlass.text)
                     .shadow(color: .black, radius: 2)
-                ArenaCountBadge(count: snapshot.xmage?.stack.count ?? objects.count, size: 28)
-                    .accessibilityLabel("\(snapshot.xmage?.stack.count ?? objects.count) on the stack")
+                // Choosing, the question is the title and each card wears its place.
+                if !choosing {
+                    ArenaCountBadge(count: snapshot.xmage?.stack.count ?? objects.count, size: 28)
+                        .accessibilityLabel("\(snapshot.xmage?.stack.count ?? objects.count) on the stack")
+                }
             }
+            .padding(.horizontal, 24)
             HStack(spacing: 8) {
                 Text(objects.count > 1 ? "Resolves left to right" : "Resolves next")
                     .font(ArenaMenuStyle.font(13, .medium))
                     .foregroundStyle(ArenaGlass.text.opacity(0.75))
-                TavernTag(text: responding ? "YOUR RESPONSE" : "WAITING", leather: true, accent: responding ? TavernPalette.ember : nil)
+                TavernTag(text: choosing ? "CHOOSE ONE" : responding ? "YOUR RESPONSE" : "WAITING", leather: true,
+                          accent: choosing || responding ? TavernPalette.ember : nil)
             }
         }
     }
@@ -1595,14 +1612,21 @@ struct ArenaStackBrowser: View {
                     .buttonStyle(ArenaPlaqueButtonStyle(kind: .secondary, fontSize: 15))
                     .frame(width: 150, height: 40)
             }
-            if let resolveAll {
+            if let resolveAll, !choosing {
                 Button("Resolve All", action: resolveAll)
                     .buttonStyle(ArenaPlaqueButtonStyle(kind: .secondary, fontSize: 16))
                     .frame(width: 150, height: 40)
                     .accessibilityIdentifier("board.stack.sheet.resolveAll")
             }
-            Button("Done", action: close)
-                .buttonStyle(ArenaPlaqueButtonStyle(kind: .primary, fontSize: 16))
+            if choosing {
+                ForEach(answers, id: \.id) { answer in
+                    Button(answer.title, action: answer.action)
+                        .buttonStyle(ArenaPlaqueButtonStyle(kind: .secondary, fontSize: 16))
+                        .frame(width: 150, height: 40)
+                }
+            }
+            Button(choosing ? "View Battlefield" : "Done", action: close)
+                .buttonStyle(ArenaPlaqueButtonStyle(kind: choosing ? .secondary : .primary, fontSize: choosing ? 15 : 16))
                 .frame(width: 150, height: 40)
                 .accessibilityIdentifier("board.stack.done")
         }
@@ -1611,6 +1635,7 @@ struct ArenaStackBrowser: View {
     private func entry(_ object: XmageStackObject, position: Int) -> some View {
         let next = position == 0
         let ability = ArenaStackCard.isAbility(object) || object.displaySourceCard == nil
+        let choice = choosing && choosable.contains(object.id)
         return VStack(spacing: 7) {
             Group {
                 if ability {
@@ -1623,7 +1648,12 @@ struct ArenaStackBrowser: View {
                 }
             }
             .overlay {
-                if next {
+                if choice {
+                    RoundedRectangle(cornerRadius: cardSize.width * 0.05)
+                        .strokeBorder(ArenaPalette.targetGlow, lineWidth: 3)
+                        .shadow(color: ArenaPalette.targetGlow, radius: 9)
+                        .allowsHitTesting(false)
+                } else if next && !choosing {
                     RoundedRectangle(cornerRadius: cardSize.width * 0.05)
                         .strokeBorder(Color(red: 1, green: 0.82, blue: 0.4), lineWidth: 3)
                         .shadow(color: Color(red: 1, green: 0.75, blue: 0.3), radius: 8)
@@ -1631,9 +1661,14 @@ struct ArenaStackBrowser: View {
                 }
             }
             .overlay(alignment: .top) { ArenaCountBadge(count: position + 1, size: 30).offset(y: -15) }
+            .saturation(choosing && !choice ? 0.35 : 1)
+            .opacity(choosing && !choice ? 0.55 : 1)
             .shadow(color: .black.opacity(0.6), radius: 8, y: 5)
             .contentShape(Rectangle())
-            .onTapGesture { if let card = object.displaySourceCard { inspect(card) } }
+            .onTapGesture {
+                if choice, let choose { GameHaptics.selection(); choose(object.id) } else if let card = object.displaySourceCard { inspect(card) }
+            }
+            .onLongPressGesture(minimumDuration: 0.35) { if let card = object.displaySourceCard { inspect(card) } }
             VStack(spacing: 2) {
                 Text(next ? "RESOLVES NEXT" : owner(object).uppercased())
                     .font(ArenaMenuStyle.font(10, .heavy)).tracking(0.8)
@@ -1654,8 +1689,8 @@ struct ArenaStackBrowser: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(position + 1). \(object.displayName), \(owner(object))")
         .accessibilityValue(PromptDisplayText.clean(object.rulesText ?? ""))
-        .accessibilityHint(object.displaySourceCard == nil ? "" : "Tap to read the card")
-        .accessibilityAddTraits(.isButton)
+        .accessibilityHint(choice ? "Chooses it" : object.displaySourceCard == nil ? "" : "Tap to read the card")
+        .accessibilityAddTraits(choice ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("arena.stack.\(object.id)")
     }
 
@@ -2240,7 +2275,8 @@ struct ArenaPlayerCard: View {
             }
             if opponents.count > 1, let swap {
                 TavernOpponentSwap(opponents: opponents, current: player.playerId,
-                                   label: { snapshot.playerLabel($0) }, select: swap)
+                                   label: { snapshot.playerLabel($0) }, select: swap,
+                                   withChoices: Set(ArenaTargetReach.of(snapshot, targetable: GameBoardInteractionState.boardTargetableIds(for: snapshot)).hiddenOpponents))
             }
         }
         .padding(14)

@@ -80,7 +80,7 @@ sans for labels, rows, captions and body.
 | Need | Component | Where |
 |---|---|---|
 | Choose an ability, order triggers | `ArenaAbilityBrowser` | `Board/ArenaBoardViews.swift` |
-| See the whole stack | `ArenaStackBrowser` | same |
+| See the whole stack; choose a target that is on the stack (it opens by itself, `ArenaTargetReach`) | `ArenaStackBrowser` | same |
 | Scry, surveil, search, top-N picks, separate piles | `BoardCardChoiceView.arenaStage` | `BoardCardChoiceView.swift` |
 | Modes of a modal spell | `ArenaModeBrowser` | `Board/ArenaBoardViews.swift` |
 | Yes/no, "you may", two or three answers | `ArenaQuestionStage` + `CompactPromptPopup(stage:)` | same, `Board/CompactPromptPopup.swift` |

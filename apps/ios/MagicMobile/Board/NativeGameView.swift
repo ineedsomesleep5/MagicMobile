@@ -176,6 +176,8 @@ struct NativeGameView: View {
     /// The stack card stepped aside for this top object (ArenaStackTuck), or was brought back while picking.
     @State var arenaStackTuckedTop: String?
     @State var arenaStackPeekTop: String?
+    /// The target question whose stack choices the player stepped away from (Done): the browser waits for the stack card.
+    @State var arenaStackPickDismissed: String?
     @State var arenaLiftedCardID: String?
     @State var arenaAutoPay: ArenaAutoPayRun?
     @State var arenaNotice: String?
@@ -238,11 +240,32 @@ struct NativeGameView: View {
            (prompt.responseCommand?.type ?? "").lowercased() == "choose_ability" { return nil }
         // Its modes too, in ArenaModeBrowser, and the choices, players, numbers, splits and piles its other screens take.
         if isArenaBoard, snapshot.promptEnvelopeV2?.modes?.isEmpty == false || arenaScreenPrompt(snapshot) { return nil }
+        // Spells and abilities to choose on the stack, in ArenaStackBrowser.
+        if arenaChoosesOnStack(snapshot) { return nil }
         return PortraitInteractionPolicy.detailChoiceKey(snapshot)
     }
 
+    /// The card browser opens by itself for this question; on the Arena board, choices on the stack go to the stack instead.
+    func boardCardChoiceKey(_ snapshot: GameSnapshot) -> String? {
+        arenaChoosesOnStack(snapshot) ? nil : PortraitInteractionPolicy.cardChoiceKey(snapshot)
+    }
+
+    /// The open question, for observers that act once per question.
+    static func questionKey(_ snapshot: GameSnapshot) -> String {
+        guard let prompt = snapshot.promptEnvelopeV2 else { return "" }
+        return "\(prompt.id):\(prompt.messageId)"
+    }
+
+    func showTargets(_ snapshot: GameSnapshot) {
+        focusTracker.showTargets(snapshot, targetable: GameBoardInteractionState.boardTargetableIds(for: snapshot))
+    }
+
+    func arenaChoosesOnStack(_ snapshot: GameSnapshot) -> Bool {
+        isArenaBoard && !ArenaTargetReach.of(snapshot, targetable: GameBoardInteractionState.boardTargetableIds(for: snapshot)).stack.isEmpty
+    }
+
     func openPromptDetails() {
-        if let snapshot, PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil {
+        if let snapshot, boardCardChoiceKey(snapshot) != nil {
             isCardChoiceOpen = true
         } else {
             isPromptDetailOpen = true
@@ -273,7 +296,7 @@ struct NativeGameView: View {
         let command = plan.next(in: snapshot, pending: pendingActionId != nil)
         committedCardChoice = plan.stopped ? nil : plan
         if plan.stopped {
-            isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
+            isCardChoiceOpen = boardCardChoiceKey(snapshot) != nil
             isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
         }
         if let command {
@@ -291,7 +314,7 @@ struct NativeGameView: View {
                 isCardChoiceOpen = false
                 isPromptDetailOpen = false
             } else {
-                isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
+                isCardChoiceOpen = boardCardChoiceKey(snapshot) != nil
                 isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
             }
         }
@@ -301,7 +324,7 @@ struct NativeGameView: View {
         guard newValue == nil else { return }
         if reviewCardChoiceAfterPending {
             reviewCardChoiceAfterPending = false
-            isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
+            isCardChoiceOpen = boardCardChoiceKey(snapshot) != nil
             isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
         } else if oldValue != nil, committedCardChoice?.submittedPromptIsUnchanged(in: snapshot) == true {
             // The answer cleared before the poll that shows the next prompt: give that poll a moment before handing the
@@ -1263,7 +1286,7 @@ struct NativeGameView: View {
             .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectedCard?.id)
             .onAppear {
                 updateAIWaitStart(for: snapshot)
-                isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
+                isCardChoiceOpen = boardCardChoiceKey(snapshot) != nil
                 isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
             }
             // The tracker starts over by itself when the game changes.
@@ -1271,6 +1294,8 @@ struct NativeGameView: View {
                 focusTracker.observe(snapshot, followTurns: followTurns)
             }
             // A lesson's swap step waits for the opponent the player switches to.
+            // A target only another opponent's permanents offer turns the board to them (ArenaTargetReach).
+            .onChange(of: Self.questionKey(snapshot), initial: true) { _, _ in showTargets(snapshot) }
             .onChange(of: focusTracker.focusedID) { _, id in if let id { lessonFocusReport?(id) } }
             .onChange(of: lessonCover, initial: true) { _, cover in lessonCoverReport?(cover) }
             .onChange(of: snapshot.id) { _, _ in
@@ -1337,7 +1362,7 @@ struct NativeGameView: View {
                 // A decision that needs you, not a routine priority pass (the starting roll answers its own).
                 if key != nil && !startingRollVisible { GameAudio.shared.play(.responseAlert) }
             }
-            .onChange(of: PortraitInteractionPolicy.cardChoiceKey(snapshot)) { _, key in
+            .onChange(of: boardCardChoiceKey(snapshot)) { _, key in
                 if key != nil && committedCardChoice == nil && !startingRollVisible { GameAudio.shared.play(.responseAlert) }
                 isCardChoiceOpen = key != nil && committedCardChoice == nil && !reviewCardChoiceAfterPending
                 inspectedCard = nil
@@ -1351,7 +1376,7 @@ struct NativeGameView: View {
             // The starting roll covers the board too (the root also applies startingRollCovered).
             .accessibilityHidden(isCardChoiceOpen || committedCardChoice != nil || startingRollVisible)
             .overlay {
-                if isCardChoiceOpen, let key = PortraitInteractionPolicy.cardChoiceKey(snapshot), let prompt = snapshot.promptEnvelopeV2 {
+                if isCardChoiceOpen, let key = boardCardChoiceKey(snapshot), let prompt = snapshot.promptEnvelopeV2 {
                     BoardCardChoiceView(snapshot: snapshot, prompt: prompt, pendingActionId: pendingActionId,
                                         runCommand: runCommand, runAction: runAction,
                                         commitPlan: commitCardChoicePlan, close: { isCardChoiceOpen = false })

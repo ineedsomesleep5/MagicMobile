@@ -161,7 +161,7 @@ object OnDeviceSnapshotAdapter {
                 // ViewProjector emits this map only for the current, non-nested controller.
                 attackerID = active
             }
-            OnDevicePromptAdapter.presentation(it, viewer, allCards, decodedPlayers, attackerID)
+            OnDevicePromptAdapter.presentation(it, viewer, allCards, decodedPlayers, attackerID, decodedXmage.stack)
         }
         val cardActions = EngineJson.format.decodeFromJsonElement(ListSerializer(LegalAction.serializer()), JsonArray(playability.second))
         val hints = tableHints(view["myHelperEmblems"])

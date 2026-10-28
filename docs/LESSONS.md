@@ -1001,3 +1001,18 @@ contradicting one.
     never ships, but preflight and Android's whole-package engine check count every file under the engine package, so
     TestFlight 68 first read `different-source`. Release branches (`codex/ios-build-N`, `codex/android-build-N`) leave
     it out, like the calibration tooling; keep doing that until the next engine release includes it.
+- 2026-10-28 (Claude, targets the table can't show): Gogo copying Zur's attack trigger asks XMage's PICK_TARGET with
+  `targetZone: STACK`; the candidates are stack object IDs (Zur's trigger and Gogo's own ability), which the adapter left
+  as "Card details unavailable" rows the Arena board never draws, and the stack card tucked itself because a target was
+  open. `ArenaTargetReach` (iOS/Android; web `stackChoices`) now sends stack choices to the stack browser in a choose mode,
+  and in four-player games turns the board to the first opponent with choices when the shown one has none (a Doom Blade
+  whose creatures were all on hidden opponents had nothing to tap). Graveyard and exile targets already reach the card
+  browser (the adapter recovers them from the view). Real questions for each case: `scripts/lessons/capture_targets.py`
+  (fixtures `target-*.json`, parity goldens included).
+  - **Android `Modifier.glow` is a filled, blurred shape behind its element.** On an empty overlay Box it tints the card
+    under it (the stack browser's choice ring, and the existing "Resolves next" ring, painted the card blue/gold). Put
+    the glow on the card's own container and only the border on the overlay.
+  - **Test a recorded engine question on the real board without the engine:** write it as a one-frame lesson
+    (`expect` = the answer) over a lesson file temporarily, open it with `MAGICMOBILE_UI_TEST_LESSON` (iOS) or the
+    Lessons list (Android, web), then `git checkout` the lesson file. A simulator build needs ad-hoc signing
+    (`CODE_SIGN_IDENTITY=-`): with `CODE_SIGNING_ALLOWED=NO` dyld refuses the unsigned Agora frameworks at launch.

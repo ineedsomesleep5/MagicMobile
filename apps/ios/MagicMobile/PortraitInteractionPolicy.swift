@@ -183,6 +183,7 @@ struct BoardFocusTracker: Equatable {
     private var gameID: String?
     private var turnKey: String?
     private var switchPending = false
+    private var targetKey: String?
 
     /// Changes whenever a poll could move the focus; the board observes each new value.
     static func observationKey(_ snapshot: GameSnapshot, followTurns: Bool) -> String {
@@ -212,6 +213,19 @@ struct BoardFocusTracker: Equatable {
         if let active = snapshot.activePlayerId,
            BoardOpponentFocus.opponents(in: snapshot).contains(where: { $0.playerId == active }) {
             focusedID = active
+        }
+    }
+
+    /// A target question whose choices are all on opponents the board isn't showing turns the board to the first of
+    /// them, once per question (ArenaTargetReach). `snapshot` shows the current focus; a tap afterwards still sticks.
+    mutating func showTargets(_ snapshot: GameSnapshot, targetable: Set<String>) {
+        guard let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId), !targetable.isEmpty else { return }
+        let key = "\(snapshot.id):\(prompt.id):\(prompt.messageId)"
+        guard key != targetKey else { return }
+        targetKey = key
+        if let opponent = ArenaTargetReach.of(snapshot, targetable: targetable).opponentToShow {
+            focusedID = opponent
+            switchPending = false
         }
     }
 }

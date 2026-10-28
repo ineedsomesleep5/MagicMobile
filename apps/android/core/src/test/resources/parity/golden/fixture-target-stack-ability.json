@@ -1,0 +1,906 @@
+{
+  "activePlayerId" : "b1c03fba-708d-42fb-a306-bcf4883d5516",
+  "answers" : [
+    {
+      "answer" : {
+        "kind" : "boolean",
+        "value" : false
+      },
+      "type" : "answer_yes_no"
+    },
+    {
+      "answer" : {
+        "kind" : "uuid",
+        "value" : "3af7c0d8-9288-464c-8b26-1166da1a32b3"
+      },
+      "type" : "choose_target"
+    },
+    {
+      "answer" : {
+        "kind" : "uuid",
+        "value" : "64e4a53e-c741-47ba-9768-de3900581cdf"
+      },
+      "type" : "choose_target"
+    }
+  ],
+  "bridgeRevision" : 57,
+  "gameStatus" : "in_progress",
+  "id" : "2822f425-d0e8-4f2d-9eaa-3a118d90fb88",
+  "isSpectating" : false,
+  "legalActions" : [
+    {
+      "abilityId" : null,
+      "cardInstanceId" : null,
+      "cardName" : null,
+      "choiceIds" : null,
+      "compactPromptTitle" : "Cancel",
+      "confirmed" : false,
+      "id" : "bb82fdc8-7461-4669-8bbc-fc6da7731177:answer_yes_no",
+      "label" : "Cancel",
+      "messageId" : 57,
+      "playerId" : "b1c03fba-708d-42fb-a306-bcf4883d5516",
+      "promptId" : "bb82fdc8-7461-4669-8bbc-fc6da7731177",
+      "sourceInstanceId" : null,
+      "sourceZone" : null,
+      "type" : "answer_yes_no"
+    }
+  ],
+  "log" : [
+    {
+      "id" : "xmage:2822f425-d0e8-4f2d-9eaa-3a118d90fb88:you:1",
+      "message" : "Game has started"
+    },
+    {
+      "id" : "xmage:2822f425-d0e8-4f2d-9eaa-3a118d90fb88:you:3",
+      "message" : "<font color='#20B2AA'>You</font>'s library is shuffled"
+    },
+    {
+      "id" : "xmage:2822f425-d0e8-4f2d-9eaa-3a118d90fb88:you:5",
+      "message" : "<font color='#20B2AA'>Rook</font>'s library is shuffled"
+    },
+    {
+      "id" : "xmage:2822f425-d0e8-4f2d-9eaa-3a118d90fb88:you:10",
+      "message" : "<font color='#20B2AA'>You</font> chooses that they take the first turn"
+    },
+    {
+      "id" : "xmage:2822f425-d0e8-4f2d-9eaa-3a118d90fb88:you:12",
+      "message" : "<font color='#20B2AA'>You</font> draws seven cards"
+    },
+    {
+      "id" : "xmage:2822f425-d0e8-4f2d-9eaa-3a118d90fb88:you:14",
+      "message" : "<font color='#20B2AA'>Rook</font> draws seven cards"
+    },
+    {
+      "id" : "xmage:2822f425-d0e8-4f2d-9eaa-3a118d90fb88:you:19",
+      "message" : "<font color='#20B2AA'>You</font> keeps hand"
+    },
+    {
+      "id" : "xmage:2822f425-d0e8-4f2d-9eaa-3a118d90fb88:you:24",
+      "message" : "<font color='#20B2AA'>Rook</font> keeps hand"
+    },
+    {
+      "id" : "xmage:2822f425-d0e8-4f2d-9eaa-3a118d90fb88:you:26",
+      "message" : "TURN 1 for <font color='#20B2AA'>You</font> (40 - 40)"
+    },
+    {
+      "id" : "xmage:2822f425-d0e8-4f2d-9eaa-3a118d90fb88:you:28",
+      "message" : "<font color='#20B2AA'>You</font> draws a card"
+    },
+    {
+      "id" : "xmage:2822f425-d0e8-4f2d-9eaa-3a118d90fb88:you:43",
+      "message" : "<font color='#20B2AA'>You</font> attacks <font color='#20B2AA'>Rook</font> with 1 creature"
+    },
+    {
+      "id" : "xmage:2822f425-d0e8-4f2d-9eaa-3a118d90fb88:you:45",
+      "message" : "<font color='#20B2AA'>You</font> - Ability triggers: <font color='#DAA520' object_id='240f2062-839c-46cd-8d2b-ff0c184e1655'>Zur the Enchanter</font> [240] - Whenever <font color='#DAA520' object_id='240f2062-839c-46cd-8d2b-ff0c184e1655'>Zur the Enchanter</font> [240] attacks, you may search your library for an enchantment card with mana value 3 or less, put it onto the battlefield, then shuffle."
+    }
+  ],
+  "manaPayment" : null,
+  "pendingStatus" : null,
+  "phase" : "COMBAT",
+  "players" : [
+    {
+      "battlefield" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "2",
+          "displayToughness" : "4",
+          "icons" : [
+
+          ],
+          "instanceId" : "063ee342-737a-45a4-a1ea-bf25bac420a4",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : "{2}{U}",
+          "name" : "Gogo, Master of Mimicry",
+          "oracleText" : "{X}{X}, {T}: Copy target activated or triggered ability you control X times. You may choose new targets for the copies. This ability can't be copied and X can't be 0.",
+          "phasedIn" : true,
+          "reportedPower" : "2",
+          "reportedToughness" : "4",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Legendary Creature — Wizard",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "0b4423b6-010c-4048-bc49-61ab4704f6e0",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Island",
+          "oracleText" : "{T}: Add {U}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Island",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "14967c86-926b-4a49-9533-3306680ff4d7",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Island",
+          "oracleText" : "{T}: Add {U}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Island",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "1",
+          "displayToughness" : "4",
+          "icons" : [
+            {
+              "category" : "ABILITY",
+              "hint" : "Flying",
+              "iconType" : "ABILITY_FLYING",
+              "text" : ""
+            }
+          ],
+          "instanceId" : "240f2062-839c-46cd-8d2b-ff0c184e1655",
+          "isAttacking" : true,
+          "isToken" : false,
+          "manaCost" : "{1}{W}{U}{B}",
+          "name" : "Zur the Enchanter",
+          "oracleText" : "Flying\nWhenever {this} attacks, you may search your library for an enchantment card with mana value 3 or less, put it onto the battlefield, then shuffle.",
+          "phasedIn" : true,
+          "reportedPower" : "1",
+          "reportedToughness" : "4",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : true,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Legendary Creature — Human Wizard",
+          "visibleIcons" : [
+            "ABILITY_FLYING"
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "27ab5224-9115-410e-b210-33a422dda0d9",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Island",
+          "oracleText" : "{T}: Add {U}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Island",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "cbfcc0ef-d56e-4044-8b88-74ae5348b8b7",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Island",
+          "oracleText" : "{T}: Add {U}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Island",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "d93eb70b-7ea4-486d-9abe-73a1ee6ef235",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Island",
+          "oracleText" : "{T}: Add {U}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Island",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "command" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "1",
+          "displayToughness" : "4",
+          "icons" : [
+
+          ],
+          "instanceId" : "c0dbd4e5-70db-468c-9293-fb88aa65ced0",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : "{1}{W}{U}{B}",
+          "name" : "Zur the Enchanter",
+          "oracleText" : "Flying\nWhenever {this} attacks, you may search your library for an enchantment card with mana value 3 or less, put it onto the battlefield, then shuffle.\n<b>Commander</b>",
+          "phasedIn" : null,
+          "reportedPower" : "1",
+          "reportedToughness" : "4",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Legendary Creature — Human Wizard",
+          "visibleIcons" : [
+            "ABILITY_FLYING"
+          ]
+        }
+      ],
+      "commanderDamage" : {
+
+      },
+      "commanders" : [
+        {
+          "castsFromCommandZone" : 0,
+          "commanderTax" : 0,
+          "damageToPlayers" : {
+
+          },
+          "id" : "c0dbd4e5-70db-468c-9293-fb88aa65ced0",
+          "name" : "Zur the Enchanter",
+          "ownerPlayerId" : "b1c03fba-708d-42fb-a306-bcf4883d5516"
+        }
+      ],
+      "commanderTax" : 0,
+      "commanderTaxKnown" : true,
+      "counters" : {
+
+      },
+      "displayName" : "You",
+      "exile" : [
+
+      ],
+      "graveyard" : [
+
+      ],
+      "hand" : [
+
+      ],
+      "handCount" : 0,
+      "hasLeft" : false,
+      "initiative" : false,
+      "isHuman" : true,
+      "library" : [
+
+      ],
+      "libraryCount" : 92,
+      "life" : 40,
+      "manaPool" : {
+        "B" : 0,
+        "C" : 0,
+        "G" : 0,
+        "R" : 0,
+        "U" : 0,
+        "W" : 0
+      },
+      "monarch" : false,
+      "playerId" : "b1c03fba-708d-42fb-a306-bcf4883d5516",
+      "poison" : 0,
+      "stack" : [
+
+      ]
+    },
+    {
+      "battlefield" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "97871de9-be50-4d05-adce-8891752a0649",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Plains",
+          "oracleText" : "{T}: Add {W}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Plains",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "command" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "2",
+          "displayToughness" : "2",
+          "icons" : [
+
+          ],
+          "instanceId" : "3b339e2c-cc19-4996-80c3-e0a7a13a4686",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : "{W}",
+          "name" : "Isamaru, Hound of Konda",
+          "oracleText" : "<b>Commander</b>",
+          "phasedIn" : null,
+          "reportedPower" : "2",
+          "reportedToughness" : "2",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Legendary Creature — Dog",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "commanderDamage" : {
+
+      },
+      "commanders" : [
+        {
+          "castsFromCommandZone" : 0,
+          "commanderTax" : 0,
+          "damageToPlayers" : {
+
+          },
+          "id" : "3b339e2c-cc19-4996-80c3-e0a7a13a4686",
+          "name" : "Isamaru, Hound of Konda",
+          "ownerPlayerId" : "ff9418a0-7a60-4be7-b258-053858230221"
+        }
+      ],
+      "commanderTax" : 0,
+      "commanderTaxKnown" : true,
+      "counters" : {
+
+      },
+      "displayName" : "Rook",
+      "exile" : [
+
+      ],
+      "graveyard" : [
+
+      ],
+      "hand" : [
+
+      ],
+      "handCount" : 0,
+      "hasLeft" : false,
+      "initiative" : false,
+      "isHuman" : true,
+      "library" : [
+
+      ],
+      "libraryCount" : 98,
+      "life" : 40,
+      "manaPool" : {
+        "B" : 0,
+        "C" : 0,
+        "G" : 0,
+        "R" : 0,
+        "U" : 0,
+        "W" : 0
+      },
+      "monarch" : false,
+      "playerId" : "ff9418a0-7a60-4be7-b258-053858230221",
+      "poison" : 0,
+      "stack" : [
+
+      ]
+    }
+  ],
+  "priorityPlayerId" : "b1c03fba-708d-42fb-a306-bcf4883d5516",
+  "promptEnvelopeV2" : {
+    "abilities" : null,
+    "amounts" : null,
+    "cards" : [
+
+    ],
+    "choices" : null,
+    "chosenTargets" : [
+
+    ],
+    "confirmation" : null,
+    "id" : "bb82fdc8-7461-4669-8bbc-fc6da7731177",
+    "kind" : "target",
+    "manaChoices" : null,
+    "maxChoices" : 1,
+    "message" : "Select an activated or triggered ability you control",
+    "messageId" : 57,
+    "method" : "GAME_PICK_TARGET",
+    "minChoices" : 1,
+    "modes" : null,
+    "multiAmounts" : null,
+    "optionKeys" : [
+      "chosenTargets",
+      "queryType",
+      "secondMessage",
+      "targetZone"
+    ],
+    "orderedItems" : null,
+    "piles" : null,
+    "playerId" : "b1c03fba-708d-42fb-a306-bcf4883d5516",
+    "players" : null,
+    "required" : false,
+    "responseCommand" : {
+      "confirmed" : null,
+      "messageId" : 57,
+      "pay" : null,
+      "promptId" : "bb82fdc8-7461-4669-8bbc-fc6da7731177",
+      "type" : "choose_target"
+    },
+    "responseKind" : "target",
+    "targetIds" : [
+      "3af7c0d8-9288-464c-8b26-1166da1a32b3",
+      "64e4a53e-c741-47ba-9768-de3900581cdf"
+    ],
+    "targets" : [
+      {
+        "id" : "3af7c0d8-9288-464c-8b26-1166da1a32b3",
+        "label" : "Gogo, Master of Mimicry’s ability"
+      },
+      {
+        "id" : "64e4a53e-c741-47ba-9768-de3900581cdf",
+        "label" : "Zur the Enchanter’s ability"
+      }
+    ],
+    "totalMax" : null,
+    "totalMin" : null
+  },
+  "promptText" : "Select an activated or triggered ability you control",
+  "source" : "xmage-ondevice",
+  "step" : "DECLARE_ATTACKERS",
+  "thinkingPlayerID" : null,
+  "turn" : 1,
+  "viewerPlayerId" : "b1c03fba-708d-42fb-a306-bcf4883d5516",
+  "waitingOnPlayerId" : "b1c03fba-708d-42fb-a306-bcf4883d5516",
+  "winnerPlayerIds" : [
+
+  ],
+  "xmage" : {
+    "bridgeRevision" : 57,
+    "combat" : [
+      {
+        "attackers" : [
+          {
+            "attachedToInstanceId" : null,
+            "blocking" : [
+
+            ],
+            "copySourceArtworkName" : null,
+            "counters" : null,
+            "damage" : 0,
+            "disabledReason" : null,
+            "displayPower" : "1",
+            "displayToughness" : "4",
+            "icons" : [
+              {
+                "category" : "ABILITY",
+                "hint" : "Flying",
+                "iconType" : "ABILITY_FLYING",
+                "text" : ""
+              }
+            ],
+            "instanceId" : "240f2062-839c-46cd-8d2b-ff0c184e1655",
+            "isAttacking" : true,
+            "isToken" : false,
+            "manaCost" : "{1}{W}{U}{B}",
+            "name" : "Zur the Enchanter",
+            "oracleText" : "Flying\nWhenever {this} attacks, you may search your library for an enchantment card with mana value 3 or less, put it onto the battlefield, then shuffle.",
+            "phasedIn" : true,
+            "reportedPower" : "1",
+            "reportedToughness" : "4",
+            "selectable" : null,
+            "summoningSickness" : false,
+            "tapped" : true,
+            "tokenArtwork" : null,
+            "tokenColors" : null,
+            "typeLine" : "Legendary Creature — Human Wizard",
+            "visibleIcons" : [
+              "ABILITY_FLYING"
+            ]
+          }
+        ],
+        "blocked" : false,
+        "blockers" : [
+
+        ],
+        "defenderId" : "ff9418a0-7a60-4be7-b258-053858230221",
+        "defenderKind" : "player",
+        "defenderName" : "Rook"
+      }
+    ],
+    "gameId" : "2822f425-d0e8-4f2d-9eaa-3a118d90fb88",
+    "panels" : {
+      "command" : true,
+      "exile" : true,
+      "graveyard" : true,
+      "lookedAt" : false,
+      "revealed" : false,
+      "search" : false,
+      "stack" : true
+    },
+    "playableObjects" : [
+      {
+        "abilities" : [
+          {
+            "category" : "other",
+            "id" : "02985aa0-f50a-4a3b-8676-dfa195818f54",
+            "label" : "{X}{X}, {T}: Copy target activated or triggered a..."
+          }
+        ],
+        "cardName" : "Gogo, Master of Mimicry",
+        "categories" : [
+          "other"
+        ],
+        "sourceInstanceId" : "063ee342-737a-45a4-a1ea-bf25bac420a4",
+        "sourceZone" : "battlefield"
+      },
+      {
+        "abilities" : [
+          {
+            "category" : "basicManaAbilities",
+            "id" : "c7154c56-237d-4fb5-afaa-a996a483f78a",
+            "label" : "{T}: Add {U}."
+          }
+        ],
+        "cardName" : "Island",
+        "categories" : [
+          "basicManaAbilities"
+        ],
+        "sourceInstanceId" : "0b4423b6-010c-4048-bc49-61ab4704f6e0",
+        "sourceZone" : "battlefield"
+      },
+      {
+        "abilities" : [
+          {
+            "category" : "basicManaAbilities",
+            "id" : "4eec7ba4-4849-47ca-ae5c-4f506be4286e",
+            "label" : "{T}: Add {U}."
+          }
+        ],
+        "cardName" : "Island",
+        "categories" : [
+          "basicManaAbilities"
+        ],
+        "sourceInstanceId" : "14967c86-926b-4a49-9533-3306680ff4d7",
+        "sourceZone" : "battlefield"
+      },
+      {
+        "abilities" : [
+          {
+            "category" : "basicManaAbilities",
+            "id" : "6c52ac67-3a26-400c-9321-17090c802668",
+            "label" : "{T}: Add {U}."
+          }
+        ],
+        "cardName" : "Island",
+        "categories" : [
+          "basicManaAbilities"
+        ],
+        "sourceInstanceId" : "27ab5224-9115-410e-b210-33a422dda0d9",
+        "sourceZone" : "battlefield"
+      },
+      {
+        "abilities" : [
+          {
+            "category" : "basicManaAbilities",
+            "id" : "3e0b7cf1-a159-49f9-8a22-fb2d9ae27844",
+            "label" : "{T}: Add {U}."
+          }
+        ],
+        "cardName" : "Island",
+        "categories" : [
+          "basicManaAbilities"
+        ],
+        "sourceInstanceId" : "cbfcc0ef-d56e-4044-8b88-74ae5348b8b7",
+        "sourceZone" : "battlefield"
+      },
+      {
+        "abilities" : [
+          {
+            "category" : "basicManaAbilities",
+            "id" : "b272be64-0e91-4fd1-a789-a9f4ead5147c",
+            "label" : "{T}: Add {U}."
+          }
+        ],
+        "cardName" : "Island",
+        "categories" : [
+          "basicManaAbilities"
+        ],
+        "sourceInstanceId" : "d93eb70b-7ea4-486d-9abe-73a1ee6ef235",
+        "sourceZone" : "battlefield"
+      }
+    ],
+    "players" : [
+      {
+        "active" : true,
+        "hasPriority" : true,
+        "name" : "You",
+        "passedAllTurns" : false,
+        "passedTurn" : false,
+        "playerId" : "b1c03fba-708d-42fb-a306-bcf4883d5516",
+        "sideboard" : [
+
+        ],
+        "timerActive" : true
+      },
+      {
+        "active" : false,
+        "hasPriority" : false,
+        "name" : "Rook",
+        "passedAllTurns" : false,
+        "passedTurn" : false,
+        "playerId" : "ff9418a0-7a60-4be7-b258-053858230221",
+        "sideboard" : [
+
+        ],
+        "timerActive" : false
+      }
+    ],
+    "stack" : [
+      {
+        "id" : "3af7c0d8-9288-464c-8b26-1166da1a32b3",
+        "name" : "Ability",
+        "objectType" : "ABILITY_STACK_FROM_CARD",
+        "paid" : false,
+        "rulesText" : "{X}{X}, {T}: Copy target activated or triggered ability you control X times. You may choose new targets for the copies. This ability can't be copied and X can't be 0.",
+        "sourceCard" : {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "2",
+          "displayToughness" : "4",
+          "icons" : [
+
+          ],
+          "instanceId" : "063ee342-737a-45a4-a1ea-bf25bac420a4",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : "{2}{U}",
+          "name" : "Gogo, Master of Mimicry",
+          "oracleText" : "{X}{X}, {T}: Copy target activated or triggered ability you control X times. You may choose new targets for the copies. This ability can't be copied and X can't be 0.",
+          "phasedIn" : null,
+          "reportedPower" : "2",
+          "reportedToughness" : "4",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Legendary Creature — Wizard",
+          "visibleIcons" : [
+
+          ]
+        },
+        "sourceInstanceId" : "063ee342-737a-45a4-a1ea-bf25bac420a4",
+        "sourceName" : "Gogo, Master of Mimicry",
+        "targetIds" : [
+
+        ]
+      },
+      {
+        "id" : "64e4a53e-c741-47ba-9768-de3900581cdf",
+        "name" : "Ability",
+        "objectType" : "ABILITY_STACK_FROM_CARD",
+        "paid" : true,
+        "rulesText" : "Whenever Zur the Enchanter attacks, you may search your library for an enchantment card with mana value 3 or less, put it onto the battlefield, then shuffle.",
+        "sourceCard" : {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "1",
+          "displayToughness" : "4",
+          "icons" : [
+            {
+              "category" : "ABILITY",
+              "hint" : "Flying",
+              "iconType" : "ABILITY_FLYING",
+              "text" : ""
+            }
+          ],
+          "instanceId" : "240f2062-839c-46cd-8d2b-ff0c184e1655",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : "{1}{W}{U}{B}",
+          "name" : "Zur the Enchanter",
+          "oracleText" : "Flying\nWhenever {this} attacks, you may search your library for an enchantment card with mana value 3 or less, put it onto the battlefield, then shuffle.",
+          "phasedIn" : null,
+          "reportedPower" : "1",
+          "reportedToughness" : "4",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Legendary Creature — Human Wizard",
+          "visibleIcons" : [
+            "ABILITY_FLYING"
+          ]
+        },
+        "sourceInstanceId" : "240f2062-839c-46cd-8d2b-ff0c184e1655",
+        "sourceName" : "Zur the Enchanter",
+        "targetIds" : [
+
+        ]
+      }
+    ],
+    "xmageCycle" : 21,
+    "zones" : [
+      {
+        "cards" : [
+
+        ],
+        "id" : "c276a832-6671-479c-af2d-841c8d22a391",
+        "name" : "Permanent - Exile"
+      }
+    ]
+  },
+  "xmageCycle" : 21
+}

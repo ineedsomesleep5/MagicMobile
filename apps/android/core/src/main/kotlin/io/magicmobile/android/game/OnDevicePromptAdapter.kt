@@ -15,7 +15,7 @@ object OnDevicePromptAdapter {
     private fun b(value: Boolean) = JsonPrimitive(value)
 
     fun presentation(prompt: EnginePrompt, viewerPlayerID: String, cards: List<ZoneCard>, players: List<PlayerGameState> = emptyList(),
-                     actingAttackerPlayerID: String? = null): OnDevicePromptPresentation {
+                     actingAttackerPlayerID: String? = null, stack: List<XmageStackObject> = emptyList()): OnDevicePromptPresentation {
         validate(prompt, viewerPlayerID)
         val revision = prompt.revision.toInt()
         val fields = linkedMapOf<String, J>(
@@ -34,8 +34,10 @@ object OnDevicePromptAdapter {
         }
         fun targetLabel(id: String): String {
             if (id == viewerPlayerID) return "You"
+            // An ability on the stack has no card of its own: it goes by its source ("Zur the Enchanter’s ability").
+            val ability = stack.firstOrNull { it.id == id && it.sourceCard?.id != id }?.let { "${it.displaySourceName}’s ability" }
             return EngineDisplayText.label(players.firstOrNull { it.playerId == id }?.displayName
-                ?: cards.firstOrNull { it.id == id }?.card?.name ?: id)
+                ?: cards.firstOrNull { it.id == id }?.card?.name ?: ability ?: id)
         }
         fun command(base: JsonObject, vararg extra: Pair<String, J>): JsonObject = JsonObject(base + extra)
         when (prompt.kind) {

@@ -282,6 +282,68 @@ class ArenaBoardModelTest {
         return OnDeviceSnapshotAdapter.snapshot(poll, poll.seatID)
     }
 
+    /** Target questions recorded from the real engine (target-*.json, iOS ArenaBoardModelTests): where each one's choices are. */
+    private fun targetQuestion(name: String): Pair<GameSnapshot, Set<String>> {
+        val snapshot = snapshot(name)
+        return snapshot to snapshot.promptEnvelopeV2!!.targetIds!!.toSet()
+    }
+
+    private fun names(snapshot: GameSnapshot, ids: List<String>) = ids.mapNotNull { id -> snapshot.players.firstOrNull { it.playerId == id }?.displayName }.toSet()
+
+    /** Gogo copying Zur's attack trigger: the abilities on the stack are the choices, named by their source. */
+    @Test fun gogosChoicesAreTheAbilitiesOnTheStack() {
+        val (snapshot, targetable) = targetQuestion("target-stack-ability")
+        val reach = ArenaTargetReach.of(snapshot, targetable)
+        assertEquals(targetable, reach.stack.toSet())
+        assertFalse(reach.onTable)
+        assertNull(reach.opponentToShow)
+        assertEquals(setOf("Zur the Enchanter’s ability", "Gogo, Master of Mimicry’s ability"),
+            snapshot.promptEnvelopeV2?.targets.orEmpty().map { it.label }.toSet())
+        assertEquals(reach, ArenaTargetReach.of(snapshot))
+    }
+
+    /** Counterspell with two spells on the stack chooses on the stack too. */
+    @Test fun aCounterspellChoosesOnTheStack() {
+        val (snapshot, targetable) = targetQuestion("target-stack-spell")
+        val reach = ArenaTargetReach.of(snapshot, targetable)
+        assertEquals(listOf("Shock", "Lightning Bolt"), reach.stack.mapNotNull { id -> snapshot.stackTopFirst.firstOrNull { it.id == id }?.displayName })
+    }
+
+    /** A card in a graveyard is neither on the stack nor the table: the card browser shows it. */
+    @Test fun graveyardChoicesAreTheBrowsersCards() {
+        for (name in listOf("target-graveyard", "target-any-graveyard")) {
+            val (snapshot, targetable) = targetQuestion(name)
+            val reach = ArenaTargetReach.of(snapshot, targetable)
+            assertTrue(name, reach.stack.isEmpty() && !reach.onTable && reach.opponentToShow == null)
+            assertEquals(name, targetable, snapshot.promptEnvelopeV2?.cards.orEmpty().map { it.id }.toSet())
+        }
+    }
+
+    /** Four players, Doom Blade: the creatures are Rook's and Bryn's while the board shows Wren; it turns once per question. */
+    @Test fun fourPlayersTurnToAnOpponentWithChoices() {
+        val (snapshot, targetable) = targetQuestion("target-four-player-creature")
+        assertEquals("Wren", snapshot.opponent?.displayName)
+        val reach = ArenaTargetReach.of(snapshot, targetable)
+        assertFalse(reach.onTable)
+        assertEquals(setOf("Rook", "Bryn"), names(snapshot, reach.hiddenOpponents))
+        var tracker = BoardFocusTracker().observe(snapshot, followTurns = true)
+        tracker = tracker.showTargets(BoardOpponentFocus.snapshot(snapshot, tracker.focusedID), targetable)
+        assertEquals(reach.opponentToShow, tracker.focusedID)
+        assertTrue(ArenaTargetReach.of(BoardOpponentFocus.snapshot(snapshot, tracker.focusedID), targetable).onTable)
+        val wren = snapshot.players.first { it.displayName == "Wren" }.playerId
+        tracker = tracker.select(wren).let { it.showTargets(BoardOpponentFocus.snapshot(snapshot, it.focusedID), targetable) }
+        assertEquals(wren, tracker.focusedID)
+    }
+
+    /** Shock in the same game can aim at you, so the board stays and the swap row marks the others. */
+    @Test fun fourPlayersStayWhenTheTableHasAChoice() {
+        val (snapshot, targetable) = targetQuestion("target-four-player")
+        val reach = ArenaTargetReach.of(snapshot, targetable)
+        assertTrue(reach.onTable)
+        assertNull(reach.opponentToShow)
+        assertEquals(setOf("Rook", "Bryn"), names(snapshot, reach.hiddenOpponents))
+    }
+
     /** XMage's real PLAY_MANA while casting Isamaru ({W}): Auto Pay taps a Plains with the same make_mana a tap on the land sends. */
     @Test fun autoPayTapsALandXMageOffersForTheRealCost() {
         val poll = MatchPoll(EngineJson.decode(File(fixtures, "2p-mana.json").readBytes()))
