@@ -230,6 +230,7 @@
 		7FA0A8BEBB5BD68B417FFB4B /* GrimoireStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CF9197593085EEE0D392D17 /* GrimoireStage.swift */; };
 		7FF5B8D9D3AF108E3E0FD615 /* SocialUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D82C4BD0F1351C3E829A964 /* SocialUITests.swift */; };
 		80DA852EFC43322C3AFEFECB /* DeckStudioWorkspaceScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4368F9EC7E12BB7A89BB3673 /* DeckStudioWorkspaceScreen.swift */; };
+		817F7EE49A2EE258C5591091 /* CardArtSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39C9C549080F402A93AF23A6 /* CardArtSyncTests.swift */; };
 		81BAD7099B005235220C354A /* BoardScrollRotationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E71A5066F22CE114CFB0807C /* BoardScrollRotationUITests.swift */; };
 		81ECA8FA322072BB981F7170 /* PublicProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 816467D39B7879657F44ADEC /* PublicProfileView.swift */; };
 		8243CBF59D10FFF29450B881 /* DeckStudioScryfallViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 414BA1EAB2335B7591A6228A /* DeckStudioScryfallViews.swift */; };
@@ -287,6 +288,7 @@
 		A7E8BDDEC540CD342D60E499 /* exile.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 6B654A0CD4BD1CE20C3577DB /* exile.m4a */; };
 		AA6A544470158D09A694E6B2 /* creature-faerie-1.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 487F7755E745AB1466FD171F /* creature-faerie-1.m4a */; };
 		AAAC586BD6F179123B648653 /* BoardPromptRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 414816254DDDDA03802F4719 /* BoardPromptRules.swift */; };
+		AABEDC8272987C687454CA13 /* CardArtSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAE0C2893386415F2797B43F /* CardArtSync.swift */; };
 		AB0937C200B4B60D2ACC8F1C /* DeckStudioValidationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABDBB34E02563A49074BE4DE /* DeckStudioValidationService.swift */; };
 		AB9B37DC0D2FDC6081346729 /* arrive-enchantment.m4a in Resources */ = {isa = PBXBuildFile; fileRef = D353EB14DA096DFAB134CB7D /* arrive-enchantment.m4a */; };
 		ABF01CC5DB13800E3FF8E8D4 /* GrimoireBinderMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02B854BEB232063C4338556D /* GrimoireBinderMenu.swift */; };
@@ -537,6 +539,7 @@
 		37B38E682FB38C9A11F80A64 /* music-menu-2.m4a */ = {isa = PBXFileReference; path = "music-menu-2.m4a"; sourceTree = "<group>"; };
 		3847D732FDC3CA65EAFB143D /* creature-squirrel-2.m4a */ = {isa = PBXFileReference; path = "creature-squirrel-2.m4a"; sourceTree = "<group>"; };
 		385800852BAEE6683289B0CB /* creature-bird.m4a */ = {isa = PBXFileReference; path = "creature-bird.m4a"; sourceTree = "<group>"; };
+		39C9C549080F402A93AF23A6 /* CardArtSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardArtSyncTests.swift; sourceTree = "<group>"; };
 		39CD7AD491EA8ECBCEC2998A /* DeckStudioRecordingTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioRecordingTransport.swift; sourceTree = "<group>"; };
 		39CE03E5D480617F7D20468C /* player-hit.m4a */ = {isa = PBXFileReference; path = "player-hit.m4a"; sourceTree = "<group>"; };
 		3AB877C4C9153F0C8D61914D /* DeckStudioComboModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioComboModel.swift; sourceTree = "<group>"; };
@@ -717,6 +720,7 @@
 		A88AD9394CF2AA027E75D115 /* BoardFXOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardFXOverlay.swift; sourceTree = "<group>"; };
 		AA09CCED2D080061DEEF3DAA /* GameLogAndStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameLogAndStyles.swift; sourceTree = "<group>"; };
 		AA7A1B817792981789B8D5F2 /* creature-dinosaur.m4a */ = {isa = PBXFileReference; path = "creature-dinosaur.m4a"; sourceTree = "<group>"; };
+		AAE0C2893386415F2797B43F /* CardArtSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardArtSync.swift; sourceTree = "<group>"; };
 		AB97F71C7BB6CE1666D6C0EF /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		ABC7582C9646B73124076299 /* MagicMobile.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MagicMobile.entitlements; sourceTree = "<group>"; };
 		ABCDF573C9C2AF26B8ED8BFC /* FriendsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FriendsView.swift; sourceTree = "<group>"; };
@@ -1174,6 +1178,7 @@
 				2F4E6F7237174E453B09E62B /* BoardZoneReferenceTests.swift */,
 				C4BBB00054743C8266F5341E /* Build19LogicTests.swift */,
 				DA3E6B77F45884B349C71CC9 /* CardArtChoicesTests.swift */,
+				39C9C549080F402A93AF23A6 /* CardArtSyncTests.swift */,
 				FE7B7AECD659F55C150D0846 /* CardChoicePlanTests.swift */,
 				CCCB62A192C1DF5E084F4AF0 /* CardPrintingTests.swift */,
 				9B58B29A295BD7033CC534DC /* ComboLoopTests.swift */,
@@ -1319,6 +1324,7 @@
 		D332D1DEC0CBF31B02B3FAF7 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				AAE0C2893386415F2797B43F /* CardArtSync.swift */,
 				FE8FD459FBA02F1B2CA08692 /* CommanderSpellbookClient.swift */,
 				49A07E72198624C12E6A1CEB /* CommanderSpellbookModels.swift */,
 				B8B9861DFAE4F7E13665FD50 /* DeckStudioPlayProjection.swift */,
@@ -1823,6 +1829,7 @@
 				B55D6DAAEF2A69167F503BEC /* BrandMarkPaths.swift in Sources */,
 				E1D8D15FFBF09E7573341833 /* BrandUI.swift in Sources */,
 				2D0E7347998A60BE2ABB1EFF /* CardArtChoices.swift in Sources */,
+				AABEDC8272987C687454CA13 /* CardArtSync.swift in Sources */,
 				68A71CB9B415C3564DC0EE00 /* CardChoicePlan.swift in Sources */,
 				8D637903BB141D6379030CFB /* CardImageURL.swift in Sources */,
 				198A2BDE0A1DC0C325237D45 /* CardInspector.swift in Sources */,
@@ -2007,6 +2014,7 @@
 				D786849AAF75733AD7291FD6 /* BoardZoneReferenceTests.swift in Sources */,
 				53DB4EABEA8F6D7B6209DB23 /* Build19LogicTests.swift in Sources */,
 				72C404E0923E22EE031A2D22 /* CardArtChoicesTests.swift in Sources */,
+				817F7EE49A2EE258C5591091 /* CardArtSyncTests.swift in Sources */,
 				B4CE2A5C9E5A26961D2A82A0 /* CardChoicePlanTests.swift in Sources */,
 				BE6B548663973E8919AB5DE5 /* CardPrintingTests.swift in Sources */,
 				BD2B17B710B62B95B69EE704 /* ComboLoopTests.swift in Sources */,

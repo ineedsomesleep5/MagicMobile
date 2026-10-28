@@ -380,7 +380,7 @@ function Curve({ bins }: { bins: number[] }) {
   );
 }
 
-/** Your own picture for this card (customArt.ts): it fills the art box everywhere, in this browser only. */
+/** Your own picture for this card (customArt.ts): its whole face everywhere, on every device signed in to your profile. */
 function OwnPicture({ name }: { name: string }) {
   const input = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string>();

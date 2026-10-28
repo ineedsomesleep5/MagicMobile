@@ -21,6 +21,12 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-28 (Claude, card picture sync): the phones named custom card pictures by a hash of the card key, so the
+  files alone can't say which cards have pictures, and iOS hashed `"card:" + full name` while Android hashed the name
+  and the web keyed by front face. **Rule:** the card key is the front face, trimmed, lower case on every platform
+  (`CustomCardArt.cardKey`, web `artKey`); the phones keep `index.json` of keys beside the files. A new Supabase
+  Storage bucket needs its own `storage.objects` policies (none exist by default). Where: docs/CARD_ART_SYNC.md.
+
 - 2026-10-27 (Claude, stack tab): in `board/ArenaBoardViews.kt` the imported `testTag` is the semantics property
   (`androidx.compose.ui.semantics.testTag`), so `Modifier.testTag(...)` there fails to compile ("cannot be invoked as a
   function"). **Rule:** set it inside `.semantics { testTag = ... }` in that file. Where: `ArenaStackTab`.

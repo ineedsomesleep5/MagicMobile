@@ -105,6 +105,32 @@ export class SupabaseLite {
   /** Calls the edge function functions/v1/<fn> as the player (agora-token). */
   invoke(fn: string, params: Record<string, J> = {}): Promise<J> { return this.post(`functions/v1/${fn}`, params); }
 
+  /**
+   * One file in Storage as the player (storage/v1/object/<bucket>/<path>): PUT uploads (replacing), GET answers the
+   * file, DELETE removes it. Card pictures (core/cardArtSync.ts) are the only use.
+   */
+  async storage(method: "PUT" | "GET" | "DELETE", objectPath: string, body?: Blob): Promise<Blob> {
+    const token = await this.accessToken();
+    const path = `storage/v1/object/${objectPath.split("/").map(encodeURIComponent).join("/")}`;
+    const headers: Record<string, string> = { apikey: SupabaseLite.publishableKey, Authorization: `Bearer ${token}` };
+    if (body) { headers["Content-Type"] = body.type || "image/jpeg"; headers["x-upsert"] = "true"; }
+    const init: RequestInit = { method, headers, ...(body ? { body } : {}) };
+    let response: Response;
+    try { response = await this.fetcher(`${this.base}/${path}`, init); }
+    catch {
+      if (this.fallbackBaseURL === undefined || this.base === this.fallbackBaseURL) throw new SupabaseFailure("offline");
+      try { response = await this.fetcher(`${this.fallbackBaseURL}/${path}`, init); } catch { throw new SupabaseFailure("offline"); }
+    }
+    if (response.status === 401 && this.session) this.session = { ...this.session, expiresAt: Number.NEGATIVE_INFINITY };
+    if (response.status < 200 || response.status >= 300) {
+      const text = await response.text().catch(() => "");
+      const parsed = parseJSON(text);
+      const message = isRecord(parsed) && typeof parsed.error === "string" ? parsed.error : SupabaseLite.errorCode(text);
+      throw new SupabaseFailure(response.status === 413 ? "Payload too large" : message ?? (response.status === 404 ? "not_found" : "error"));
+    }
+    return response.blob();
+  }
+
   private async post(path: string, params: Record<string, J>): Promise<J> {
     const token = await this.accessToken();
     const { status, text } = await this.request(path, {

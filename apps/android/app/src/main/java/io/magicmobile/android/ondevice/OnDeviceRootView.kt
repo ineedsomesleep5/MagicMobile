@@ -197,6 +197,27 @@ class OnDeviceViewModel(application: Application) : AndroidViewModel(application
     /** A deck changed here or a tombstone waits to go up. */
     fun deckSyncPending(): Boolean = runCatching { deckSync.hasPending() }.getOrDefault(false)
 
+    /** Your own card pictures on every phone and browser signed in to this profile (docs/CARD_ART_SYNC.md). */
+    private val cardArtSync by lazy {
+        val file = java.io.File(getApplication<Application>().filesDir, "custom-card-art-sync.json")
+        io.magicmobile.android.studio.CardArtSync(io.magicmobile.android.CustomCardArt.local(getApplication()),
+            io.magicmobile.android.studio.CardArtSyncState({ runCatching { file.readText() }.getOrNull() }, { file.writeText(it) }),
+            account.cardArtSyncAPI) { io.magicmobile.android.social.SupabaseLite.code(it) }
+            .also { sync -> io.magicmobile.android.CustomCardArt.onRemoved = { key -> sync.noteRemoved(key) } }
+    }
+
+    /** One card picture sync in the background, like [syncDecks]. */
+    fun syncCardArt() {
+        if (account.phase != PlayerAccount.Phase.READY) return
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val profile = account.profileID() ?: return@launch
+            try { cardArtSync.sync(profile) } catch (error: kotlinx.coroutines.CancellationException) { throw error } catch (error: Exception) { /* offline or refused: the next sync tries again */ }
+        }
+    }
+
+    /** A picture set or removed here waits to go up. */
+    fun cardArtSyncPending(): Boolean = runCatching { cardArtSync.hasPending() }.getOrDefault(false)
+
     /** Voice chat for this online game (VoiceRoom); null in solo games and while the server's switch is off. */
     var voiceRoom by mutableStateOf<VoiceRoom?>(null); private set
 
@@ -978,7 +999,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     LaunchedEffect(accountReady) { if (accountReady) vm.account.refreshAppConfig() }
     LaunchedEffect(accountReady, vm.account.username, appForeground) {
         if (!accountReady || !appForeground) return@LaunchedEffect
-        while (true) { vm.syncDecks(); delay(5 * 60_000L) }
+        while (true) { vm.syncDecks(); vm.syncCardArt(); delay(5 * 60_000L) }
+    }
+    // Card pictures (docs/CARD_ART_SYNC.md) go up the same way. The first run also makes the sync, which then notes removals.
+    LaunchedEffect(io.magicmobile.android.CustomCardArt.revision, accountReady) {
+        val pending = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { vm.cardArtSyncPending() }
+        if (!accountReady || !pending) return@LaunchedEffect
+        delay(3_000); vm.syncCardArt()
     }
     LaunchedEffect(setup.localDecks, accountReady) {
         if (!accountReady || !vm.deckSyncPending()) return@LaunchedEffect
