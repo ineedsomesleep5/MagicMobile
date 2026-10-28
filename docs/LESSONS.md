@@ -997,3 +997,7 @@ contradicting one.
     "Padding must be non-negative". Clamp with `coerceAtLeast(0.dp)`.
   - **A remembered nudge replayed.** The coach card leaves the table between notes; its "wrong move" effect saw the
     run's old count when it came back and showed the nudge over the finish text. Compare with the last count seen.
+  - **The lesson recorder trips the release engine check.** `packages/ondevice-engine/engine/tools/LessonCli.java`
+    never ships, but preflight and Android's whole-package engine check count every file under the engine package, so
+    TestFlight 68 first read `different-source`. Release branches (`codex/ios-build-N`, `codex/android-build-N`) leave
+    it out, like the calibration tooling; keep doing that until the next engine release includes it.
