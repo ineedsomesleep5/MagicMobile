@@ -15,6 +15,7 @@ import io.magicmobile.android.core.array
 import io.magicmobile.android.game.BuildIdentity
 import io.magicmobile.android.game.EngineCheckpointResult
 import io.magicmobile.android.game.EngineClient
+import io.magicmobile.android.game.isLessonNudge
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.EngineHealth
 import io.magicmobile.android.game.EngineJson
@@ -459,7 +460,9 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             return
         }
         errorMessage = null; feedback = null
-        try { operation() } catch (error: Throwable) { errorMessage = error.message ?: error.javaClass.simpleName }
+        try { operation() } catch (error: Throwable) {
+            if (!error.isLessonNudge) errorMessage = error.message ?: error.javaClass.simpleName
+        }
     }
 
     /** Waits up to 3 seconds for the current response and its refresh to finish. */

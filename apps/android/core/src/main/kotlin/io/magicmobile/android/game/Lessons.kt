@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonPrimitive
  */
 object LessonText {
     const val TITLE = "Lessons"
+    const val START = "Start the lessons"
     const val COACH = "Maren"
     const val GOT_IT = "Got it"
     const val NEXT = "Next Lesson"
@@ -23,6 +24,34 @@ object LessonText {
     const val ALL_COMPLETE = "You know the basics. Play a guided game against an easy AI next, with tips as you go."
     const val NUDGE = "Not that one. Follow the glow."
     const val GUIDED = "Guided game"
+}
+
+/** A move the lesson turned down: the coach card says so, so the board shows no error of its own. */
+val Throwable.isLessonNudge: Boolean
+    get() = this is EngineError.Rejected && (code == "lesson_wrong_move" || code == "lesson_not_now")
+
+/** What the board has open over the table, so Maren's card can get out of its way (iOS LessonBoardCover). */
+enum class LessonBoardCover { NONE, PLAYER_CARD, PANEL }
+
+/** Where Maren's card sits. */
+enum class LessonCoachPlacement { TOP, LOW, TUCKED }
+
+object LessonPlacement {
+    /** Top, unless that covers what she points at or a panel the board opened. */
+    fun of(cover: LessonBoardCover, spotIsAcross: Boolean, needsAnswer: Boolean): LessonCoachPlacement = when (cover) {
+        LessonBoardCover.PANEL -> if (needsAnswer) LessonCoachPlacement.LOW else LessonCoachPlacement.TUCKED
+        LessonBoardCover.PLAYER_CARD -> LessonCoachPlacement.LOW
+        LessonBoardCover.NONE -> if (spotIsAcross) LessonCoachPlacement.LOW else LessonCoachPlacement.TOP
+    }
+
+    /** The coach points at the opponents' side: one of their portraits or a card on their battlefield. */
+    fun across(ids: Set<String>, poll: J): Boolean {
+        val view = poll["snapshot"]["gameView"]
+        val viewer = view["myPlayerId"].string
+        return (view["players"].array ?: emptyList()).filter { it["playerId"].string != viewer }.any { player ->
+            ids.any { id -> player["playerId"].string == id || player["battlefield"][id] != null }
+        }
+    }
 }
 
 /** What the coach says on a frame: a title, a sentence or two, and what it points at. */

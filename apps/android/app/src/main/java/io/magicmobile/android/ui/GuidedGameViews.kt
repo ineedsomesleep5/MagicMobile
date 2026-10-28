@@ -70,7 +70,7 @@ fun GuidedGameWelcomeView(playGuided: () -> Unit, readHowToPlay: () -> Unit, ski
                 Text(GuidedGameText.WELCOME_BODY, color = TavernPalette.parchment, textAlign = TextAlign.Center,
                     style = sf(16f, SfWeight.medium, SfDesign.SERIF))
                 Column(Modifier.fillMaxWidth().padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TavernPlaqueButton(GuidedGameText.START, playGuided, Modifier.testTag("guided.welcome.play"), compact = false, fullWidth = true)
+                    TavernPlaqueButton(io.magicmobile.android.game.LessonText.START, playGuided, Modifier.testTag("guided.welcome.play"), compact = false, fullWidth = true)
                     TavernPlaqueButton(GuidedGameText.READ_HOW_TO_PLAY, readHowToPlay, Modifier.testTag("guided.welcome.howToPlay"),
                         TavernButtonKind.SECONDARY, compact = false, fullWidth = true)
                     TavernPlaqueButton(GuidedGameText.SKIP, skip, Modifier.testTag("guided.welcome.skip"),

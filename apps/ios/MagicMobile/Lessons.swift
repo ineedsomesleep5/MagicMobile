@@ -12,6 +12,7 @@ typealias LessonJSON = MagicMobileOnDevice.JSONValue
 /// the frames. Android's Lessons.kt and the web's lessons.ts read the same files the same way.
 enum LessonText {
     static let title = "Lessons"
+    static let start = "Start the lessons"
     static let coach = "Maren"
     static let gotIt = "Got it"
     static let next = "Next Lesson"
@@ -29,6 +30,18 @@ extension Error {
         return false
     }
 }
+
+/// What the board has open over the table, so Maren's card can get out of its way.
+enum LessonBoardCover: Equatable {
+    case none
+    /// A player's card beside their portrait at the top: the coach drops below it.
+    case playerCard
+    /// A full panel the player opened (phase stops, the game menu, a card or zone up close): the coach tucks into a chip.
+    case panel
+}
+
+/// Where Maren's card sits.
+enum LessonCoachPlacement: Equatable { case top, low, tucked }
 
 /// What the coach says on a frame: a title, a sentence or two, and what it points at.
 struct LessonCoach: Equatable {
@@ -153,6 +166,21 @@ final class LessonRun: ObservableObject {
     /// Card and player IDs the coach points at on this frame.
     @Published private(set) var spotIDs: Set<String> = []
     @Published private(set) var spotControl: String?
+    /// The coach points at something on the opponent's side of the table (their portrait or their cards).
+    @Published private(set) var spotIsAcross = false
+    /// What the board has open (LessonBoardCover), reported by the board.
+    @Published private(set) var boardCover: LessonBoardCover = .none
+
+    /// Top, unless that covers what she points at or a panel the board opened.
+    var placement: LessonCoachPlacement {
+        switch boardCover {
+        case .panel: return complete || waitsForGotIt ? .low : .tucked
+        case .playerCard: return .low
+        case .none: return spotIsAcross ? .low : .top
+        }
+    }
+
+    func boardCovered(_ cover: LessonBoardCover) { if boardCover != cover { boardCover = cover } }
     fileprivate weak var transport: LessonTransport?
     private let defaults: UserDefaults
     /// The board's refresh, so Got it shows the next frame without waiting for the next poll.
@@ -189,6 +217,11 @@ final class LessonRun: ObservableObject {
         let spot = LessonSpot.resolve(frame.coach?.spot, poll: frame.poll, expect: frame.expect)
         // A swap step also rings the opponent to switch to, in the player card's swap row.
         spotIDs = spot.ids.union(focusID.map { [$0] } ?? []); spotControl = spot.control
+        let viewer = frame.poll["snapshot"]?["gameView"]?["myPlayerId"]?.string
+        let across = (frame.poll["snapshot"]?["gameView"]?["players"]?.array ?? []).filter { $0["playerId"]?.string != viewer }
+        spotIsAcross = spot.ids.contains { id in
+            across.contains { $0["playerId"]?.string == id || $0["battlefield"]?[id] != nil }
+        }
     }
 
     func nudge() { nudges += 1 }

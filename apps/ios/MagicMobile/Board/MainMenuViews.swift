@@ -311,11 +311,12 @@ struct PhaseStopsGrid: View {
 
 private struct PhaseStopColumnTitle: View {
     let text: String
+    @Environment(\.arenaBoard) private var arena
 
     var body: some View {
         Text(text)
             .font(.system(size: 10, weight: .heavy, design: .serif)).tracking(0.8)
-            .foregroundStyle(BrandTheme.brassGradient)
+            .foregroundStyle(arena ? AnyShapeStyle(ArenaMenuStyle.gold) : AnyShapeStyle(BrandTheme.brassGradient))
             .frame(width: 76)
     }
 }
@@ -325,30 +326,34 @@ private struct PhaseStopRow: View {
     let step: OnDeviceSmartPass.Step
     let stops: Set<String>
     let toggle: (String) -> Void
+    @Environment(\.arenaBoard) private var arena
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Text(step.title)
-                    .font(.system(size: 15, weight: .semibold, design: .serif))
-                    .foregroundStyle(TavernPalette.parchment)
+                    .font(arena ? ArenaMenuStyle.font(15, .semibold) : .system(size: 15, weight: .semibold, design: .serif))
+                    .foregroundStyle(arena ? ArenaMenuStyle.text : TavernPalette.parchment)
                     .lineLimit(1).minimumScaleFactor(0.75)
                 Spacer(minLength: 8)
                 PhaseStopButton(step: step, myTurn: true, isOn: stops.contains(OnDeviceSmartPass.stopKey(step, myTurn: true)), toggle: toggle)
                 PhaseStopButton(step: step, myTurn: false, isOn: stops.contains(OnDeviceSmartPass.stopKey(step, myTurn: false)), toggle: toggle)
             }
             .frame(minHeight: 48)
-            Rectangle().fill(TavernPalette.brass.opacity(0.35)).frame(height: 1)
+            Rectangle().fill(arena ? AnyShapeStyle(ArenaGlass.hairline.opacity(0.45)) : AnyShapeStyle(TavernPalette.brass.opacity(0.35)))
+                .frame(height: 1)
         }
     }
 }
 
-/// A stop: ember glass with a raised hand when set, dark leather when the step passes.
+/// A stop: ember glass with a raised hand when set, dark leather when the step passes. On the Arena board: Arena's orange
+/// plaque when set, dark glass in the gold hairline when not.
 private struct PhaseStopButton: View {
     let step: OnDeviceSmartPass.Step
     let myTurn: Bool
     let isOn: Bool
     let toggle: (String) -> Void
+    @Environment(\.arenaBoard) private var arena
 
     private var key: String { OnDeviceSmartPass.stopKey(step, myTurn: myTurn) }
     private var tint: Color { isOn ? Color(red: 1, green: 0.91, blue: 0.66) : TavernPalette.brass.opacity(0.6) }
@@ -364,8 +369,13 @@ private struct PhaseStopButton: View {
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(tint)
                 .frame(width: 76, height: 36)
-                .background { TavernFill(material: material).clipShape(Capsule()).padding(1.5) }
-                .overlay { TavernCapsuleRim(thin: true) }
+                .background {
+                    if arena { Capsule().fill(isOn ? AnyShapeStyle(ArenaMenuStyle.orange) : AnyShapeStyle(Color.black.opacity(0.45))) }
+                    else { TavernFill(material: material).clipShape(Capsule()).padding(1.5) }
+                }
+                .overlay {
+                    if arena { Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: isOn ? 1.2 : 0.8) } else { TavernCapsuleRim(thin: true) }
+                }
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)

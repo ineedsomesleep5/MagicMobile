@@ -65,7 +65,7 @@ struct GuidedGameWelcomeView: View {
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                     VStack(spacing: 12) {
-                        Button(GuidedGameText.start, action: playGuided)
+                        Button(LessonText.start, action: playGuided)
                             .buttonStyle(TavernButtonStyle(kind: .primary, fullWidth: true))
                             .accessibilityIdentifier("guided.welcome.play")
                         Button(GuidedGameText.readHowToPlay, action: readHowToPlay)

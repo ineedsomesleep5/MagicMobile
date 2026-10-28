@@ -987,3 +987,13 @@ contradicting one.
     report). Errors with `lesson_wrong_move` and `lesson_not_now` are kept out of every platform's error state.
   - **No engine in simulator builds.** The app gates everything on the engine. A lesson needs none:
     `--ondevice-setup-ui-test` with `MAGICMOBILE_UI_TEST_LESSON=<id>` opens one in DEBUG.
+  - **Overlays outside the board miss the Arena look.** Maren's and the guided game's cards are the root's overlays, not
+    the board's, so they never got `arenaBoard` (iOS) or `LocalArenaBoard` (Android) and drew leather tags. Give them
+    the board mode's value. Android's `TavernTag`, `TavernPanelTitle`, `TavernSealButton` and `TavernMenuDivider`, and
+    iOS's `TavernPanelTitle` and `TavernMenuDivider`, had no Arena version at all; the phase stops grid neither.
+  - **A full-screen measuring layer swallows taps (iOS).** A `GeometryReader` around Maren's card blocked every tap on
+    the board. Measure on a `Color.clear` with `allowsHitTesting(false)` and put the card in its overlay.
+  - **A spring overshoots below zero (Android).** `animateDpAsState` with a spring went negative and `padding` threw
+    "Padding must be non-negative". Clamp with `coerceAtLeast(0.dp)`.
+  - **A remembered nudge replayed.** The coach card leaves the table between notes; its "wrong move" effect saw the
+    run's old count when it came back and showed the nudge over the finish text. Compare with the last count seen.

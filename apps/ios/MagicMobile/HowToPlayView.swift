@@ -102,8 +102,9 @@ private struct HowToPlayChooser: View {
     @ViewBuilder private var books: some View {
         if let openLessons {
             // The lessons first: short scripted games on the real board, the guided game as their last step.
+            // Zoomed in so the printing's frame stays outside the tile, framed on the bears' faces.
             book(id: "lessons", title: LessonText.title, subtitle: "", icon: "graduationcap.fill",
-                 art: "Grizzly Bears", colors: ["G"], action: HowToPlayText.begin, primary: true, choose: openLessons)
+                 art: "Grizzly Bears", colors: ["G"], action: HowToPlayText.begin, primary: true, artScale: 1.16, artFocus: 0, choose: openLessons)
         } else if let playGuided {
             book(id: "guided", title: GuidedGameText.title, subtitle: GuidedGameText.subtitle, icon: "graduationcap.fill",
                  art: "Emmara, Soul of the Accord", colors: ["G", "W"], action: GuidedGameText.start, primary: true, choose: playGuided)
@@ -121,11 +122,11 @@ private struct HowToPlayChooser: View {
     /// (the judge, 2026-10-22: no descriptions); the guided game is the one ember plaque, the tutorials leather, as Arena
     /// keeps ember for the single primary action.
     private func book(id: String, title: String, subtitle: String, icon: String, art: String, colors: [String], action: String,
-                      primary: Bool = false, choose: @escaping () -> Void) -> some View {
+                      primary: Bool = false, artScale: CGFloat = 1.06, artFocus: CGFloat = 0.3, choose: @escaping () -> Void) -> some View {
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         return Button(action: choose) {
-            if verticalSizeClass == .compact { sideways(title: title, icon: icon, art: art, colors: colors, action: action, primary: primary) }
-            else { upright(title: title, icon: icon, art: art, colors: colors, action: action, primary: primary) }
+            if verticalSizeClass == .compact { sideways(title: title, icon: icon, art: art, colors: colors, action: action, primary: primary, artScale: artScale, artFocus: artFocus) }
+            else { upright(title: title, icon: icon, art: art, colors: colors, action: action, primary: primary, artScale: artScale, artFocus: artFocus) }
         }
         .buttonStyle(.plain)
         .background(shape.fill(Color.black.opacity(0.45)))
@@ -147,10 +148,11 @@ private struct HowToPlayChooser: View {
 
     /// Upright, Arena's way (Caleb, 2026-10-26: the thin strips showed shoulders, not faces, under a gap): the art fills
     /// the tile, sharp and framed on its upper part, with the title and plaque on a shade along its foot.
-    private func upright(title: String, icon: String, art: String, colors: [String], action: String, primary: Bool) -> some View {
+    private func upright(title: String, icon: String, art: String, colors: [String], action: String, primary: Bool,
+                         artScale: CGFloat, artFocus: CGFloat) -> some View {
         ZStack(alignment: .bottom) {
-            ArenaArt(name: art, colors: colors, variant: .inspection, focus: 0.3)
-                .scaleEffect(1.06)
+            ArenaArt(name: art, colors: colors, variant: .inspection, focus: artFocus)
+                .scaleEffect(artScale)
             LinearGradient(colors: [.clear, .black.opacity(0.55), .black.opacity(0.88)], startPoint: .top, endPoint: .bottom)
                 .frame(height: 96)
             HStack(alignment: .bottom, spacing: 10) {
@@ -171,13 +173,14 @@ private struct HowToPlayChooser: View {
         .multilineTextAlignment(.leading)
     }
 
-    private func sideways(title: String, icon: String, art: String, colors: [String], action: String, primary: Bool) -> some View {
+    private func sideways(title: String, icon: String, art: String, colors: [String], action: String, primary: Bool,
+                          artScale: CGFloat, artFocus: CGFloat) -> some View {
         Group {
             VStack(alignment: .leading, spacing: 0) {
                 // Cropped in from every edge, so a printing's frame never shows along the art's border.
-                ArenaArt(name: art, colors: colors, variant: .inspection, focus: 0.3)
+                ArenaArt(name: art, colors: colors, variant: .inspection, focus: artFocus)
                     .frame(height: 104)
-                    .scaleEffect(1.14)
+                    .scaleEffect(max(1.14, artScale))
                     .clipped()
                     .overlay(alignment: .topLeading) { emblem(icon) }
                 VStack(alignment: .leading, spacing: 6) {

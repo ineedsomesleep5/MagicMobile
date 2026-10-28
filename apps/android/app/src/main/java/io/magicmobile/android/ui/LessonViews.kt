@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -91,6 +93,14 @@ class LessonRun(val lesson: LessonInfo) : LessonListener {
     var complete by mutableStateOf(false); private set
     var nudges by mutableIntStateOf(0); private set
     var focus by mutableStateOf(LessonSpot.Focus()); private set
+    /** The coach points at the opponents' side of the table. */
+    var spotIsAcross by mutableStateOf(false); private set
+    /** What the board has open (LessonBoardCover), reported by the board. */
+    var boardCover by mutableStateOf(io.magicmobile.android.game.LessonBoardCover.NONE); private set
+    val placement: io.magicmobile.android.game.LessonCoachPlacement
+        get() = io.magicmobile.android.game.LessonPlacement.of(boardCover, spotIsAcross, complete || waitsForGotIt)
+
+    fun boardCovered(cover: io.magicmobile.android.game.LessonBoardCover) { if (boardCover != cover) boardCover = cover }
     /** Lets the lesson go on after a note; set by the root once the transport exists. */
     var release: (() -> Unit)? = null
 
@@ -116,6 +126,7 @@ class LessonRun(val lesson: LessonInfo) : LessonListener {
         waitsForGotIt = frame.note && focusID == null
         // A swap step also rings the opponent to switch to, in the player card's swap row.
         focus = LessonSpot.resolve(frame.coach?.spot, frame.poll, frame.expect).let { if (focusID == null) it else it.copy(ids = it.ids + focusID) }
+        spotIsAcross = io.magicmobile.android.game.LessonPlacement.across(focus.ids, frame.poll)
     }
 
     override fun nudge() { nudges += 1 }
@@ -146,12 +157,47 @@ fun LessonFocusRing(rect: BoardRect, circle: Boolean = false) {
  */
 @Composable
 fun LessonCoachCard(run: LessonRun, nextTitle: String, next: (() -> Unit)?, done: () -> Unit, modifier: Modifier = Modifier) {
+    if (!run.complete && run.coach == null) return
+    // The player opened the tucked chip: the card shows until the next note or the panel closes.
+    var untucked by remember(run.coach, run.boardCover) { mutableStateOf(false) }
+    val placement = run.placement.let { if (it == io.magicmobile.android.game.LessonCoachPlacement.TUCKED && untucked) io.magicmobile.android.game.LessonCoachPlacement.LOW else it }
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
+        // Low: under a player's card at the top and above your hand and the corner buttons.
+        val top by androidx.compose.animation.core.animateDpAsState(
+            if (placement == io.magicmobile.android.game.LessonCoachPlacement.LOW) maxHeight * 0.5f else 0.dp,
+            if (LaunchEnvironment.reduceMotion) tween(150) else spring(0.8f, 380f), label = "lesson-coach-place")
+        androidx.compose.animation.AnimatedContent(placement == io.magicmobile.android.game.LessonCoachPlacement.TUCKED, Modifier.fillMaxWidth().padding(top = top.coerceAtLeast(0.dp)),
+            transitionSpec = {
+                (androidx.compose.animation.fadeIn(tween(220)) + androidx.compose.animation.scaleIn(initialScale = 0.85f))
+                    .togetherWith(androidx.compose.animation.fadeOut(tween(150)) + androidx.compose.animation.scaleOut(targetScale = 0.85f))
+            }, contentAlignment = Alignment.TopCenter, label = "lesson-coach-tuck") { tucked ->
+            if (tucked) LessonCoachChip(run) { untucked = true } else LessonCoachNote(run, nextTitle, next, done)
+        }
+    }
+}
+
+/** Tucked while a panel is open: Maren's name and the step's title in a small glass chip; a tap opens the card. */
+@Composable
+private fun LessonCoachChip(run: LessonRun, open: () -> Unit) {
+    Row(Modifier.wrapContentWidth().clickable(onClickLabel = "Shows the note", onClick = open).tavernPanelChrome(tavern = true, cornerRadius = 18.dp)
+        .testTag("lesson.chip").padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        TavernTag(LessonText.COACH.uppercase(), accent = TavernPalette.ember)
+        Text(run.coach?.title ?: run.lesson.title, color = TavernPalette.parchment, style = sf(13f, SfWeight.semibold, SfDesign.SERIF), maxLines = 1)
+    }
+}
+
+@Composable
+private fun LessonCoachNote(run: LessonRun, nextTitle: String, next: (() -> Unit)?, done: () -> Unit, modifier: Modifier = Modifier) {
     val coach = run.coach
     if (!run.complete && coach == null) return
     val shake = remember { Animatable(0f) }
     var nudged by remember(coach) { mutableStateOf(false) }
+    // Only a new wrong move: the card leaves the table between notes and must not replay an old one when it comes back.
+    var seenNudges by remember { mutableIntStateOf(run.nudges) }
     LaunchedEffect(run.nudges) {
-        if (run.nudges == 0) return@LaunchedEffect
+        if (run.nudges == seenNudges) return@LaunchedEffect
+        seenNudges = run.nudges
         nudged = true
         shake.snapTo(10f); shake.animateTo(0f, spring(0.25f, 900f))
     }

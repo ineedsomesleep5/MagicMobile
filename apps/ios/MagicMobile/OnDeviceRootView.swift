@@ -1119,6 +1119,7 @@ struct OnDeviceRootView: View {
         .overlay(alignment: .top) {
             if guidedGame, let guidedTip {
                 GuidedGameCoachCard(tip: guidedTip, dismiss: { self.guidedTip = nil }, turnOff: { endGuidedTips() })
+                    .environment(\.arenaBoard, BoardMode.resolved(boardMode) == .arena)
                     .padding(.top, 6)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -1130,6 +1131,7 @@ struct OnDeviceRootView: View {
             if let lessonRun, session.snapshot?.isCompleted != true {
                 LessonCoachCard(run: lessonRun, nextTitle: LessonCatalog.next(after: lessonRun.script.id) == nil ? LessonText.guided : LessonText.next,
                                 next: { nextLesson() }, done: { finishLesson() })
+                    .environment(\.arenaBoard, BoardMode.resolved(boardMode) == .arena)
                     .padding(.top, 6)
             }
         }
@@ -1886,9 +1888,10 @@ struct OnDeviceRootView: View {
         showGuidedWelcome = false
     }
 
+    /// The welcome's main button: the first lesson (the guided game follows the last one).
     private func playGuidedFromWelcome() {
         answerGuidedWelcome()
-        startGuidedGame()
+        if let first = LessonCatalog.all.first { startLesson(first.id) } else { startGuidedGame() }
     }
 
     /// The slideshow opens once the welcome has slid away, straight into the table's tutorial.

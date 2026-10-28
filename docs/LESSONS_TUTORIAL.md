@@ -28,6 +28,10 @@ JVM build) and saves the learner's view after every change. The apps play that r
 - **Swap steps.** A frame with `focus` (a player's name) waits for the board to show that opponent: the phones' Arena
   board reports each swap from the player card's swap row, which names each portrait and rings the one to pick. The web
   board shows every opponent at once, so there the step is a note with its own `desktop` words.
+- **Maren's card moves.** It sits at the top; it springs down to the middle of the table when she points at the
+  opponents' side or a player's card is open, and tucks into a small "MAREN · title" chip while a panel is open (phase
+  stops, the game menu, a card or zone up close). A note waiting for Got it and the finish never tuck. The board reports
+  what it has open (`LessonBoardCover`).
 - **Rings.** The coach's `spot` names a card (the expected one when it has that name), a player, `primary` (the corner
   button) or `medallion`.
 - **Not counted.** Lessons never reach stats, ranked, saves or game records. Finished lessons are remembered on the

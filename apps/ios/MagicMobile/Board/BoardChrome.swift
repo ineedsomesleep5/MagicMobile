@@ -1674,14 +1674,17 @@ struct TavernSheetBackground: View {
 /// A panel title engraved in gold.
 struct TavernPanelTitle: View {
     let text: String
+    @Environment(\.arenaBoard) private var arena
 
     var body: some View {
+        // On the Arena board: Arena's serif in plain gold, not the engraved tavern capitals.
         Text(text.uppercased())
-            .font(TavernDisplayFont.font(16))
-            .tracking(1.2)
-            .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.80, green: 0.56, blue: 0.22)],
-                                            startPoint: .top, endPoint: .bottom))
-            .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
+            .font(arena ? ArenaMenuStyle.font(16, .bold) : TavernDisplayFont.font(16))
+            .tracking(arena ? 1 : 1.2)
+            .foregroundStyle(arena ? AnyShapeStyle(ArenaMenuStyle.gold)
+                             : AnyShapeStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.80, green: 0.56, blue: 0.22)],
+                                                            startPoint: .top, endPoint: .bottom)))
+            .shadow(color: .black.opacity(arena ? 0 : 0.7), radius: 1, y: 1)
             .lineLimit(1)
             .minimumScaleFactor(0.7)
             // Engraved in capitals, named in normal case (VoiceOver reads capitals letter by letter).
@@ -2123,8 +2126,11 @@ struct TavernMenuItem: View {
 
 /// A thin brass rule between groups of tavern menu rows.
 struct TavernMenuDivider: View {
+    @Environment(\.arenaBoard) private var arena
+
     var body: some View {
-        Rectangle().fill(TavernPalette.brassLine).frame(height: 1).opacity(0.7).padding(.vertical, 2)
+        Rectangle().fill(arena ? AnyShapeStyle(ArenaGlass.hairline) : AnyShapeStyle(TavernPalette.brassLine))
+            .frame(height: 1).opacity(arena ? 0.45 : 0.7).padding(.vertical, 2)
     }
 }
 

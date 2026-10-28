@@ -149,7 +149,8 @@ private fun HowToPlayChooser(choose: (HowToPlayTutorial) -> Unit, playGuided: ((
             val books: @Composable (Modifier) -> Unit = { tile ->
                 // The lessons first: short scripted games on the real board, the guided game as their last step.
                 if (openLessons != null) Book("lessons", io.magicmobile.android.game.LessonText.TITLE, "", "graduationcap.fill", "Grizzly Bears",
-                    listOf("G"), HowToPlayText.BEGIN, wide, tile, primary = true, choose = openLessons)
+                    // Zoomed in so the printing's frame stays outside the tile, framed on the bears' faces.
+                    listOf("G"), HowToPlayText.BEGIN, wide, tile, primary = true, artScale = 1.16f, artFocus = 0f, choose = openLessons)
                 else if (playGuided != null) Book("guided", GuidedGameText.TITLE, GuidedGameText.SUBTITLE, "graduationcap.fill", "Emmara, Soul of the Accord",
                     listOf("G", "W"), GuidedGameText.START, wide, tile, primary = true, choose = playGuided)
                 for (tutorial in HowToPlayText.tutorials) {
@@ -184,7 +185,7 @@ private fun HowToPlayChooser(choose: (HowToPlayTutorial) -> Unit, playGuided: ((
  */
 @Composable
 private fun Book(id: String, title: String, subtitle: String, icon: String, art: String, colors: List<String>, action: String, wide: Boolean,
-                 modifier: Modifier, primary: Boolean = false, choose: () -> Unit) {
+                 modifier: Modifier, primary: Boolean = false, artScale: Float = 1.06f, artFocus: Float = 0.3f, choose: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     val frame = modifier.glow(Color.Black.copy(alpha = 0.5f), 8.dp, 12.dp).clip(shape).background(Color.Black.copy(alpha = 0.45f))
         .border(1.dp, ArenaGlass.hairline, shape)
@@ -194,7 +195,7 @@ private fun Book(id: String, title: String, subtitle: String, icon: String, art:
         // Upright, Arena's way (Caleb, 2026-10-26: the thin strips showed shoulders, not faces, under a gap): the art fills
         // the tile, framed on its upper part, with the title and plaque on a shade along its foot.
         Box(frame.fillMaxWidth().height(158.dp), contentAlignment = Alignment.BottomCenter) {
-            ArenaArt(art, colors, Modifier.fillMaxSize().graphicsLayer { scaleX = 1.06f; scaleY = 1.06f }, focus = 0.3f)
+            ArenaArt(art, colors, Modifier.fillMaxSize().graphicsLayer { scaleX = artScale; scaleY = artScale }, focus = artFocus)
             Box(Modifier.fillMaxWidth().height(96.dp).background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.88f)))))
             Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(title, Modifier.weight(1f), color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(19f, SfWeight.bold).copy(shadow = Shadow(Color.Black, blurRadius = 6f)))
@@ -208,7 +209,7 @@ private fun Book(id: String, title: String, subtitle: String, icon: String, art:
     Column(frame) {
         Box(Modifier.fillMaxWidth().height(104.dp).clip(RoundedCornerShape(0.dp))) {
             // Cropped in from every edge, so a printing's frame never shows along the art's border.
-            ArenaArt(art, colors, Modifier.fillMaxSize().graphicsLayer { scaleX = 1.14f; scaleY = 1.14f }, focus = 0.3f)
+            ArenaArt(art, colors, Modifier.fillMaxSize().graphicsLayer { val z = maxOf(1.14f, artScale); scaleX = z; scaleY = z }, focus = artFocus)
             Box(Modifier.padding(10.dp).size(34.dp).background(Color.Black.copy(alpha = 0.7f), CircleShape).border(0.9.dp, ArenaGlass.hairline, CircleShape),
                 contentAlignment = Alignment.Center) { ArenaEmblem(icon, 16.dp, lit = true) }
         }

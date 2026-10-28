@@ -187,6 +187,13 @@ struct NativeGameView: View {
     /// A lesson's coach points here (LessonViews.swift): rings drawn over the Arena board.
     @Environment(\.lessonFocus) var lessonFocus
     @Environment(\.lessonFocusReport) var lessonFocusReport
+    @Environment(\.lessonCoverReport) var lessonCoverReport
+
+    /// What the board has open over the table, for a lesson's coach (LessonBoardCover).
+    var lessonCover: LessonBoardCover {
+        if arenaShowPhaseStops || isGameMenuOpen || isLogOpen || arenaCornerMenu != nil || inspectedCard != nil || inspectingZoneTitle != nil { return .panel }
+        return arenaPlayerCardID != nil ? .playerCard : .none
+    }
     @Environment(\.nativeTurnControl) var nativeTurnControl
     @Environment(\.boardAnswerActions) var answerActions
     /// Which opponent the top of the board shows; it follows the turn (BoardFocusTracker).
@@ -1265,6 +1272,7 @@ struct NativeGameView: View {
             }
             // A lesson's swap step waits for the opponent the player switches to.
             .onChange(of: focusTracker.focusedID) { _, id in if let id { lessonFocusReport?(id) } }
+            .onChange(of: lessonCover, initial: true) { _, cover in lessonCoverReport?(cover) }
             .onChange(of: snapshot.id) { _, _ in
                 cardChoiceCompletionTask?.cancel()
                 cardChoiceCompletionTask = nil

@@ -1338,10 +1338,16 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             }) {
             Box(Modifier.fillMaxSize().background(BrandTheme.canvas)) {
                 if (activeGame) {
+                    val gameBoardMode by io.magicmobile.android.ui.AppPreferences.string(io.magicmobile.android.game.BoardMode.key, io.magicmobile.android.game.BoardMode.defaultValue)
                     CompositionLocalProvider(
+                        // On the Arena board the root's overlays over the game (Maren's and the guided game's notes, the recovery
+                        // banner) draw the Arena way too, as the board's own panels do (iOS: the board's environment).
+                        io.magicmobile.android.menus.LocalArenaBoard provides
+                            (io.magicmobile.android.game.BoardMode.resolved(gameBoardMode) == io.magicmobile.android.game.BoardMode.ARENA),
                         LocalInspectorBattlefield provides (session.snapshot?.players?.flatMap { it.zones.battlefield } ?: emptyList()),
                         io.magicmobile.android.board.LocalLessonFocus provides (lessonRun?.focus ?: io.magicmobile.android.game.LessonSpot.Focus()),
                         io.magicmobile.android.board.LocalLessonFocusReport provides lessonRun?.let { run -> { id: String -> run.boardFocused(id) } },
+                        io.magicmobile.android.board.LocalLessonCoverReport provides lessonRun?.let { run -> { cover: io.magicmobile.android.game.LessonBoardCover -> run.boardCovered(cover) } },
                         LocalGameRematchTitle provides when {
                             lessonRun != null -> if (io.magicmobile.android.game.LessonCatalog.next(lessonRun!!.lesson.id,
                                 io.magicmobile.android.ui.LessonAssets.all(context)) == null) io.magicmobile.android.game.LessonText.GUIDED
@@ -1428,7 +1434,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                             }
                             // A lesson that ends in a win hands over to the result screen, whose button goes on to the next lesson.
                             lessonRun?.let { run ->
-                                if (session.snapshot?.isCompleted != true) Box(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 6.dp)) {
+                                // Below the top opponent's portrait and life, as on iPhone.
+                                if (session.snapshot?.isCompleted != true) Box(Modifier.align(Alignment.TopCenter).fillMaxSize().statusBarsPadding().padding(top = 56.dp)) {
                                     io.magicmobile.android.ui.LessonCoachCard(run, nextTitle = if (io.magicmobile.android.game.LessonCatalog.next(run.lesson.id,
                                         io.magicmobile.android.ui.LessonAssets.all(context)) == null) io.magicmobile.android.game.LessonText.GUIDED
                                         else io.magicmobile.android.game.LessonText.NEXT, next = ::nextLesson, done = ::finishLesson)
@@ -1626,7 +1633,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                     playLesson = if (howToPlayOpensTable) null else ::startLesson)
             }
             io.magicmobile.android.menus.ArenaPanel(showGuidedWelcome, ::answerGuidedWelcome, maxWidth = 560.dp, dismissable = false, fitsContent = true) {
-                GuidedGameWelcomeView(playGuided = { answerGuidedWelcome(); startGuidedGame() },
+                GuidedGameWelcomeView(playGuided = {
+                    // The welcome's main button: the first lesson (the guided game follows the last one).
+                    answerGuidedWelcome()
+                    io.magicmobile.android.ui.LessonAssets.all(context).firstOrNull()?.let { startLesson(it.id) } ?: startGuidedGame()
+                },
                     readHowToPlay = {
                         answerGuidedWelcome()
                         scope.launch { delay(450); howToPlayOpensTable = true; showHowToPlay = true }

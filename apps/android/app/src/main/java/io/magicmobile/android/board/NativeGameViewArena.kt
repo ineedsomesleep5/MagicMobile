@@ -208,6 +208,14 @@ fun ArenaBoard(host: ArenaBoardHost) {
     var stackTuckedTop by remember { mutableStateOf<String?>(null) }
     var stackPeekTop by remember { mutableStateOf<String?>(null) }
     var showPhaseStops by remember { mutableStateOf(false) }
+    // A lesson's coach gets out of the way of what the board opens (LessonBoardCover).
+    val lessonCoverReport = LocalLessonCoverReport.current
+    val lessonCover = when {
+        showPhaseStops || cornerMenu != null || host.selection.inspectedCard != null || host.inspectingZoneTitle != null -> io.magicmobile.android.game.LessonBoardCover.PANEL
+        playerCardID != null -> io.magicmobile.android.game.LessonBoardCover.PLAYER_CARD
+        else -> io.magicmobile.android.game.LessonBoardCover.NONE
+    }
+    LaunchedEffect(lessonCover) { lessonCoverReport?.invoke(lessonCover) }
     var safeArea by remember { mutableStateOf(ArenaSafeArea()) }
     /** The trigger order chosen in the ability browser (ability ids, first to place first) and the prompt it last answered. */
     var triggerPlan by remember { mutableStateOf(listOf<String>()) }

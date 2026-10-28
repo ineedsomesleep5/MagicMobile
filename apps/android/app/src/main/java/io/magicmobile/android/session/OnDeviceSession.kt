@@ -1,5 +1,6 @@
 package io.magicmobile.android.session
 
+import io.magicmobile.android.game.isLessonNudge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -909,7 +910,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         } catch (error: Exception) {
             responding = false
             if (epoch == token && error !is CancellationException) {
-                errorMessage = error.message
+                if (!error.isLessonNudge) errorMessage = error.message
                 // An engine rejection is certain; a timeout or busy RPC is not: keep the exact request for retry.
                 if (!acknowledged && error is EngineError.Rejected && error.code != "rpc_busy") {
                     this.pending = null; pendingActionID = null; pendingCardID = null; stall.answerLanded()

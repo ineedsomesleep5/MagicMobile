@@ -10,6 +10,8 @@ struct LessonFocus: Equatable {
 private struct LessonFocusKey: EnvironmentKey { static let defaultValue = LessonFocus() }
 /// The board tells a lesson which opponent it shows (a swap step waits for one).
 private struct LessonFocusReportKey: EnvironmentKey { static let defaultValue: ((String) -> Void)? = nil }
+/// The board tells a lesson what it has open over the table (LessonBoardCover).
+private struct LessonCoverReportKey: EnvironmentKey { static let defaultValue: ((LessonBoardCover) -> Void)? = nil }
 
 extension EnvironmentValues {
     var lessonFocus: LessonFocus {
@@ -20,6 +22,10 @@ extension EnvironmentValues {
         get { self[LessonFocusReportKey.self] }
         set { self[LessonFocusReportKey.self] = newValue }
     }
+    var lessonCoverReport: ((LessonBoardCover) -> Void)? {
+        get { self[LessonCoverReportKey.self] }
+        set { self[LessonCoverReportKey.self] = newValue }
+    }
 }
 
 /// Hands the run's focus to the board as it changes.
@@ -28,6 +34,7 @@ struct LessonFocusProvider: ViewModifier {
     func body(content: Content) -> some View {
         content.environment(\.lessonFocus, LessonFocus(ids: run.spotIDs, control: run.spotControl))
             .environment(\.lessonFocusReport, { run.boardFocused($0) })
+            .environment(\.lessonCoverReport, { run.boardCovered($0) })
     }
 }
 
@@ -63,6 +70,11 @@ struct LessonFocusRing: View {
     }
 }
 
+private struct LessonCoachHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
 /// Maren's note at the top of the table: the moment's title and a sentence or two; Got it on a note, and Next Lesson
 /// and Done once the lesson is over. A wrong move shakes the card and says so.
 struct LessonCoachCard: View {
@@ -73,8 +85,58 @@ struct LessonCoachCard: View {
     let done: () -> Void
     @State private var shake: CGFloat = 0
     @State private var nudged = false
+    /// The player opened the tucked chip: the card shows until the next note or the panel closes.
+    @State private var untucked = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Where the card sits now: a tucked chip opened by a tap shows low instead.
+    private var placement: LessonCoachPlacement { run.placement == .tucked && untucked ? .low : run.placement }
+
+    @State private var height: CGFloat = 0
 
     var body: some View {
+        // A clear layer that measures the screen and lets every touch through; only the card on it takes touches.
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background { GeometryReader { proxy in Color.clear.preference(key: LessonCoachHeightKey.self, value: proxy.size.height) } }
+            .allowsHitTesting(false)
+            .onPreferenceChange(LessonCoachHeightKey.self) { height = $0 }
+            .overlay(alignment: .top) {
+                ZStack(alignment: .top) {
+                    if run.complete || run.coach != nil {
+                        if placement == .tucked { chip.transition(.scale(scale: 0.6, anchor: .top).combined(with: .opacity)) }
+                        else { card.transition(.scale(scale: 0.92, anchor: .top).combined(with: .opacity)) }
+                    }
+                }
+                // Low: under a player's card at the top and above your hand and the corner buttons.
+                .padding(.top, placement == .low ? height * 0.5 : 0)
+                .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.45, dampingFraction: 0.82), value: placement)
+                .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.38, dampingFraction: 0.85), value: run.coach)
+            }
+            .onChange(of: run.boardCover) { _, cover in if cover != .panel { untucked = false } }
+            .onChange(of: run.coach) { _, _ in untucked = false }
+    }
+
+    /// Tucked while a panel is open: Maren's name and the step's title in a small glass chip; a tap opens the card.
+    private var chip: some View {
+        Button { untucked = true } label: {
+            HStack(spacing: 6) {
+                TavernTag(text: LessonText.coach.uppercased(), accent: TavernPalette.ember)
+                Text(run.coach?.title ?? run.script.title)
+                    .font(.system(size: 13, weight: .semibold, design: .serif))
+                    .foregroundStyle(TavernPalette.parchment)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .modifier(TavernPanelChrome(tavern: true, cornerRadius: 18))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(LessonText.coach): \(run.coach?.title ?? run.script.title)")
+        .accessibilityHint("Shows the note")
+        .accessibilityIdentifier("lesson.chip")
+    }
+
+    private var card: some View {
         Group {
             if run.complete || run.coach != nil {
                 VStack(alignment: .leading, spacing: 8) {
