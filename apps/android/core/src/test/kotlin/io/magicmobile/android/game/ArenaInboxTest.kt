@@ -10,14 +10,14 @@ import org.junit.Test
 class ArenaInboxTest {
     @Test fun inboxIsNewestFirstWithOneNewMessage() {
         val messages = UpdateNews.messages
-        assertEquals("arena-menus", messages.first().id)
+        assertEquals("own-art", messages.first().id)
         assertEquals(messages.map { it.id }.distinct(), messages.map { it.id })
         assertEquals(messages.sortedByDescending { it.day }.map { it.day }, messages.map { it.day })
         assertTrue(UpdateNews.isNew(0))
         assertFalse(messages.indices.drop(1).any(UpdateNews::isNew))
         assertFalse(messages.any { it.id == UpdateNews.ABOUT_ID })
-        assertEquals("October 22, 2026", messages.first().date)
-        assertEquals(listOf("U"), messages.first().colors)
+        assertEquals("October 27, 2026", messages.first().date)
+        assertEquals(listOf("W", "U", "B"), messages.first().colors)
     }
 
     @Test fun aRowOpensAndClosesInPlace() {

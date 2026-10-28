@@ -310,7 +310,8 @@ struct MobilePromptPresentation: Equatable {
     private static func isCombatSelection(_ snapshot: GameSnapshot, legalActions: [LegalAction]) -> Bool {
         legalActions.contains { $0.type == "declare_attackers" || $0.type == "declare_blockers" } ||
             ((snapshot.isViewer(snapshot.waitingOnPlayerId) || snapshot.isViewer(snapshot.priorityPlayerId)) &&
-             (normalizedStep(snapshot).contains("declare-attack") || normalizedStep(snapshot).contains("declare-block")))
+             (normalizedStep(snapshot).contains("declare-attack") || normalizedStep(snapshot).contains("declare-block")) &&
+             snapshot.promptEnvelopeV2?.isCombatSelection != false)
     }
 
     private static func normalizedStep(_ snapshot: GameSnapshot) -> String {
@@ -916,6 +917,11 @@ extension PromptEnvelopeV2 {
     }
     /// XMage's "which triggered ability goes on the stack first" question.
     var isTriggerOrder: Bool { method == "GAME_PICK_ABILITY" }
+    /// XMage's attacker or blocker selection (a SELECT the on-device adapter answers with a target). Other target
+    /// questions asked during combat, such as Gogo copying an attack trigger or a targeted trick, are ordinary targets.
+    var isCombatSelection: Bool {
+        method == "GAME_SELECT" && (responseKind.lowercased() == "target" || responseCommand?.type?.lowercased() == "choose_target")
+    }
 }
 
 struct XmageResponseCommand: Decodable {

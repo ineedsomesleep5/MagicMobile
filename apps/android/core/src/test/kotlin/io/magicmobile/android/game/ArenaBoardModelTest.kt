@@ -312,6 +312,23 @@ class ArenaBoardModelTest {
         assertEquals(ArenaAutoPay.Step.Done, ArenaAutoPay.next(resolving))
     }
 
+    /**
+     * Gogo copying Zur's attack trigger asks for a target in the declare attackers step: that question is a target to pick, not
+     * the attack declaration. A library search there is a search.
+     */
+    @Test fun otherQuestionsDuringDeclareAttackersAreNotCombat() {
+        val attackers = snapshot("2p-attackers")
+        val prompt = attackers.promptEnvelopeV2!!
+        val gogo = attackers.copy(legalActions = emptyList(), promptEnvelopeV2 = prompt.copy(method = "GAME_PICK_TARGET",
+            message = "Select target activated or triggered ability you control"))
+        assertNull(ArenaCombatPhase.current(gogo))
+        assertTrue(MobilePromptPresentation.make(gogo, emptyList())?.kind != MobilePromptKind.COMBAT)
+        val search = attackers.copy(legalActions = emptyList(), promptEnvelopeV2 = prompt.copy(method = "GAME_CHOOSE_CARD",
+            responseKind = "choose_card", responseCommand = XmageResponseCommand(type = "choose_card")))
+        assertNull(ArenaCombatPhase.current(search))
+        assertTrue(MobilePromptPresentation.make(search, emptyList())?.kind != MobilePromptKind.COMBAT)
+    }
+
     @Test fun extraHandHoldsOnlyCardsPlayableFromGraveyardOrExile() {
         fun sorcery(id: String, name: String) = ZoneCard(instanceId = id, card = CardIdentity(name, "Sorcery", null))
         val zones = PlayerZones(emptyList(), listOf(sorcery("h1", "Shock")), emptyList(),

@@ -119,6 +119,13 @@ export interface PromptEnvelopeV2 {
   confirmation?: XmagePromptConfirmation; options?: JObject;
 }
 
+/**
+ * XMage's attacker or blocker selection (a SELECT the on-device adapter answers with a target). Other target questions asked
+ * during combat, such as Gogo copying an attack trigger or a targeted trick, are ordinary targets.
+ */
+export const isCombatSelection = (prompt: PromptEnvelopeV2) => prompt.method === "GAME_SELECT" &&
+  (prompt.responseKind.toLowerCase() === "target" || prompt.responseCommand?.type?.toLowerCase() === "choose_target");
+
 export interface ManaPayment { active: boolean; spellName?: string; manaCostText?: string; remainingText?: string }
 
 export interface XmageStackObject {
