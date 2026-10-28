@@ -84,15 +84,18 @@ export const ARENA = {
 export const MULLIGAN = { cx: 478, y: 200, pitch: 104, w: 112, h: 157 };
 
 /**
- * The table's camera (ArenaTableLean): cards lying on the table lean back by the plate's pitch, all converging on the
- * table's vanishing point under the board's centre line, as the rendered plate does.
+ * The table's lean (ArenaTableLean): cards lying on the table lean back by the plate's pitch. The iPhone draws the lean
+ * flat: every tile stays a rectangle, only shorter by cos(pitch), however far it sits from the table's centre (measured
+ * on a 3× capture, 2026-10-24: a Silvercoat Lion tile's edges are vertical and its height 0.92 of its width's share).
+ * A perspective converging on the table's centre shears the cards near its edges by about 10°, which iOS never shows,
+ * so the lean is a rotateX with no perspective.
  */
-export const LEAN = {
-  pitch: 22,
-  /** The camera's distance: half the long side over tan 27° (a 35 mm lens across a 36 mm sensor). */
-  distance: STAGE.width / 2 / Math.tan((27 * Math.PI) / 180),
-  centerX: STAGE.width / 2,
-} as const;
+export const LEAN = { pitch: 22 } as const;
+
+/** The transform that lays a card on the table, `amount` of the way (0 stands it up, 1 lays it down). */
+export function leanTransform(amount = 1): string {
+  return `rotateX(${(LEAN.pitch * amount).toFixed(2)}deg)`;
+}
 
 export interface Place {
   x: number; y: number; w: number; h: number; r?: number; s?: number; z: number;

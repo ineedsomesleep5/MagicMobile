@@ -915,6 +915,12 @@ contradicting one.
   backs and mana symbols are served from the site (`public/arena/card-back.jpg`, `public/symbols`) because filtered
   networks block `backs.scryfall.io`/`svgs.scryfall.io`, and Recent games read every device's games through
   `mm_my_games` (the record of each device was local only).
+- 2026-10-24 (Claude, web board lean): `ArenaTableLeanEffect` on iOS asks for a perspective lean converging on the
+  screen's centre, but the iPhone draws every battlefield tile as an exact rectangle, only shorter by cos 22° (row-by-row
+  edge scans of a 3× capture). The web copied the code, not the picture: `perspective()` with the origin under the board's
+  centre sheared cards near the table's edges by about 10°. Caleb wanted the iOS look, so the web lean is now
+  `rotateX(22deg)` with no perspective (`leanTransform` in `apps/web/src/ui/arena/layout.ts`). When porting a 3D effect,
+  measure the shipped screen rather than trusting the call; a SwiftUI render of the same call on its own does shear.
 - 2026-10-24 (Claude, download site "Hall and Cut"): two quiet traps. (1) A Scroll Craft `pan` act moves its rail by
   `p` in the engine's frame; correcting that rail from a second layer in your own rAF (to hold at each exhibit) lands a
   frame apart, so the walk shakes side to side when scrolled. Pin the act instead and set the rail's one transform from
