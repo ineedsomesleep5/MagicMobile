@@ -508,6 +508,12 @@ img.bprinted.facedown { filter: brightness(.62); }
 .bitem .tgt svg { width: 11px; height: 11px; flex: none; }
 .bstackcard { position: relative; }
 .bitem.next .bstackcard > :first-child { box-shadow: 0 0 0 3px #ffd166, 0 0 16px rgba(255,190,77,.8); border-radius: .75em; }
+/* A target question's choices on the stack (stackChoices): the choices glow like a target, the rest dim. */
+.bitem.choice .bstackcard { cursor: pointer; }
+.bitem.choice .bstackcard > :first-child { box-shadow: 0 0 0 3px rgb(140,230,255), 0 0 18px rgba(140,230,255,.8); border-radius: .75em; }
+.bitem.choice .bstackcard:hover > :first-child, .bitem.choice .bstackcard:focus-visible > :first-child { transform: translateY(-4px); transition: transform .15s; }
+.bitem.dim { opacity: .5; filter: saturate(.35); }
+.stackhead.choosing { font-size: 19px; max-width: 70vw; text-align: center; }
 .bstackcard > .acount { position: absolute; left: 50%; top: calc(var(--s) / -2); transform: translateX(-50%); }
 .stackhead { display: flex; align-items: center; justify-content: center; gap: 10px; }
 .stacksub { display: flex; align-items: center; justify-content: center; gap: 8px; }

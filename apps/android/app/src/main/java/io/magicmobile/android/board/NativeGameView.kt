@@ -259,12 +259,19 @@ fun NativeGameView(
             if (prompt != null && !prompt.abilities.isNullOrEmpty() && (prompt.responseCommand?.type ?: "").lowercase() == "choose_ability") return null
             if (!prompt?.modes.isNullOrEmpty() ||
                 io.magicmobile.android.game.ArenaScreens.screenPrompt(snap, io.magicmobile.android.game.ArenaScreenContext(startingRollVisible))) return null
+            // Spells and abilities to choose on the stack, in ArenaStackBrowser.
+            if (io.magicmobile.android.game.ArenaTargetReach.of(snap).stack.isNotEmpty()) return null
         }
         return PortraitInteractionPolicy.detailChoiceKey(snap)
     }
 
+    /** The card browser opens by itself for this question; on the Arena board, choices on the stack go to the stack instead. */
+    fun boardCardChoiceKey(snap: GameSnapshot): String? =
+        if (isArenaBoard && io.magicmobile.android.game.ArenaTargetReach.of(snap).stack.isNotEmpty()) null
+        else PortraitInteractionPolicy.cardChoiceKey(snap)
+
     fun openPromptDetails() {
-        if (PortraitInteractionPolicy.cardChoiceKey(currentSnapshot) != null) isCardChoiceOpen = true else isPromptDetailOpen = true
+        if (boardCardChoiceKey(currentSnapshot) != null) isCardChoiceOpen = true else isPromptDetailOpen = true
     }
 
     fun advanceCommittedCardChoice() {
@@ -287,7 +294,7 @@ fun NativeGameView(
         val command = plan.next(snap, currentPending != null)
         committedCardChoice = if (plan.stopped) null else plan
         if (plan.stopped) {
-            isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snap) != null
+            isCardChoiceOpen = boardCardChoiceKey(snap) != null
             isPromptDetailOpen = boardDetailChoiceKey(snap) != null
         }
         if (command != null) runCommand(command, "Apply card choice", "card-plan-${command.promptId ?: ""}-${command.messageId ?: 0}")
@@ -300,7 +307,7 @@ fun NativeGameView(
         if (currentPending != null) {
             reviewCardChoiceAfterPending = true; isCardChoiceOpen = false; isPromptDetailOpen = false
         } else {
-            isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snap) != null
+            isCardChoiceOpen = boardCardChoiceKey(snap) != null
             isPromptDetailOpen = boardDetailChoiceKey(snap) != null
         }
     }
@@ -536,12 +543,14 @@ fun NativeGameView(
     LaunchedEffect(BoardFocusTracker.observationKey(board, followTurns)) { focusTracker = focusTracker.observe(board, followTurns) }
     // A lesson's swap step waits for the opponent the player switches to.
     val lessonFocusReport = LocalLessonFocusReport.current
+    // A target only another opponent's permanents offer turns the board to them (ArenaTargetReach).
+    LaunchedEffect(board.promptEnvelopeV2?.id, board.promptEnvelopeV2?.messageId) { focusTracker = focusTracker.showTargets(board) }
     LaunchedEffect(focusTracker.focusedID) { focusTracker.focusedID?.let { lessonFocusReport?.invoke(it) } }
     // A card's first arrival, cast or hit plays at once instead of waiting on SoundPool to decode it.
     LaunchedEffect(Unit) { GameAudio.preload(GameAudio.boardSounds) }
     LaunchedEffect(Unit) {
         updateAIWaitStart(board)
-        isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(board) != null
+        isCardChoiceOpen = boardCardChoiceKey(board) != null
         isPromptDetailOpen = boardDetailChoiceKey(board) != null
         interactionMode = GameBoardInteractionState.mode(board, pendingActionId, selection.selectedCard)
         if (board.id == "design-preview-zone-inspection") inspectBoardZone(BoardZoneReference.Player(board.viewerID, BoardZoneReference.PlayerZone.GRAVEYARD))
@@ -577,7 +586,7 @@ fun NativeGameView(
             combatPreviewArrows = emptyList()
             if (reviewCardChoiceAfterPending) {
                 reviewCardChoiceAfterPending = false
-                isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(board) != null
+                isCardChoiceOpen = boardCardChoiceKey(board) != null
                 isPromptDetailOpen = boardDetailChoiceKey(board) != null
             } else if (old != null && committedCardChoice?.submittedPromptIsUnchanged(board) == true) {
                 // The answer cleared before the poll that shows the next prompt: give that poll a moment (NativeGameView.swift).
@@ -606,7 +615,7 @@ fun NativeGameView(
         // A decision that needs you, not a routine priority pass (the starting roll answers its own).
         if (key != null && !startingRollVisible) GameAudio.play(GameSound.RESPONSE_ALERT)
     }
-    OnChange(PortraitInteractionPolicy.cardChoiceKey(board)) { _, key ->
+    OnChange(boardCardChoiceKey(board)) { _, key ->
         if (key != null && committedCardChoice == null && !startingRollVisible) GameAudio.play(GameSound.RESPONSE_ALERT)
         isCardChoiceOpen = key != null && committedCardChoice == null && !reviewCardChoiceAfterPending
         selection.inspectedCard = null; selection.selectedCard = null
@@ -770,7 +779,7 @@ fun NativeGameView(
             if (hitVignette.value > 0f) BoardHitVignette(hitVignette.value)
 
             // --- Choices (boardChoicePresentation) ---
-            val cardChoiceKey = PortraitInteractionPolicy.cardChoiceKey(board)
+            val cardChoiceKey = boardCardChoiceKey(board)
             val choicePrompt = board.promptEnvelopeV2
             if (isCardChoiceOpen && cardChoiceKey != null && choicePrompt != null) {
                 key(cardChoiceKey) {

@@ -69,6 +69,7 @@ import io.magicmobile.android.game.ArenaCanvas
 import io.magicmobile.android.game.ArenaCombatPhase
 import io.magicmobile.android.game.ArenaCommanderSteal
 import io.magicmobile.android.game.ArenaCornerText
+import io.magicmobile.android.game.ArenaTargetReach
 import io.magicmobile.android.game.ArenaExtraHand
 import io.magicmobile.android.game.ArenaHandFanLayout
 import io.magicmobile.android.game.ArenaHandPosture
@@ -227,6 +228,12 @@ fun ArenaBoard(host: ArenaBoardHost) {
     // MARK: Decisions
 
     val targetableIds = GameBoardInteractionState.boardTargetableIds(snapshot)
+    // A target question whose choices are on the stack opens the stack to choose (ArenaTargetReach); Done steps aside until
+    // the stack card is tapped.
+    val stackChoices = ArenaTargetReach.of(snapshot, targetableIds).stack.toSet()
+    val stackPick = if (stackChoices.isEmpty()) null else snapshot.promptEnvelopeV2?.let { "${it.id}:${it.messageId}" }
+    var stackPickDismissed by remember { mutableStateOf<String?>(null) }
+    val stackOpen = host.isStackOpen || (stackPick != null && stackPick != stackPickDismissed)
     val combatPhase = ArenaCombatPhase.current(snapshot)
     val openingHand = OpeningHandChoice.of(snapshot) != null
     fun handPosture(spread: Boolean = handSpread): ArenaHandPosture {
@@ -250,7 +257,7 @@ fun ArenaBoard(host: ArenaBoardHost) {
         ArenaScreens.pilePrompt(snapshot, screenContext) else null
     val question = ArenaScreens.question(snapshot, targetableIds, host.pendingActionId, host.isPromptDetailOpen, screenContext)
     /** A full-table screen is up: it hides the corner, the caption, the stack card and the arrows over the table. */
-    val screenUp = host.isCardChoiceOpen || host.isStackOpen || host.inspectingZoneTitle != null || abilityPrompt != null || modePrompt != null ||
+    val screenUp = host.isCardChoiceOpen || stackOpen || host.inspectingZoneTitle != null || abilityPrompt != null || modePrompt != null ||
         choicePrompt != null || playerPrompt != null || splitPrompt != null || pilePrompt != null || question != null
     val amountPrompt = if (screenUp) null else ArenaTableRules.amountPrompt(snapshot, startingRollVisible)
 
@@ -295,15 +302,17 @@ fun ArenaBoard(host: ArenaBoardHost) {
         if (targetableIds.isEmpty()) return null
         return CombatPlayerIdentity.ids(playerID, snapshot).firstOrNull { it in targetableIds }
     }
-    fun submitPlayerTarget(id: String) {
+    /** Answers a target question with a player or a stack object the table doesn't draw as a card. */
+    fun submitTargetID(id: String, label: String) {
         val prompt = snapshot.promptEnvelopeV2 ?: return
         if ((prompt.maxChoices ?: 1) > 1 || (prompt.minChoices ?: 1) > 1) { host.openPromptDetailSheet(); return }
         val promptId = prompt.responseCommand?.promptId ?: prompt.id
         val command = UniversalPromptResponseCommandBuilder.command(snapshot.id, snapshot.bridgeRevision, prompt, "choose_target", promptId, prompt.playerId, listOf(id))
             ?: run { GameHaptics.warning(view); host.onInteractionFeedback("XMage did not expose a mobile-safe target command"); return }
         GameHaptics.success(view)
-        host.runCommand(command, "Target ${snapshot.playerLabel(id)}", "$promptId-$id")
+        host.runCommand(command, label, "$promptId-$id")
     }
+    fun submitPlayerTarget(id: String) = submitTargetID(id, "Target ${snapshot.playerLabel(id)}")
     fun tapTable() {
         if (liftedCardID != null) liftedCardID = null
         else if (posture == ArenaHandPosture.RAISED || posture == ArenaHandPosture.SPREAD) { handOpen = false; handSpread = false; GameAudio.play(GameSound.CARD_PICKUP) }
@@ -595,8 +604,9 @@ fun ArenaBoard(host: ArenaBoardHost) {
                 val revealing = revealID == top.id
                 val reveal by animateFloatAsState(if (revealing) 1f else 0f, tween(300), label = "stackReveal")
                 val count = snapshot.xmage?.stack?.size ?: snapshot.stackTopFirst.size
+                // It tucks itself while you pick on the table, never when the choices are on the stack.
                 val tucked = !revealing && ArenaStackTuck.isTucked(top.id, stackTuckedTop, stackPeekTop,
-                    io.magicmobile.android.game.AppConfigState.current.isOn("stackAutoTuck") && targetableIds.isNotEmpty())
+                    io.magicmobile.android.game.AppConfigState.current.isOn("stackAutoTuck") && targetableIds.isNotEmpty() && stackChoices.isEmpty())
                 if (tucked) {
                     // The slim tab at the table's edge brings the card back.
                     ArenaStackTab(true, count, Modifier.zIndex(30f).alpha(if (screenUp) 0f else 1f)
@@ -757,12 +767,19 @@ fun ArenaBoard(host: ArenaBoardHost) {
                         choose = { pile -> answer(piles, "choose_pile", "Choose ${pile.label}", "${piles.id}-pile-${pile.id}", pile = pile.explicitPileNumber) },
                         inspect = inspect)
                 } }
-                if (host.isStackOpen && snapshot.stackTopFirst.isNotEmpty()) {
+                if (stackOpen && snapshot.stackTopFirst.isNotEmpty()) {
                     val resolve = GameplayAffordances.resolveStackCommand(snapshot, host.pendingActionId, answerActions.supported)
                     ArenaStackBrowser(snapshot, resolve?.let { command -> {
                         host.setStackOpen(false)
                         host.runCommand(command, "Resolve the stack", "resolve-stack-${command.promptId ?: ""}")
-                    } }, turnControl?.let { control -> if (control.isAutoPassing) control.stop else null }, inspect) { host.setStackOpen(false) }
+                    } }, turnControl?.let { control -> if (control.isAutoPassing) control.stop else null }, inspect,
+                        choosable = if (host.pendingActionId == null) stackChoices else emptySet(),
+                        choose = if (stackPick == null) null else { id ->
+                            host.setStackOpen(false)
+                            submitTargetID(id, "Choose ${snapshot.stackTopFirst.firstOrNull { it.id == id }?.displaySourceName ?: "it"}")
+                        }, answers = if (stackPick == null) emptyList() else promptAnswers(setOf("choose_target"))) {
+                        host.setStackOpen(false); stackPickDismissed = stackPick
+                    }
                 }
                 // Questions: the question stage for yours (a yes or no, a few choices), the pop-up for players the table doesn't show.
                 val playerTargets = targetableIds.any { id -> snapshot.players.any { CombatPlayerIdentity.ids(it.playerId, snapshot).contains(id) } } &&

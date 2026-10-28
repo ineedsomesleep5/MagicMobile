@@ -385,7 +385,8 @@ export const OnDeviceSnapshotAdapter = {
         }
         attackerID = active;
       }
-      presentation = OnDevicePromptAdapter.presentation(prompt, viewer, allCards, decodedPlayers, attackerID);
+      presentation = OnDevicePromptAdapter.presentation(prompt, viewer, allCards, decodedPlayers, attackerID,
+        stack.map((s) => ({ id: str(get(s, "id")) ?? "", sourceName: str(get(s, "sourceName")), sourceCardID: str(get(get(s, "sourceCard"), "instanceId")) })));
     }
     const cardActions = cardActionValues.map(decodeLegalAction);
     const [dayNight, stormCount] = tableHints(get(view, "myHelperEmblems"));

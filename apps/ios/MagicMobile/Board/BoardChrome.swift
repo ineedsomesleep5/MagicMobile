@@ -2526,6 +2526,8 @@ struct TavernOpponentSwap: View {
     let current: String
     let label: (String) -> String
     let select: (String) -> Void
+    /// Opponents with something to choose for the open target question (ArenaTargetReach): their portraits glow.
+    var withChoices: Set<String> = []
     /// A lesson's swap step rings the opponent to pick (LessonViews.swift).
     @Environment(\.lessonFocus) private var lessonFocus
 
@@ -2546,6 +2548,10 @@ struct TavernOpponentSwap: View {
                                 .overlay(Circle().strokeBorder(chosen ? TavernPalette.ember : TavernPalette.brass.opacity(0.6),
                                                                lineWidth: chosen ? 2.5 : 1.2))
                                 .shadow(color: chosen ? TavernPalette.ember.opacity(0.7) : .clear, radius: 4)
+                                .overlay { if withChoices.contains(opponent.playerId) && !chosen {
+                                    Circle().strokeBorder(ArenaPalette.targetGlow, lineWidth: 2.5)
+                                        .shadow(color: ArenaPalette.targetGlow, radius: 5)
+                                } }
                                 .overlay { if lessonFocus.ids.contains(opponent.playerId) && !chosen {
                                     GeometryReader { proxy in LessonFocusRing(rect: proxy.frame(in: .local), circle: true) }
                                 } }
@@ -2559,6 +2565,7 @@ struct TavernOpponentSwap: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Swap to \(label(opponent.playerId))")
+                    .accessibilityValue(withChoices.contains(opponent.playerId) ? "Has a choice" : "")
                     .accessibilityAddTraits(chosen ? .isSelected : [])
                     .accessibilityIdentifier("board.zones.swap.\(opponent.playerId)")
                 }

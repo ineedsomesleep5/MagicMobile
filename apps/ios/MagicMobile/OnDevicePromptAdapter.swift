@@ -8,7 +8,7 @@ struct OnDevicePromptPresentation {
 }
 
 enum OnDevicePromptAdapter {
-    static func presentation(_ prompt: MagicMobileOnDevice.EnginePrompt, viewerPlayerID: String, cards: [ZoneCard], players: [PlayerGameState] = [], actingAttackerPlayerID: String? = nil) throws -> OnDevicePromptPresentation {
+    static func presentation(_ prompt: MagicMobileOnDevice.EnginePrompt, viewerPlayerID: String, cards: [ZoneCard], players: [PlayerGameState] = [], stack: [XmageStackObject] = [], actingAttackerPlayerID: String? = nil) throws -> OnDevicePromptPresentation {
         try validate(prompt, viewer: viewerPlayerID)
         let revision = Int(prompt.revision)
         var fields: [String: Any] = [
@@ -27,8 +27,11 @@ enum OnDevicePromptAdapter {
         }
         func targetLabel(_ id: String) -> String {
             if id == viewerPlayerID { return "You" }
+            // An ability on the stack has no card of its own: it goes by its source ("Zur the Enchanter’s ability").
+            let ability = stack.first { $0.id == id && $0.sourceCard?.id != id }.map { "\($0.displaySourceName)’s ability" }
             return EngineDisplayText.label(players.first(where: { $0.playerId == id })?.displayName
                 ?? cards.first(where: { $0.id == id })?.card.name
+                ?? ability
                 ?? id)
         }
         switch prompt.kind {

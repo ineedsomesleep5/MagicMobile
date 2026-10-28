@@ -297,6 +297,35 @@ enum ArenaStackTuck {
     }
 }
 
+/// Where a target question's choices are when the table can't show them (Caleb, 2026-10-28: Gogo copying Zur's attack
+/// trigger offered only abilities on the stack, so nothing could be tapped). Spells and abilities on the stack are chosen
+/// in the stack browser. With four players the board shows one opponent: when it offers nothing to choose and another
+/// opponent's permanents do, the board turns to that opponent. Android's ArenaTargetReach and the web's match.
+struct ArenaTargetReach: Equatable {
+    /// Stack objects that can be chosen, the one that resolves next first.
+    let stack: [String]
+    /// Opponents the board doesn't show whose permanents can be chosen, in seat order.
+    let hiddenOpponents: [String]
+    /// Something on the table as shown can be chosen: a permanent on your side or the shown opponent's, or one of you.
+    let onTable: Bool
+
+    static func of(_ snapshot: GameSnapshot, targetable: Set<String>) -> ArenaTargetReach {
+        guard !targetable.isEmpty else { return ArenaTargetReach(stack: [], hiddenOpponents: [], onTable: false) }
+        func chosen(_ card: ZoneCard) -> Bool { targetable.contains(card.id) || targetable.contains(card.instanceId) }
+        let shown = [snapshot.seat?.playerId, snapshot.opponent?.playerId].compactMap { $0 }
+        let onTable = snapshot.players.contains { player in
+            shown.contains(player.playerId) && (targetable.contains(player.playerId) || player.zones.battlefield.contains(where: chosen))
+        }
+        let hidden = snapshot.players.filter { player in
+            !shown.contains(player.playerId) && !snapshot.isViewer(player.playerId) && player.zones.battlefield.contains(where: chosen)
+        }.map(\.playerId)
+        return ArenaTargetReach(stack: snapshot.stackTopFirst.map(\.id).filter(targetable.contains), hiddenOpponents: hidden, onTable: onTable)
+    }
+
+    /// The opponent to show for this question: the first hidden one with choices, when the table as shown has none.
+    var opponentToShow: String? { onTable || !stack.isEmpty ? nil : hiddenOpponents.first }
+}
+
 enum ArenaFrontSection: Equatable {
     case creatures, side, support
 

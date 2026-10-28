@@ -359,7 +359,8 @@ fun TavernPlayerStatusPanel(name: String, summary: PlayerStatusSummary, inspect:
  * each portrait has its player's name under it. A lesson's swap step rings the opponent to pick.
  */
 @Composable
-fun TavernOpponentSwap(opponents: List<PlayerGameState>, current: String, label: (String) -> String, select: (String) -> Unit) {
+fun TavernOpponentSwap(opponents: List<PlayerGameState>, current: String, label: (String) -> String, select: (String) -> Unit,
+                       withChoices: Set<String> = emptySet()) {
     val lessonFocus = LocalLessonFocus.current
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         TavernMenuDivider()
@@ -368,12 +369,18 @@ fun TavernOpponentSwap(opponents: List<PlayerGameState>, current: String, label:
             for (opponent in opponents) {
                 val chosen = opponent.playerId == current
                 Column(Modifier.alpha(if (opponent.isOut) 0.45f else 1f).clickable { select(opponent.playerId) }
-                    .semantics(mergeDescendants = true) { contentDescription = "Swap to ${label(opponent.playerId)}" + if (chosen) ", selected" else "" },
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "Swap to ${label(opponent.playerId)}" + (if (chosen) ", selected" else "") +
+                            if (opponent.playerId in withChoices) ", has a choice" else ""
+                    },
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Box(Modifier.glow(if (chosen) TavernPalette.ember.copy(alpha = 0.7f) else Color.Transparent, 4.dp, 18.dp)) {
                         PlayerPortrait(opponent, 36.dp)
                         Box(Modifier.requiredSize(36.dp).border(if (chosen) 2.5.dp else 1.2.dp,
                             if (chosen) TavernPalette.ember else TavernPalette.brass.copy(alpha = 0.6f), CircleShape))
+                        // Opponents with something to choose for the open target question (ArenaTargetReach) glow.
+                        if (!chosen && opponent.playerId in withChoices)
+                            Box(Modifier.requiredSize(38.dp).border(2.5.dp, ArenaPalette.targetGlow, CircleShape))
                         if (!chosen && opponent.playerId in lessonFocus.ids)
                             Box(Modifier.requiredSize(42.dp).border(3.dp, io.magicmobile.android.menus.ArenaMenuStyle.gold, CircleShape))
                     }

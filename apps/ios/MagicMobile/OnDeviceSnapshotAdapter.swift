@@ -164,7 +164,7 @@ enum OnDeviceSnapshotAdapter {
                 attackerID = active
             }
             return try OnDevicePromptAdapter.presentation(prompt, viewerPlayerID: viewer, cards: allCards,
-                                                          players: decodedPlayers, actingAttackerPlayerID: attackerID)
+                                                          players: decodedPlayers, stack: decodedXmage.stack, actingAttackerPlayerID: attackerID)
         }
         let cardActions: [LegalAction] = try decode(.array(playability.actions))
         let tableHints = Self.tableHints(view["myHelperEmblems"])

@@ -356,6 +356,74 @@ final class ArenaBoardModelTests: XCTestCase {
         XCTAssertNotEqual(MobilePromptPresentation.make(snapshot: snapshot, legalActions: [])?.kind, .combat)
     }
 
+    /// Target questions recorded from the real engine (target-*.json): where each one's choices can be made.
+    private func targetQuestion(_ name: String) throws -> (snapshot: GameSnapshot, targetable: Set<String>) {
+        let poll = try poll(name)
+        let snapshot = try OnDeviceSnapshotAdapter.snapshot(poll, expectedSeatID: poll.seatID)
+        return (snapshot, Set(try XCTUnwrap(snapshot.promptEnvelopeV2?.targetIds)))
+    }
+
+    /// Gogo copying Zur's attack trigger: XMage offers the abilities on the stack (Zur's trigger and Gogo's own), which
+    /// the table can't show, so they are chosen on the stack. They are named by their source, not "Card details unavailable".
+    func testGogosChoicesAreTheAbilitiesOnTheStack() throws {
+        let (snapshot, targetable) = try targetQuestion("target-stack-ability")
+        let reach = ArenaTargetReach.of(snapshot, targetable: targetable)
+        XCTAssertEqual(Set(reach.stack), targetable)
+        XCTAssertFalse(reach.onTable)
+        XCTAssertNil(reach.opponentToShow)
+        XCTAssertEqual(Set((snapshot.promptEnvelopeV2?.targets ?? []).map(\.label)),
+                       ["Zur the Enchanter’s ability", "Gogo, Master of Mimicry’s ability"])
+    }
+
+    /// Counterspell with two spells on the stack chooses on the stack too.
+    func testACounterspellChoosesOnTheStack() throws {
+        let (snapshot, targetable) = try targetQuestion("target-stack-spell")
+        let reach = ArenaTargetReach.of(snapshot, targetable: targetable)
+        XCTAssertEqual(reach.stack.compactMap { id in snapshot.stackTopFirst.first { $0.id == id }?.displayName }, ["Shock", "Lightning Bolt"])
+        XCTAssertEqual(Set(reach.stack), targetable)
+    }
+
+    /// A card in a graveyard is neither on the stack nor the table: the card browser shows it (the prompt's cards).
+    func testGraveyardChoicesAreTheBrowsersCards() throws {
+        for name in ["target-graveyard", "target-any-graveyard"] {
+            let (snapshot, targetable) = try targetQuestion(name)
+            let reach = ArenaTargetReach.of(snapshot, targetable: targetable)
+            XCTAssertTrue(reach.stack.isEmpty, name)
+            XCTAssertFalse(reach.onTable, name)
+            XCTAssertNil(reach.opponentToShow, name)
+            XCTAssertEqual(Set((snapshot.promptEnvelopeV2?.cards ?? []).map(\.id)), targetable, name)
+        }
+    }
+
+    /// Four players, Doom Blade: the creatures are Rook's and Bryn's while the board shows Wren. The board turns to the
+    /// first of them for the question, and only once: a tap on another opponent afterwards sticks.
+    func testFourPlayersTurnToAnOpponentWithChoices() throws {
+        let (snapshot, targetable) = try targetQuestion("target-four-player-creature")
+        XCTAssertEqual(snapshot.opponent?.displayName, "Wren")
+        let reach = ArenaTargetReach.of(snapshot, targetable: targetable)
+        XCTAssertFalse(reach.onTable)
+        XCTAssertEqual(Set(reach.hiddenOpponents.compactMap { id in snapshot.players.first { $0.playerId == id }?.displayName }), ["Rook", "Bryn"])
+        var tracker = BoardFocusTracker()
+        tracker.observe(snapshot, followTurns: true)
+        tracker.showTargets(BoardOpponentFocus.snapshot(snapshot, selecting: tracker.focusedID), targetable: targetable)
+        let turned = BoardOpponentFocus.snapshot(snapshot, selecting: tracker.focusedID)
+        XCTAssertEqual(tracker.focusedID, reach.opponentToShow)
+        XCTAssertTrue(ArenaTargetReach.of(turned, targetable: targetable).onTable)
+        let wren = try XCTUnwrap(snapshot.players.first { $0.displayName == "Wren" }?.playerId)
+        tracker.select(wren)
+        tracker.showTargets(BoardOpponentFocus.snapshot(snapshot, selecting: tracker.focusedID), targetable: targetable)
+        XCTAssertEqual(tracker.focusedID, wren)
+    }
+
+    /// Shock in the same game can aim at you, so the table has a choice: the board stays, and the swap row marks the others.
+    func testFourPlayersStayWhenTheTableHasAChoice() throws {
+        let (snapshot, targetable) = try targetQuestion("target-four-player")
+        let reach = ArenaTargetReach.of(snapshot, targetable: targetable)
+        XCTAssertTrue(reach.onTable)
+        XCTAssertNil(reach.opponentToShow)
+        XCTAssertEqual(Set(reach.hiddenOpponents.compactMap { id in snapshot.players.first { $0.playerId == id }?.displayName }), ["Rook", "Bryn"])
+    }
+
     func testExtraHandHoldsOnlyCardsPlayableFromGraveyardOrExile() throws {
         func card(_ id: String, _ name: String) -> ZoneCard {
             ZoneCard(instanceId: id, card: CardIdentity(name: name, typeLine: "Sorcery", oracleText: nil), tapped: nil,

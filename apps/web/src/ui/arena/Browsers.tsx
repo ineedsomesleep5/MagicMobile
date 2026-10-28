@@ -912,33 +912,45 @@ export function CommanderBrowser({ player, snapshot, pending, sendAction, height
  * (Arena's count ovals), a gold rim and "RESOLVES NEXT" on the first, whose it is and what it targets; Stop skipping and
  * Resolve All when they apply, and Done.
  */
-export function StackBrowser({ snapshot, height, inspect, close, resolveAll, stopSkipping }: {
+/**
+ * A target question whose choices are on the stack (stackChoices; Gogo copying Zur's trigger) opens it to choose: its
+ * message is the title, the choices glow, the rest dim, and a click chooses.
+ */
+export function StackBrowser({ snapshot, height, inspect, close, resolveAll, stopSkipping, choosable, choose, answers }: {
   snapshot: GameSnapshot; height: number; inspect?: Inspect; close: () => void; resolveAll?: () => void; stopSkipping?: () => void;
+  choosable?: Set<string>; choose?: (id: string) => void; answers?: { id: string; title: string; action: () => void }[];
 }) {
   const stack = snapshot.xmage?.stack ?? [];
+  const choosing = choose !== undefined && (choosable?.size ?? 0) > 0;
+  const title = choosing ? lines(snapshot.promptEnvelopeV2?.message ?? "")[0] ?? "Choose one" : "The Stack";
   const width = Math.min(height * 0.5, 230) * 0.72;
   const responding = (snapshot.legalActions ?? []).some((a) => ["pass_priority", "pass_until_response", "advance_phase"].includes(a.type));
   const owner = (controller?: string) => (controller === undefined ? undefined : controller === snapshot.viewerPlayerId ? "Yours"
     : `${snapshot.players.find((p) => p.playerId === controller)?.displayName ?? "Their"}’s`);
   return (
-    <Frame title="The Stack" snapshot={snapshot} k={height / 440} inspect={inspect} onDismiss={close} back="Back to the stack"
+    <Frame title={title} snapshot={snapshot} k={height / 440} inspect={inspect} onDismiss={close} back="Back to the stack"
       heading={<>
-        <h2 className="stackhead">The Stack <CountBadge count={stack.length} size={28} label={`${stack.length} on the stack`} /></h2>
+        <h2 className={`stackhead ${choosing ? "choosing" : ""}`}>{title}{!choosing && <> <CountBadge count={stack.length} size={28} label={`${stack.length} on the stack`} /></>}</h2>
         <p className="stacksub">{stack.length > 1 ? "Resolves left to right" : "Resolves next"}
-          <b className={`btag ${responding ? "ember" : ""}`}>{responding ? "YOUR RESPONSE" : "WAITING"}</b></p>
+          <b className={`btag ${choosing || responding ? "ember" : ""}`}>{choosing ? "CHOOSE ONE" : responding ? "YOUR RESPONSE" : "WAITING"}</b></p>
       </>}
       footer={<>
         {stopSkipping && <button type="button" className="aplaque secondary" onClick={stopSkipping}>Stop skipping</button>}
-        {resolveAll && <button type="button" className="aplaque secondary" onClick={() => { close(); resolveAll(); }}>Resolve All</button>}
-        <button type="button" className="aplaque primary" onClick={close}>Done</button>
+        {resolveAll && !choosing && <button type="button" className="aplaque secondary" onClick={() => { close(); resolveAll(); }}>Resolve All</button>}
+        {choosing && answers?.map((a) => <button key={a.id} type="button" className="aplaque secondary" onClick={a.action}>{a.title}</button>)}
+        <button type="button" className={`aplaque ${choosing ? "secondary" : "primary"}`} onClick={close}>{choosing ? "View Battlefield" : "Done"}</button>
       </>}>
       {stack.map((item, index) => {
         const next = index === 0;
         const targets = stackTargetLabels(item.targetIds ?? [], snapshot);
         const whose = owner(item.controllerId) ?? item.sourceName ?? item.name;
+        const choice = choosing && choosable!.has(item.id);
         return (
-          <div key={item.id} className={`bitem ${next ? "next" : ""}`}>
-            <div className="bstackcard">
+          <div key={item.id} className={`bitem ${next && !choosing ? "next" : ""} ${choice ? "choice" : choosing ? "dim" : ""}`}>
+            <div className="bstackcard" role={choice ? "button" : undefined} tabIndex={choice ? 0 : undefined}
+              aria-label={choice ? `Choose ${item.sourceName ?? item.name}` : undefined}
+              onClickCapture={choice ? (event) => { event.stopPropagation(); event.preventDefault(); choose!(item.id); } : undefined}
+              onKeyDown={choice ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose!(item.id); } } : undefined}>
               <Subject object={item} snapshot={snapshot} width={width} inspect={inspect} />
               <CountBadge count={index + 1} size={30} />
             </div>
