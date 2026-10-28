@@ -388,7 +388,10 @@ Caleb: "do what is best and get … around 5 per rank".
   `update public.ranked_ai_tuning set power_low=…, power_high=…, mistakes_division_iv=…, mistakes_division_i=…, updated_at=now() where tier=2;`
   First tuning: Gold 5.5–6.5 (was 5–6), mistakes 8% at Gold IV down to 5% at Gold I (was 10%), after Gold players won
   59–72% against skills 1–3. Second tuning, same day (a player climbed Gold in hours): Gold 6–7 with mistakes 5% at
-  Gold IV down to 2% at Gold I, Platinum 7–8 (was 6–7), Diamond 7.5–8.5 (was 7–8). Review after about 50 games. Web reads the ticket now; iOS and Android from their next
+  Gold IV down to 2% at Gold I, Platinum 7–8 (was 6–7), Diamond 7.5–8.5 (was 7–8). Review after about 50 games. Third tuning (2026-10-28, 254DADDY: "getting out of Platinum is too hard"): he won 45 of 82 Platinum games
+  against Power 7.1–7.4 with no mistakes and still lost two pips (23 of his 37 losses were crushing), so Platinum runs
+  6.75–7.75 (IV 6.88 … I 7.63, from Gold I to Diamond IV) with mistakes 2% at IV down to 0% at I, and a crushing loss
+  costs one pip there (docs/RANKED.md). Hardest for him: The Ur-Dragon (he went 4–6) and Gishath (8–8). Web reads the ticket now; iOS and Android from their next
   build (iOS 62 and Android 40 keep the bundled values, which the record check still accepts).
 - **Quick Match:** Easy (Power 3.5, skill 2), Medium (5.5, skill 3, the default) or Hard (7.5, skill 5) as pill gems;
   Advanced shows today's bracket gems, deck row and skill stepper.
