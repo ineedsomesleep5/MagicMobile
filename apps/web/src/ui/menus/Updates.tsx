@@ -13,7 +13,7 @@ interface Message { id: string; title: string; day: number; art: string; colors:
 
 const MESSAGES: Message[] = [
   { id: "own-art", title: "Your own card art", day: 27, art: "Zur the Enchanter", colors: ["W", "U", "B"],
-    lede: "Put your own picture on any card: open it in Deck Studio and choose Use my own picture. It fills the card's art box, and only you see it.",
+    lede: "Put your own picture on any card: open it in Deck Studio and choose Use my own picture. It becomes the whole card, follows you to every phone and browser you sign in on, and only you see it.",
     notes: ["The art chosen for each card in your decks now shows on the web board too.",
       "The art you chose shows from a game's first moment, without the default art swapping in.",
       "Smart Auto-Pass waits on your own trigger when you have an ability that can use it, like Gogo copying Zur's attack trigger.",
