@@ -18,6 +18,7 @@ import {
   type ComboCommand, ComboLoop, ComboLoopStop, type ComboReplay, ComboRepeat, type ComboStanding, ComboStep, ComboWinForecast, withoutPrompts,
 } from "../core/comboLoop";
 import { HostRetryPolicy } from "./remoteEngine";
+import { isLessonNudge } from "../core/lessons";
 
 /** OnDeviceGuestPollSchedule: when a guest at a phone-hosted table polls its host next. */
 export const GuestPollSchedule = {
@@ -547,7 +548,8 @@ export class GuestSession {
       // An engine rejection is certain; a timeout or busy RPC is not: keep the exact request for retry.
       const certain = error instanceof EngineError && error.isRejection && error.code !== "rpc_busy";
       if (certain) { this.pending = undefined; this.set({ pendingActionID: undefined }); this.wakeLoop?.(); }
-      this.set({ working: false, errorMessage: error instanceof Error ? error.message : String(error) });
+      // A lesson's turned-down move: the coach says so (lessons.ts), the board shows no error.
+      this.set({ working: false, errorMessage: isLessonNudge(error) ? undefined : error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }

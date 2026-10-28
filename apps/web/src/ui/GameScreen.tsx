@@ -56,6 +56,9 @@ import { ManaSymbol, RulesText } from "./arena/Symbols";
 import "./arena/arena.css";
 import { CardArt, cardImageURL } from "./cardArt";
 import { storage } from "./storage";
+import { LessonCoachCard } from "./arena/LessonViews";
+import { isLessonNudge } from "../core/lessons";
+import { LessonTable } from "../table/lessonTable";
 import { gameAudio, SOUND_KEYS } from "./audio";
 
 const PHASE_TITLES = ["Beginning", "Main phase 1", "Declare attackers", "Declare blockers", "Combat damage", "End of combat", "Main phase 2", "End step"];
@@ -185,6 +188,8 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
 }) {
   useTable(table);
   const session = table.session;
+  /** A lesson (lessons.ts): Maren's card and her rings over the board. */
+  const lesson = table instanceof LessonTable ? table : undefined;
   // While a combo loop repeats, the board shows its quiet copy without the prompts the repeats answer.
   const live = session?.state.comboRun ? session.presentedSnapshot : session?.state.snapshot;
   // Game speed (Options → Gameplay): the board shows each opponent action for its time before the next one; the live game
@@ -385,6 +390,8 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
   const promptActions = (snapshot?.legalActions ?? []).filter((a) => a.cardInstanceId === undefined && a.sourceInstanceId === undefined);
 
   const fail = useCallback((error: unknown) => {
+    // A lesson's turned-down move: Maren's card says so.
+    if (isLessonNudge(error)) return;
     gameAudio.play("ui-error");
     const message = error instanceof Error ? error.message : String(error);
     setBannerError(message);
@@ -1182,6 +1189,25 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
         <div onClick={stop}>
           {[...cards.values()].map((props) => <ArenaCard key={props.id} {...props} />)}
         </div>
+        {lesson && snapshot && !showBrowser && !finished && (
+          // Where Maren points (LessonFocusRing): a card on the table or in hand, a player's medallion, or the corner plaque.
+          <div className="alessonrings" aria-hidden="true">
+            {lesson.run.focus.ids.map((id) => {
+              const place = places.current.get(id);
+              if (place) return <i key={id} style={{ left: place.x - place.w / 2 - 6, top: place.y - place.h / 2 - 6, width: place.w + 12, height: place.h + 12 }} />;
+              if (!snapshot.players.some((p) => p.playerId === id)) return null;
+              const at = anchors.player(id);
+              return <i key={id} className="round" style={{ left: at.x - 34, top: at.y - 34, width: 68, height: 68 }} />;
+            })}
+            {lesson.run.focus.control === "primary" && (
+              <i style={{ left: ARENA.primary.x - 6, top: B(ARENA.primary.y) - 6, width: ARENA.primary.w + 12, height: ARENA.primary.h + 12 }} />
+            )}
+            {lesson.run.focus.control === "medallion" && (
+              <i className="round" style={{ left: ARENA.viewerMedallion.x - 40, top: B(ARENA.viewerMedallion.y) - 40, width: 80, height: 80 }} />
+            )}
+          </div>
+        )}
+
         {snapshot && (snapshot.xmage?.combat.length ?? 0) > 0 && !showBrowser && (
           // Combat on the table (ArenaCombatArrows): red arcs from attackers to what they attack, grey once blocked, gold from
           // blockers to the attacker they hold.
@@ -1688,8 +1714,10 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
           // The result, Arena's (ArenaGameResultView): the word on its flare, then your medallion, rank, numbers and the ways on.
           <GameResult snapshot={snapshot} me={me} finished={finished} stoppedTitle={table.solo ? "Game stopped" : "Table closed"}
             stoppedLine={table.state.status} numbers={stats.current} rankChange={rankChange} rankNote={rankNote}
-            rematch={table.rematch ? () => table.rematch?.() : undefined} leave={() => table.leave()} />
+            rematch={table.rematch ? () => table.rematch?.() : undefined} rematchTitle={lesson?.nextTitle} leave={() => table.leave()} />
         )}
+
+        {lesson && !finished && (lesson.run.coach || lesson.run.complete) && <LessonCoachCard table={lesson} />}
 
         {(() => {
           // The recovery banner (OnDeviceRootView.recoveryBanner): what went wrong, and Refresh, Retry response, Leave.

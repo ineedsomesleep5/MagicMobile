@@ -288,6 +288,19 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
         return runCatching { EngineJson.encode(record) }.getOrNull()
     }
 
+    /** A lesson: its recording answers for the engine (LessonTransport). No runtime, save or game record. */
+    suspend fun startLesson(script: io.magicmobile.android.game.LessonScript, transport: io.magicmobile.android.game.LessonTransport) {
+        if (isBusy || needsLeave) return
+        isBusy = true; errorMessage = null; feedback = null; status = "Starting lesson"
+        try {
+            updateSessionForeground()
+            session.attach(EngineClient(transport), script.matchID, script.viewer, close = { })
+            status = "Lesson started"
+        } catch (error: Throwable) {
+            errorMessage = error.message ?: error.javaClass.simpleName
+        } finally { isBusy = false }
+    }
+
     /** `settings` are the setup choices kept with a checkpoint, so a resumed game can rebuild its menu state and Rematch. */
     suspend fun startAI(name: String, deck: Deck, aiDecks: List<Deck>, aiSkill: Int = 2, settings: GameResumeSettings? = null, deckID: String? = null,
                         seed: Long? = null, aiMistakePercent: Int? = null) {

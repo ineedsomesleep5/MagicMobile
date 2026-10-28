@@ -987,7 +987,7 @@ final class OnDeviceSession: ObservableObject {
         } catch {
             responding = false
             if epoch == token {
-                errorMessage = error.localizedDescription
+                if !error.isLessonNudge { errorMessage = error.localizedDescription }
                 FreezeLog.shared.note("Answer failed: \(error.localizedDescription)")
                 // An engine rejection is certain. A transport timeout or busy RPC is not:
                 // retain the exact request ID and answer for a safe user-triggered retry.

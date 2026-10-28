@@ -74,6 +74,8 @@ struct OnDeviceRootView: View {
     /// The game on the table is the guided first game: its coach shows notes (GuidedGame.swift).
     @State private var guidedGame = false
     @State private var guidedTip: GuidedGameTip?
+    /// The game on the table is a lesson (Lessons.swift): recorded, coached, never counted.
+    @State private var lessonRun: LessonRun?
     /// The table code typed or opened from a join link; a link that arrives before the
     /// catalogue is ready waits in `pendingJoinCode`.
     @State private var relayJoinCode = ""
@@ -564,7 +566,7 @@ struct OnDeviceRootView: View {
         if howToPlayOpensTable {
             return HowToPlayView(tutorialID: HowToPlayText.tutorials[0].id, playGuided: nil)
         }
-        return HowToPlayView(tutorialID: nil, playGuided: { startGuidedGame() })
+        return HowToPlayView(tutorialID: nil, playGuided: { startGuidedGame() }, playLesson: { startLesson($0) })
     }
 
     private func closeHowToPlay() {
@@ -603,6 +605,11 @@ struct OnDeviceRootView: View {
            ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_ENGINE_ERROR"] == "1" {
             try? diagnostics.save(engineReport: "UI TEST FIXTURE: Sample engine incident", status: "Presentation test")
             setup.errorMessage = "UI test fixture: engine incident."
+        }
+        // UI tests and screenshots: MAGICMOBILE_UI_TEST_LESSON=<id> opens that lesson; it needs no engine.
+        if OnDeviceAppConfiguration.entryPoint == .setupPreview,
+           let lesson = ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_LESSON"] {
+            startLesson(lesson)
         }
         // UI tests: MAGICMOBILE_UI_TEST_CEREMONY=tierUp|tierDown|divisionUp|divisionDown plays a rank moment.
         if OnDeviceAppConfiguration.entryPoint == .setupPreview,
@@ -1118,11 +1125,21 @@ struct OnDeviceRootView: View {
         }
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: guidedTip)
         .onReceive(session.$snapshot) { snapshot in advanceGuidedTip(snapshot) }
+        .overlay(alignment: .top) {
+            // A lesson that ends in a win hands over to the result screen, whose button goes on to the next lesson.
+            if let lessonRun, session.snapshot?.isCompleted != true {
+                LessonCoachCard(run: lessonRun, nextTitle: LessonCatalog.next(after: lessonRun.script.id) == nil ? LessonText.guided : LessonText.next,
+                                next: { nextLesson() }, done: { finishLesson() })
+                    .padding(.top, 6)
+            }
+        }
+        .modifier(LessonFocusIfAny(run: lessonRun))
         .environment(\.inspectorBattlefield, session.snapshot?.visibleBattlefield ?? [])
         .disabled(setup.isBusy)
-        .environment(\.gameRematchTitle, setup.usingMultiplayer ? nil
+        .environment(\.gameRematchTitle, lessonRun.map { LessonCatalog.next(after: $0.script.id) == nil ? LessonText.guided : LessonText.next }
+                     ?? (setup.usingMultiplayer ? nil
                      : activeMatch?.mode == .quick ? String(localized: "Play Again")
-                     : activeMatch?.mode == .ranked ? String(localized: "Next Match") : "Rematch")
+                     : activeMatch?.mode == .ranked ? String(localized: "Next Match") : "Rematch"))
         .environment(\.gameRankChange, rankChange)
         .environment(\.gameRankNote, rankNote)
         .environment(\.boardAnswerActions, BoardAnswerActions(
@@ -1246,6 +1263,7 @@ struct OnDeviceRootView: View {
         guard session.snapshot?.isCompleted == true, !setup.usingMultiplayer else { return requestLeave() }
         let mode = activeMatch?.mode
         let guided = guidedGame
+        if lessonRun != nil { return nextLesson() }
         Task {
             guard await setup.close() else { return }
             if guided { return startGuidedGame() }
@@ -1798,6 +1816,48 @@ struct OnDeviceRootView: View {
         }
     }
 
+    // MARK: Lessons
+
+    /// A lesson (Lessons.swift): the recorded game on the real board, with Maren's notes. Nothing is saved or counted.
+    private func startLesson(_ id: String) {
+        guard let info = LessonCatalog.all.first(where: { $0.id == id }) else { return }
+        let script: LessonScript
+        do { script = try LessonScript.load(id: id) } catch { setup.errorMessage = error.localizedDescription; return }
+        HowToPlayLaunch.markSeen(in: MagicMobilePreferences.current)
+        endGuidedGame()
+        let run = LessonRun(script: info, defaults: MagicMobilePreferences.current)
+        run.refresh = { [session] in Task { try? await session.refresh() } }
+        lessonRun = run
+        lobby = nil; showSetup = false
+        activeMatch = nil; rankChange = nil; rankNote = nil
+        Task {
+            await setup.startLesson(script, run: run)
+            if session.matchID == nil { lessonRun = nil }
+        }
+    }
+
+    /// The next lesson, or after the last one the guided game.
+    private func nextLesson() {
+        guard let run = lessonRun else { return }
+        let next = LessonCatalog.next(after: run.script.id)
+        Task {
+            guard await setup.close() else { return }
+            selectedCard = nil; inspectedCard = nil; zone = nil
+            lessonRun = nil
+            if let next { startLesson(next.id) } else { startGuidedGame() }
+        }
+    }
+
+    /// Back to the lessons.
+    private func finishLesson() {
+        Task {
+            guard await setup.close() else { return }
+            selectedCard = nil; inspectedCard = nil; zone = nil
+            lessonRun = nil
+            showHowToPlay = true
+        }
+    }
+
     /// Each snapshot may bring the next note, or retire the one on screen.
     private func advanceGuidedTip(_ snapshot: GameSnapshot?) {
         guard guidedGame, let snapshot else { return }
@@ -1897,7 +1957,7 @@ struct OnDeviceRootView: View {
     }
 
     private func recordFinishedGameIfNeeded() {
-        guard let snapshot = session.snapshot, snapshot.isCompleted || session.isOverForSeat else { return }
+        guard lessonRun == nil, let snapshot = session.snapshot, snapshot.isCompleted || session.isOverForSeat else { return }
         var match = activeMatch ?? casualMatch(snapshot)
         guard let current = match, !current.recorded else { return }
         let winners = snapshot.winnerPlayerIds ?? []
@@ -2589,6 +2649,7 @@ struct OnDeviceRootView: View {
         Task {
             if await setup.close() {
                 endGuidedGame()
+                lessonRun = nil
                 selectedCard = nil; inspectedCard = nil; zone = nil
                 activeMatch = nil; rankChange = nil; ceremony = nil
                 matchmaker.finish(); rankedConnectTask?.cancel()
@@ -2699,6 +2760,21 @@ private final class OnDeviceSetupModel: ObservableObject {
             self.resolver = resolver; self.identity = identity; self.multiplayer = multiplayer
             errorMessage = nil; status = "Choose your deck and players."
         } catch { errorMessage = error.localizedDescription; status = "Local setup unavailable" }
+    }
+
+    /// A lesson: its recording answers for the engine (LessonTransport). No runtime, save or game record.
+    func startLesson(_ script: LessonScript, run: LessonRun) async {
+        guard !isBusy, !needsLeave else { return }
+        isBusy = true; errorMessage = nil; feedback = nil; status = "Starting lesson"
+        defer { isBusy = false }
+        do {
+            let client = EngineClient(transport: LessonTransport(script: script, run: run))
+            updateSessionForeground()
+            try await session.attach(client: client, matchID: script.matchID, seatID: script.viewer, close: {})
+            status = "Lesson started"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func startAI(name: String, deck: DeckList, aiDecks: [DeckList], aiSkill: Int = 2,
@@ -2889,7 +2965,7 @@ private final class OnDeviceSetupModel: ObservableObject {
             return
         }
         errorMessage = nil; feedback = nil
-        do { try await operation() } catch { errorMessage = error.localizedDescription }
+        do { try await operation() } catch { if !error.isLessonNudge { errorMessage = error.localizedDescription } }
     }
 
     /// Waits up to 3 seconds for the current response and its refresh to finish.

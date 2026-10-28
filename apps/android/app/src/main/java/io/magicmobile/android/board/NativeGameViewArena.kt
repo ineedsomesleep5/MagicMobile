@@ -1091,6 +1091,19 @@ private fun ArenaDrawnLayers(host: ArenaBoardHost, canvas: ArenaCanvas, revealID
                 if (targetIds.isNotEmpty()) targets.forEach { ArenaTargetReticle(it, color) }
             }
         }
+        // The lesson coach's rings: a card on the table or in hand, a player's medallion, or the corner button.
+        val focus = LocalLessonFocus.current
+        if (show && !focus.isEmpty) {
+            for (id in focus.ids.sorted()) {
+                val rect = bounds[id] ?: bounds["hand:$id"]
+                if (rect != null) io.magicmobile.android.ui.LessonFocusRing(rect)
+                else if (id == host.opponent.playerId) bounds[TavernSeatAnchor.top]?.let { io.magicmobile.android.ui.LessonFocusRing(it, circle = true) }
+            }
+            when (focus.control) {
+                "primary" -> io.magicmobile.android.ui.LessonFocusRing(canvas.rect(canvas.layout.primary))
+                "medallion" -> bounds[TavernSeatAnchor.bottom]?.let { io.magicmobile.android.ui.LessonFocusRing(it, circle = true) }
+            }
+        }
         val layout = canvas.layout
         val stack = canvas.rect(layout.stack)
         val viewerSeat = bounds[TavernSeatAnchor.bottom]

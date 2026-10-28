@@ -20,7 +20,7 @@ const FLARE: Record<Outcome, string> = { victory: "255,133,36", defeat: "117,148
 
 export interface ResultNumbers { turns: number; combatDamage: number; creaturesDestroyed: number }
 
-export function GameResult({ snapshot, me, finished, stoppedTitle, stoppedLine, numbers, rankChange, rankNote, rematch, leave }: {
+export function GameResult({ snapshot, me, finished, stoppedTitle, stoppedLine, numbers, rankChange, rankNote, rematch, rematchTitle, leave }: {
   snapshot?: GameSnapshot; me?: PlayerGameState; finished: boolean;
   /** A table that ended without a result: its word ("Game stopped") and why. */
   stoppedTitle: string; stoppedLine?: string;
@@ -30,6 +30,8 @@ export function GameResult({ snapshot, me, finished, stoppedTitle, stoppedLine, 
   /** Why a ranked win left the ladder alone, once the server says so. */
   rankNote?: string;
   rematch?: () => void; leave: () => void;
+  /** The rematch button's word when it isn't a new game (a lesson's Next Lesson). */
+  rematchTitle?: string;
 }) {
   const winners = snapshot?.winnerPlayerIds ?? [];
   const outcome: Outcome = !finished ? "stopped" : winners.length === 0 ? "draw" : winners.includes(snapshot?.viewerPlayerId ?? "") ? "victory" : "defeat";
@@ -73,7 +75,7 @@ export function GameResult({ snapshot, me, finished, stoppedTitle, stoppedLine, 
               )}
               <div className="ways">
                 <button type="button" className="aplaque secondary" onClick={leave}>Main Menu</button>
-                {rematch && <button type="button" className="aplaque primary" data-id="board.result.rematch" onClick={rematch}>{rankChange ? "Next Match" : "New Game"}</button>}
+                {rematch && <button type="button" className="aplaque primary" data-id="board.result.rematch" onClick={rematch}>{rematchTitle ?? (rankChange ? "Next Match" : "New Game")}</button>}
               </div>
             </div>
           )}

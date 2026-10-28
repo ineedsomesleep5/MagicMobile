@@ -1133,6 +1133,7 @@ extension NativeGameView {
                     }
                 }
             }
+            if !lessonFocus.isEmpty { arenaLessonRings(bounds: bounds, human: human, opponent: opponent, canvas: canvas) }
             let stack = canvas.rect(canvas.layout.stack)
             boardFXOverlay(bounds: bounds, snapshot: snapshot,
                            opponentRect: canvas.area(canvas.layout.creatureLane(viewer: false, rows: 1)),
@@ -1144,6 +1145,23 @@ extension NativeGameView {
         }
         .allowsHitTesting(false)
         .accessibilityRepresentation { EmptyView() }
+    }
+
+    /// The lesson coach's rings: a card on the table or in hand, a player's medallion, or the corner button.
+    @ViewBuilder
+    private func arenaLessonRings(bounds: [String: CGRect], human: PlayerGameState, opponent: PlayerGameState, canvas: ArenaCanvas) -> some View {
+        ForEach(Array(lessonFocus.ids).sorted(), id: \.self) { id in
+            if let rect = bounds[id] ?? bounds["hand:" + id] {
+                LessonFocusRing(rect: rect)
+            } else if id == opponent.playerId, let rect = bounds[TavernSeatAnchor.top] {
+                LessonFocusRing(rect: rect, circle: true)
+            }
+        }
+        switch lessonFocus.control {
+        case "primary": LessonFocusRing(rect: canvas.rect(canvas.layout.primary))
+        case "medallion": if let rect = bounds[TavernSeatAnchor.bottom] { LessonFocusRing(rect: rect, circle: true) }
+        default: EmptyView()
+        }
     }
 
     // MARK: Decisions

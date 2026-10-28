@@ -137,6 +137,8 @@ struct ArenaHandFan: View {
                 }
             }
             .overlay { if extra { ArenaExtraCardShimmer(zone: playable.first?.sourceZone ?? "") } }
+            // Where a lesson's coach can ring this card (LessonViews.swift).
+            .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { ["hand:" + card.instanceId: $0] }
             .scaleEffect(scale)
             .rotationEffect(.degrees(lifted || arrival != nil ? 0 : home.rotation), anchor: .bottom)
             .opacity(dragging?.id == card.id ? 0 : 1)

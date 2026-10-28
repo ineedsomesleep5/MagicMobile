@@ -969,3 +969,16 @@ contradicting one.
   `ranked_engine_builds`' check refused, so no web build was listed (every web win: `unverified`, engine_build); and New
   Game after a ranked game reused the setup, so it ran with no ticket and the same seed. A web engine release must list
   its build (migration web_engine_builds), and a ranked rematch is `startRankedAI()`, a new ticket.
+- Lessons (2026-10-27, docs/LESSONS_TUTORIAL.md): traps met while recording and playing them.
+  - **Deck size.** XMage's test cheat adds staged cards on top of the dealt game, so every library showed 101. The
+    recorder trims each library to 99 minus what it stages in hand, play and graveyard. Check that the zones add to 100.
+  - **XMage picks a sole target itself.** No target question comes, so a coach line written for one ends up on the
+    payment. Read the `LESSON_DEBUG=1` trace before writing `then` lines.
+  - **The Arena board's words.** The corner says Next / To Combat, All Attack, 1 Attacker, 1 Blocker, Auto Pay. Casting a
+    commander is three taps (portrait, Command, Cast), and the commander question's button says Move to command.
+  - **Only the first opponent shows** at a multiplayer Arena table (BoardFocusTracker), so the recorder puts the lesson's
+    focus player first in `players`.
+  - **A turned-down move is an engine rejection.** Each session would show its error panel (Refresh, Leave, error
+    report). Errors with `lesson_wrong_move` and `lesson_not_now` are kept out of every platform's error state.
+  - **No engine in simulator builds.** The app gates everything on the engine. A lesson needs none:
+    `--ondevice-setup-ui-test` with `MAGICMOBILE_UI_TEST_LESSON=<id>` opens one in DEBUG.

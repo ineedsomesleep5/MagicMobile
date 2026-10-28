@@ -950,3 +950,23 @@ img.bprinted.facedown { filter: brightness(.62); }
 .amed .avoice.muted { color: #ff8a7a; }
 .aplayercard .avoicemute { display: block; margin: 0 auto 10px; }
 @media (prefers-reduced-motion: reduce) { .amic.joining, .amed .aspeak { animation: none; } }
+
+/* Lessons (LessonViews.tsx): Maren's note at the top of the table and the rings round what to touch next. */
+.alessoncoach { position: absolute; left: 16px; top: 150px; width: min(340px, calc(100% - 32px)); z-index: 960;
+  padding: 14px; border-radius: 12px; background: linear-gradient(#1f1a14, #120f0b); border: 1px solid rgba(214, 170, 96, 0.55);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55); color: #ead9b8; }
+.alessoncoach header { display: flex; align-items: center; gap: 8px; }
+.alessoncoach .tag { font: 700 11px/1 "Cormorant SC", serif; letter-spacing: 0.12em; padding: 4px 9px; border-radius: 999px;
+  border: 1px solid rgba(214, 170, 96, 0.5); color: #f0d49a; }
+.alessoncoach .tag::before { content: "●"; color: #e8673a; margin-right: 5px; font-size: 9px; }
+.alessoncoach h3 { margin: 0; font: 600 17px/1.1 "Cormorant SC", serif; letter-spacing: 0.08em; color: #f0d49a; text-transform: uppercase; }
+.alessoncoach p { margin: 8px 0 0; font: 500 15px/1.35 "Source Serif 4 Variable", Georgia, serif; }
+.alessoncoach footer { display: flex; justify-content: space-between; margin-top: 10px; }
+.alessoncoach.shake { animation: alesson-shake 0.32s ease-out; }
+@keyframes alesson-shake { 0%, 100% { translate: 0; } 25% { translate: 10px; } 60% { translate: -6px; } }
+.alessonrings { position: absolute; inset: 0; pointer-events: none; z-index: 940; }
+.alessonrings i { position: absolute; border: 3px solid #fad685; border-radius: 10px; box-shadow: 0 0 12px rgba(250, 214, 133, 0.85);
+  animation: alesson-breathe 1.6s ease-in-out infinite; }
+.alessonrings i.round { border-radius: 50%; }
+@keyframes alesson-breathe { 50% { box-shadow: 0 0 22px rgba(250, 214, 133, 1); scale: 1.04; } }
+@media (prefers-reduced-motion: reduce) { .alessonrings i, .alessoncoach.shake { animation: none; } }

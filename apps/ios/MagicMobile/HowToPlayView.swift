@@ -8,26 +8,35 @@ struct HowToPlayView: View {
     private let startID: String?
     /// Starts the guided first game (GuidedGame.swift); the chooser offers it when set.
     private let playGuided: (() -> Void)?
+    /// Starts a lesson (Lessons.swift); the chooser offers the lessons when set.
+    private let playLesson: ((String) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.arenaPanelClose) private var panelClose
     /// Closes the Arena menu panel this page is shown in, or the sheet elsewhere.
     private func closePanel() { if let panelClose { panelClose() } else { dismiss() } }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tutorial: HowToPlayTutorial?
+    @State private var lessons = false
 
-    init(tutorialID: String? = nil, playGuided: (() -> Void)? = nil) {
+    init(tutorialID: String? = nil, playGuided: (() -> Void)? = nil, playLesson: ((String) -> Void)? = nil) {
         startID = tutorialID
         self.playGuided = playGuided
+        self.playLesson = playLesson
         _tutorial = State(initialValue: HowToPlayText.tutorials.first { $0.id == tutorialID })
     }
 
     var body: some View {
         ZStack {
-            if let tutorial {
+            if lessons, let playLesson {
+                LessonListView(play: { id in close(); playLesson(id) }, playGuided: playGuided.map { play in { close(); play() } },
+                               back: { open(nil) })
+                    .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
+            } else if let tutorial {
                 HowToPlayBook(tutorial: tutorial, backToChooser: startID == nil ? { open(nil) } : nil, close: close)
                     .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
             } else {
-                HowToPlayChooser(choose: { open($0) }, playGuided: playGuided.map { play in { close(); play() } }, close: close)
+                HowToPlayChooser(choose: { open($0) }, playGuided: playGuided.map { play in { close(); play() } },
+                                 openLessons: playLesson == nil ? nil : { openLessons() }, close: close)
                     .transition(reduceMotion ? .opacity : .move(edge: .leading).combined(with: .opacity))
             }
         }
@@ -36,7 +45,12 @@ struct HowToPlayView: View {
 
     private func open(_ next: HowToPlayTutorial?) {
         GameAudio.shared.play(.pageFlip)
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) { tutorial = next }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) { tutorial = next; lessons = false }
+    }
+
+    private func openLessons() {
+        GameAudio.shared.play(.pageFlip)
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) { lessons = true }
     }
 
     private func close() {
@@ -52,6 +66,7 @@ struct HowToPlayView: View {
 private struct HowToPlayChooser: View {
     let choose: (HowToPlayTutorial) -> Void
     let playGuided: (() -> Void)?
+    let openLessons: (() -> Void)?
     let close: () -> Void
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
@@ -85,7 +100,11 @@ private struct HowToPlayChooser: View {
     }
 
     @ViewBuilder private var books: some View {
-        if let playGuided {
+        if let openLessons {
+            // The lessons first: short scripted games on the real board, the guided game as their last step.
+            book(id: "lessons", title: LessonText.title, subtitle: "", icon: "graduationcap.fill",
+                 art: "Grizzly Bears", colors: ["G"], action: HowToPlayText.begin, primary: true, choose: openLessons)
+        } else if let playGuided {
             book(id: "guided", title: GuidedGameText.title, subtitle: GuidedGameText.subtitle, icon: "graduationcap.fill",
                  art: "Emmara, Soul of the Accord", colors: ["G", "W"], action: GuidedGameText.start, primary: true, choose: playGuided)
         }
@@ -114,7 +133,7 @@ private struct HowToPlayChooser: View {
         .overlay(shape.strokeBorder(ArenaGlass.hairline, lineWidth: 1))
         .shadow(color: .black.opacity(0.5), radius: 8, y: 4)
         .contentShape(Rectangle())
-        .accessibilityLabel("\(title). \(subtitle)")
+        .accessibilityLabel(subtitle.isEmpty ? title : "\(title). \(subtitle)")
         .accessibilityIdentifier("howToPlay.tutorial.\(id)")
     }
 

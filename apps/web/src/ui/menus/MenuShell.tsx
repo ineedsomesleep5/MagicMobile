@@ -57,6 +57,8 @@ import { RoomBackdrop } from "./RoomBackdrop";
 import { type MenuTab, TopBar } from "./TopBar";
 import { UpdatesPanel } from "./Updates";
 import "./menus.css";
+import { LessonCatalog, type LessonInfo, LessonText } from "../../core/lessons";
+import { LessonTable } from "../../table/lessonTable";
 
 export interface MenuData { resolver: DeckResolver; precons: DeckList[]; pool: AIDeckPool }
 
@@ -245,6 +247,13 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
     return () => window.removeEventListener("mm:open-profile", open);
   }, []);
   const [game, setGame] = useState<ActiveGame>();
+  // The lessons (lessons.ts): their list, and the one on the table. A lesson is never recorded as a game.
+  const [lessons, setLessons] = useState<LessonInfo[]>([]);
+  const [lessonGame, setLessonGame] = useState<{ table: LessonTable; key: number }>();
+  useEffect(() => {
+    fetch("/generated/lessons/lessons.json").then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((value) => setLessons(LessonCatalog.parse(value))).catch(() => setLessons([]));
+  }, []);
   // Your games from the phone too (mm_my_games), read each time the profile opens and after each game.
   const [remoteGames, setRemoteGames] = useState<readonly MatchRecord[]>([]);
   useEffect(() => {
@@ -281,6 +290,18 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   void recordVersion;
 
   // MARK: Starting and recording games
+
+  /** A lesson; after the last one, the Play panel (the web has no guided game). */
+  const startLesson = (id: string) => {
+    const info = lessons.find((lesson) => lesson.id === id);
+    if (!info) return;
+    const next = LessonCatalog.next(id, lessons);
+    const table = new LessonTable(info, next ? LessonText.next : "Play a Game", () => { setLessonGame(undefined); setPanel("learn"); },
+      () => { setLessonGame(undefined); if (next) startLesson(next.id); else setPlayPanel(true); });
+    setPanel(undefined);
+    setLessonGame({ table, key: ++gameKey.current });
+    void table.start();
+  };
 
   const begin = (gameMode: PlayMode, opponents: AIDeck[], skill: number, ticket?: RankedAITicket) => {
     if (!deck || deckBracket === undefined) return;
@@ -679,6 +700,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
       .map((d) => ({ id: d.id, name: d.name, commander: d.commander, colors: [...d.colors], bracket: d.bracket })) })).filter((g) => g.decks.length > 0),
   ];
 
+  if (lessonGame) return <GameScreen key={lessonGame.key} table={lessonGame.table} />;
   if (game) {
     const versus = { you: { id: "you", name: player.state.username ?? (name.trim() || "You"), commander: game.deck.commander || undefined, tier: rank.position.tier },
       opponents: game.opponents.map((deck, index) => ({ id: `ai-${index}`, name: deck.name, commander: deck.commander || undefined })) };
@@ -759,7 +781,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
         <UpdatesPanel onClose={() => setPanel(undefined)} />
       </MenuPanel>
       <MenuPanel open={panel === "learn"} onClose={() => setPanel(undefined)} label="How to Play" maxWidth={680} fits>
-        <LearnPanel onClose={() => setPanel(undefined)} />
+        <LearnPanel onClose={() => setPanel(undefined)} lessons={lessons} playLesson={startLesson} />
       </MenuPanel>
       <MenuPanel open={panel === "bracket"} onClose={() => setPanel(undefined)} label="Bracket" maxWidth={560} fits>
         <PanelHeader title={deck?.name ?? "Bracket"} onClose={() => setPanel(undefined)} />

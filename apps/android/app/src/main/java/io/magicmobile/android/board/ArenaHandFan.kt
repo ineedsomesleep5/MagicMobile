@@ -427,6 +427,8 @@ fun ArenaHandFan(
                     .requiredSize(cardSize.width.dp, cardSize.height.dp)
                     .graphicsLayer { transformOrigin = TransformOrigin(0.5f, 1f); rotationZ = rotation; alpha = if (hidden) 0f else 1f }
                     .graphicsLayer { scaleX = scale; scaleY = scale }
+                    // Where a lesson's coach can ring this card (LessonViews.kt).
+                    .cardBounds("hand:" + card.instanceId)
                     .semantics {
                         contentDescription = if (extra) "${card.card.name}, playable from your ${playable.firstOrNull()?.sourceZone ?: "zone"}" else card.card.name
                         customActions = listOf(CustomAccessibilityAction("Inspect card") { selection.inspectedCard = card; true },

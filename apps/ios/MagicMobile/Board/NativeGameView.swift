@@ -184,6 +184,8 @@ struct NativeGameView: View {
     /// Set by a long press on the primary button (full control), so lifting that finger doesn't also pass.
     @State var arenaSwallowNextPass = false
     @Environment(\.turnClockFeed) var turnClockFeed
+    /// A lesson's coach points here (LessonViews.swift): rings drawn over the Arena board.
+    @Environment(\.lessonFocus) var lessonFocus
     @Environment(\.nativeTurnControl) var nativeTurnControl
     @Environment(\.boardAnswerActions) var answerActions
     /// Which opponent the top of the board shows; it follows the turn (BoardFocusTracker).
