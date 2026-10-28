@@ -36,7 +36,7 @@ object GuidedGameText {
     const val GOT_IT = "Got it"
     const val TURN_OFF = "Turn off tips"
     const val WELCOME_TITLE = "Welcome to the tavern"
-    const val WELCOME_BODY = "New to Magic or to MagicMobile? Play a guided game against an easy AI and learn as you go."
+    const val WELCOME_BODY = "New to Magic or to MagicMobile? Learn by playing, one short lesson at a time."
     const val READ_HOW_TO_PLAY = "Read How to Play"
     const val SKIP = "I know Magic"
 

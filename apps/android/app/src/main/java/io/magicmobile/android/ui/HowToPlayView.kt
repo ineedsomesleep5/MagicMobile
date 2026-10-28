@@ -113,17 +113,23 @@ import kotlin.math.sin
  * `HowToPlayText` (a parity golden).
  */
 @Composable
-fun HowToPlayView(close: () -> Unit, modifier: Modifier = Modifier, tutorialID: String? = null, playGuided: (() -> Unit)? = null) {
+fun HowToPlayView(close: () -> Unit, modifier: Modifier = Modifier, tutorialID: String? = null, playGuided: (() -> Unit)? = null,
+                  playLesson: ((String) -> Unit)? = null) {
     var tutorial by remember { mutableStateOf(HowToPlayText.tutorials.firstOrNull { it.id == tutorialID }) }
+    var lessons by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     fun finish() { GameAudio.play(GameSound.UI_CLOSE); close() }
-    fun open(next: HowToPlayTutorial?) { GameAudio.play(GameSound.PAGE_FLIP); tutorial = next }
+    fun open(next: HowToPlayTutorial?) { GameAudio.play(GameSound.PAGE_FLIP); tutorial = next; lessons = false }
     // Inside a menu panel the panel's glass shows; in the game menu's sheet it draws its own.
     val inPanel = LocalArenaPanelClose.current != null
     CompositionLocalProvider(LocalArenaBoard provides true, androidx.compose.material3.LocalContentColor provides ArenaMenuStyle.text) {
         Box(modifier.then(if (inPanel) Modifier else Modifier.arenaGlassBackground())) {
             val book = tutorial
-            if (book != null) HowToPlayBook(book, backToChooser = if (tutorialID == null) ({ open(null) }) else null, close = ::finish)
-            else HowToPlayChooser(choose = { open(it) }, playGuided = playGuided?.let { play -> { finish(); play() } }, close = ::finish)
+            if (lessons && playLesson != null) LessonListView(LessonAssets.all(context), play = { id -> finish(); playLesson(id) },
+                playGuided = playGuided?.let { play -> { finish(); play() } }, back = { open(null) })
+            else if (book != null) HowToPlayBook(book, backToChooser = if (tutorialID == null) ({ open(null) }) else null, close = ::finish)
+            else HowToPlayChooser(choose = { open(it) }, playGuided = playGuided?.let { play -> { finish(); play() } },
+                openLessons = if (playLesson == null) null else ({ GameAudio.play(GameSound.PAGE_FLIP); lessons = true }), close = ::finish)
         }
     }
 }
@@ -135,13 +141,17 @@ fun HowToPlayView(close: () -> Unit, modifier: Modifier = Modifier, tutorialID: 
  * one line along their foot) and stacked when it stands; the guided first game first when the menu offers it.
  */
 @Composable
-private fun HowToPlayChooser(choose: (HowToPlayTutorial) -> Unit, playGuided: (() -> Unit)?, close: () -> Unit) {
+private fun HowToPlayChooser(choose: (HowToPlayTutorial) -> Unit, playGuided: (() -> Unit)?, openLessons: (() -> Unit)?, close: () -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val wide = maxWidth > maxHeight
         Column(Modifier.fillMaxWidth()) {
             ArenaPanelHeader(HowToPlayText.TITLE, closeIdentifier = "howToPlay.close", close = close)
             val books: @Composable (Modifier) -> Unit = { tile ->
-                if (playGuided != null) Book("guided", GuidedGameText.TITLE, GuidedGameText.SUBTITLE, "graduationcap.fill", "Emmara, Soul of the Accord",
+                // The lessons first: short scripted games on the real board, the guided game as their last step.
+                if (openLessons != null) Book("lessons", io.magicmobile.android.game.LessonText.TITLE, "", "graduationcap.fill", "Grizzly Bears",
+                    // Zoomed in so the printing's frame stays outside the tile, framed on the bears' faces.
+                    listOf("G"), HowToPlayText.BEGIN, wide, tile, primary = true, artScale = 1.16f, artFocus = 0f, choose = openLessons)
+                else if (playGuided != null) Book("guided", GuidedGameText.TITLE, GuidedGameText.SUBTITLE, "graduationcap.fill", "Emmara, Soul of the Accord",
                     listOf("G", "W"), GuidedGameText.START, wide, tile, primary = true, choose = playGuided)
                 for (tutorial in HowToPlayText.tutorials) {
                     val commander = tutorial.id == "commander"
@@ -175,17 +185,17 @@ private fun HowToPlayChooser(choose: (HowToPlayTutorial) -> Unit, playGuided: ((
  */
 @Composable
 private fun Book(id: String, title: String, subtitle: String, icon: String, art: String, colors: List<String>, action: String, wide: Boolean,
-                 modifier: Modifier, primary: Boolean = false, choose: () -> Unit) {
+                 modifier: Modifier, primary: Boolean = false, artScale: Float = 1.06f, artFocus: Float = 0.3f, choose: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     val frame = modifier.glow(Color.Black.copy(alpha = 0.5f), 8.dp, 12.dp).clip(shape).background(Color.Black.copy(alpha = 0.45f))
         .border(1.dp, ArenaGlass.hairline, shape)
         .clickable(role = Role.Button) { choose() }
-        .semantics(mergeDescendants = true) { contentDescription = "$title. $subtitle" }.testTag("howToPlay.tutorial.$id")
+        .semantics(mergeDescendants = true) { contentDescription = if (subtitle.isEmpty()) title else "$title. $subtitle" }.testTag("howToPlay.tutorial.$id")
     if (!wide) {
         // Upright, Arena's way (Caleb, 2026-10-26: the thin strips showed shoulders, not faces, under a gap): the art fills
         // the tile, framed on its upper part, with the title and plaque on a shade along its foot.
         Box(frame.fillMaxWidth().height(158.dp), contentAlignment = Alignment.BottomCenter) {
-            ArenaArt(art, colors, Modifier.fillMaxSize().graphicsLayer { scaleX = 1.06f; scaleY = 1.06f }, focus = 0.3f)
+            ArenaArt(art, colors, Modifier.fillMaxSize().graphicsLayer { scaleX = artScale; scaleY = artScale }, focus = artFocus)
             Box(Modifier.fillMaxWidth().height(96.dp).background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.88f)))))
             Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(title, Modifier.weight(1f), color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(19f, SfWeight.bold).copy(shadow = Shadow(Color.Black, blurRadius = 6f)))
@@ -199,7 +209,7 @@ private fun Book(id: String, title: String, subtitle: String, icon: String, art:
     Column(frame) {
         Box(Modifier.fillMaxWidth().height(104.dp).clip(RoundedCornerShape(0.dp))) {
             // Cropped in from every edge, so a printing's frame never shows along the art's border.
-            ArenaArt(art, colors, Modifier.fillMaxSize().graphicsLayer { scaleX = 1.14f; scaleY = 1.14f }, focus = 0.3f)
+            ArenaArt(art, colors, Modifier.fillMaxSize().graphicsLayer { val z = maxOf(1.14f, artScale); scaleX = z; scaleY = z }, focus = artFocus)
             Box(Modifier.padding(10.dp).size(34.dp).background(Color.Black.copy(alpha = 0.7f), CircleShape).border(0.9.dp, ArenaGlass.hairline, CircleShape),
                 contentAlignment = Alignment.Center) { ArenaEmblem(icon, 16.dp, lit = true) }
         }
@@ -439,7 +449,7 @@ private fun Hourglass(size: Dp = 60.dp, modifier: Modifier = Modifier) {
 
 /** A button as a label: Arena's orange pill, or its dark glass one. */
 @Composable
-private fun Plaque(text: String, icon: String? = null, primary: Boolean = true, modifier: Modifier = Modifier) {
+internal fun Plaque(text: String, icon: String? = null, primary: Boolean = true, modifier: Modifier = Modifier) {
     ArenaButtonFace(if (primary) ArenaButtonKind.PRIMARY else ArenaButtonKind.SECONDARY, ArenaMenuStyle.title(13f, SfWeight.bold), pressed = false,
         modifier = modifier, fills = false, inset = 8.dp, glow = 0.5f) {
         if (icon != null) SfImage(icon, androidx.compose.material3.LocalContentColor.current, 10.dp)

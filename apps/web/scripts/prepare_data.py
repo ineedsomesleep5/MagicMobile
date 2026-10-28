@@ -57,6 +57,10 @@ assert len({deck['id'] for deck in ai['decks']} | {deck['id'] for deck in decks}
 for deck in ai['decks']:
     assert deck['id'].startswith('ai-') and sum(1 for x in deck['entries'] if x['section'] == 'commander') == 1, deck['id']
 (out / 'ai-decks.json').write_bytes(ai_source.read_bytes())
+# The lessons (scripts/lessons/record.py), recorded once and read by every platform.
+(out / 'lessons').mkdir(parents=True, exist_ok=True)
+for lesson in sorted((repo / 'apps/ios/MagicMobile/Resources/Lessons').glob('*.json')):
+    (out / 'lessons' / lesson.name).write_bytes(lesson.read_bytes())
 print('Prepared', len(data['cards']), 'printings,', len(decks), 'precons and', len(ai['decks']), 'AI decks for catalogue', data['catalogueHash'][:12])
 
 # Deck Studio's card catalogue (NativeDeckMetadataCatalogue.swift; src/core/deckStudio/catalogue.ts reads it): one row per

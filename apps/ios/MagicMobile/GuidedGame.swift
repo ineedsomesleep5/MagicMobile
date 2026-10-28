@@ -22,7 +22,7 @@ enum GuidedGameText {
     static let turnOff = "Turn off tips"
     /// The welcome on the first launch: the guided game, the slideshow, or neither.
     static let welcomeTitle = "Welcome to the tavern"
-    static let welcomeBody = "New to Magic or to MagicMobile? Play a guided game against an easy AI and learn as you go."
+    static let welcomeBody = "New to Magic or to MagicMobile? Learn by playing, one short lesson at a time."
     static let readHowToPlay = "Read How to Play"
     static let skip = "I know Magic"
 

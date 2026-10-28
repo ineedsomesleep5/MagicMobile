@@ -76,5 +76,12 @@ for name in ('commander-brackets.json', 'ai-decks.json', 'tavern-room.json'):
     data_bytes = source.read_bytes()
     json.loads(data_bytes)
     (out/name).write_bytes(data_bytes)
+# The lessons (scripts/lessons/record.py), recorded once and read by every platform.
+lessons = repo/'apps/ios/MagicMobile/Resources/Lessons'
+(out/'lessons').mkdir(exist_ok=True)
+for source in sorted(lessons.glob('*.json')):
+    data_bytes = source.read_bytes()
+    json.loads(data_bytes)
+    (out/'lessons'/source.name).write_bytes(data_bytes)
 (out/'asset-provenance.json').write_text(json.dumps({'catalogueSourceSHA256':hashlib.sha256(raw).hexdigest(),'preconSourceSHA256':hashlib.sha256(precon_source.read_bytes()).hexdigest(),'cards':len(data['cards']),'cardsWithMetadata':joined,'precons':len(decks),'catalogueHash':data['catalogueHash']},indent=2))
 print('Prepared',len(data['cards']),'compiled catalogue cards (',joined,'with metadata ) and',len(decks),'unchanged precons')

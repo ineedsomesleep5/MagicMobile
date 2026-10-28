@@ -56,6 +56,7 @@ val prepareAssets by tasks.registering(Exec::class) {
     inputs.file(rootProject.file("../ios/MagicMobile/Resources/commander-brackets.json"))
     inputs.file(rootProject.file("../ios/MagicMobile/Resources/ai-decks.json"))
     inputs.files(rootProject.file("../ios/MagicMobile/Resources/tavern-room.json")).optional()
+    inputs.dir(rootProject.file("../ios/MagicMobile/Resources/Lessons"))
     outputs.dir(layout.buildDirectory.dir("generated/magicmobile-assets"))
     commandLine("python3",script.absolutePath, rootProject.file("../..").absolutePath,layout.buildDirectory.dir("generated/magicmobile-assets").get().asFile.absolutePath)
 }

@@ -172,10 +172,13 @@ class ArenaBoardPresentationTest {
 
     @Test fun captionSaysWhatTheTableWants() {
         assertNull(ArenaCornerText.caption(table("PRECOMBAT_MAIN"), CombatSelectionState()))
-        val target = """{"id":"t","method":"GAME_TARGET","messageId":2,"playerId":"a","responseKind":"target","message":"Select target creature",
+        val attack = """{"id":"t","method":"GAME_SELECT","messageId":2,"playerId":"a","responseKind":"target","message":"Select attackers",
             "responseCommand":{"type":"choose_target","promptId":"t"},"targets":[{"id":"mine","label":"Bear"}]}"""
         val mine = """[{"instanceId":"mine","card":{"name":"Bear","typeLine":"Creature"}}]"""
-        assertEquals("Choose attackers.", ArenaCornerText.caption(table("DECLARE_ATTACKERS", prompt = target, battlefield = mine), CombatSelectionState()))
+        assertEquals("Choose attackers.", ArenaCornerText.caption(table("DECLARE_ATTACKERS", prompt = attack, battlefield = mine), CombatSelectionState()))
+        // A card's own target question in that step (Gogo copying an attack trigger) says what it asks.
+        val target = attack.replace("GAME_SELECT", "GAME_TARGET").replace("Select attackers", "Select target creature")
+        assertEquals("Select target creature", ArenaCornerText.caption(table("DECLARE_ATTACKERS", prompt = target, battlefield = mine), CombatSelectionState()))
     }
 
     @Test fun amountPillStartsXAtWhatYourManaPays() {

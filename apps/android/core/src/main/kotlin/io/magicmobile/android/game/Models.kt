@@ -203,7 +203,8 @@ data class MobilePromptPresentation(val kind: MobilePromptKind, val title: Strin
         private fun isCombatSelection(snapshot: GameSnapshot, legalActions: List<LegalAction>): Boolean =
             legalActions.any { it.type == "declare_attackers" || it.type == "declare_blockers" } ||
                 ((snapshot.isViewer(snapshot.waitingOnPlayerId) || snapshot.isViewer(snapshot.priorityPlayerId)) &&
-                    (normalizedStep(snapshot).contains("declare-attack") || normalizedStep(snapshot).contains("declare-block")))
+                    (normalizedStep(snapshot).contains("declare-attack") || normalizedStep(snapshot).contains("declare-block")) &&
+                    snapshot.promptEnvelopeV2?.isCombatSelection != false)
 
         private fun normalizedStep(snapshot: GameSnapshot): String = "${snapshot.step ?: ""} ${snapshot.promptText ?: ""}".lowercase()
     }
@@ -623,6 +624,12 @@ data class PromptEnvelopeV2(
         !options?.get("autoAnswerMessage").string.isNullOrEmpty()
     /** XMage's "which triggered ability goes on the stack first" question. */
     val isTriggerOrder: Boolean get() = method == "GAME_PICK_ABILITY"
+    /**
+     * XMage's attacker or blocker selection (a SELECT the on-device adapter answers with a target). Other target questions asked
+     * during combat, such as Gogo copying an attack trigger or a targeted trick, are ordinary targets.
+     */
+    val isCombatSelection: Boolean get() = method == "GAME_SELECT" &&
+        (responseKind.lowercase() == "target" || responseCommand?.type?.lowercase() == "choose_target")
 }
 
 @Serializable

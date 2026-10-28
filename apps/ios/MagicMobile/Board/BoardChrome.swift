@@ -1674,14 +1674,17 @@ struct TavernSheetBackground: View {
 /// A panel title engraved in gold.
 struct TavernPanelTitle: View {
     let text: String
+    @Environment(\.arenaBoard) private var arena
 
     var body: some View {
+        // On the Arena board: Arena's serif in plain gold, not the engraved tavern capitals.
         Text(text.uppercased())
-            .font(TavernDisplayFont.font(16))
-            .tracking(1.2)
-            .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.80, green: 0.56, blue: 0.22)],
-                                            startPoint: .top, endPoint: .bottom))
-            .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
+            .font(arena ? ArenaMenuStyle.font(16, .bold) : TavernDisplayFont.font(16))
+            .tracking(arena ? 1 : 1.2)
+            .foregroundStyle(arena ? AnyShapeStyle(ArenaMenuStyle.gold)
+                             : AnyShapeStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.80, green: 0.56, blue: 0.22)],
+                                                            startPoint: .top, endPoint: .bottom)))
+            .shadow(color: .black.opacity(arena ? 0 : 0.7), radius: 1, y: 1)
             .lineLimit(1)
             .minimumScaleFactor(0.7)
             // Engraved in capitals, named in normal case (VoiceOver reads capitals letter by letter).
@@ -2123,8 +2126,11 @@ struct TavernMenuItem: View {
 
 /// A thin brass rule between groups of tavern menu rows.
 struct TavernMenuDivider: View {
+    @Environment(\.arenaBoard) private var arena
+
     var body: some View {
-        Rectangle().fill(TavernPalette.brassLine).frame(height: 1).opacity(0.7).padding(.vertical, 2)
+        Rectangle().fill(arena ? AnyShapeStyle(ArenaGlass.hairline) : AnyShapeStyle(TavernPalette.brassLine))
+            .frame(height: 1).opacity(arena ? 0.45 : 0.7).padding(.vertical, 2)
     }
 }
 
@@ -2514,12 +2520,14 @@ struct TavernPlayerStatusPanel: View {
 }
 
 /// The bottom of an opponent's pop-over in a pod: swap to another opponent's information.
-/// The current one carries an ember ring.
+/// The current one carries an ember ring; each portrait has its player's name under it.
 struct TavernOpponentSwap: View {
     let opponents: [PlayerGameState]
     let current: String
     let label: (String) -> String
     let select: (String) -> Void
+    /// A lesson's swap step rings the opponent to pick (LessonViews.swift).
+    @Environment(\.lessonFocus) private var lessonFocus
 
     var body: some View {
         VStack(spacing: 6) {
@@ -2533,11 +2541,21 @@ struct TavernOpponentSwap: View {
                 ForEach(opponents) { opponent in
                     let chosen = opponent.playerId == current
                     Button { select(opponent.playerId) } label: {
-                        PlayerPortrait(player: opponent, size: 36)
-                            .overlay(Circle().strokeBorder(chosen ? TavernPalette.ember : TavernPalette.brass.opacity(0.6),
-                                                           lineWidth: chosen ? 2.5 : 1.2))
-                            .opacity(opponent.isOut ? 0.45 : 1)
-                            .shadow(color: chosen ? TavernPalette.ember.opacity(0.7) : .clear, radius: 4)
+                        VStack(spacing: 3) {
+                            PlayerPortrait(player: opponent, size: 36)
+                                .overlay(Circle().strokeBorder(chosen ? TavernPalette.ember : TavernPalette.brass.opacity(0.6),
+                                                               lineWidth: chosen ? 2.5 : 1.2))
+                                .shadow(color: chosen ? TavernPalette.ember.opacity(0.7) : .clear, radius: 4)
+                                .overlay { if lessonFocus.ids.contains(opponent.playerId) && !chosen {
+                                    GeometryReader { proxy in LessonFocusRing(rect: proxy.frame(in: .local), circle: true) }
+                                } }
+                            Text(label(opponent.playerId))
+                                .font(.system(size: 11, weight: .semibold, design: .serif))
+                                .foregroundStyle(TavernPalette.parchment)
+                                .lineLimit(1)
+                                .frame(maxWidth: 56)
+                        }
+                        .opacity(opponent.isOut ? 0.45 : 1)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Swap to \(label(opponent.playerId))")

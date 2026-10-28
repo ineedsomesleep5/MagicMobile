@@ -102,6 +102,13 @@ class CardBoundsRegistry {
 
 val LocalCardBounds = compositionLocalOf<CardBoundsRegistry?> { null }
 
+/** What a lesson's coach points at (Lessons.kt): rings drawn over the Arena board. */
+val LocalLessonFocus = compositionLocalOf { io.magicmobile.android.game.LessonSpot.Focus() }
+/** The board tells a lesson which opponent it shows (a swap step waits for one). */
+val LocalLessonFocusReport = compositionLocalOf<((String) -> Unit)?> { null }
+/** The board tells a lesson what it has open over the table (LessonBoardCover). */
+val LocalLessonCoverReport = compositionLocalOf<((io.magicmobile.android.game.LessonBoardCover) -> Unit)?> { null }
+
 /** Records this card's rendered bounds in the board's coordinate space. */
 fun Modifier.cardBounds(id: String): Modifier = composed {
     val registry = LocalCardBounds.current ?: return@composed this

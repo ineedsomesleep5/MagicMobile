@@ -208,6 +208,14 @@ fun ArenaBoard(host: ArenaBoardHost) {
     var stackTuckedTop by remember { mutableStateOf<String?>(null) }
     var stackPeekTop by remember { mutableStateOf<String?>(null) }
     var showPhaseStops by remember { mutableStateOf(false) }
+    // A lesson's coach gets out of the way of what the board opens (LessonBoardCover).
+    val lessonCoverReport = LocalLessonCoverReport.current
+    val lessonCover = when {
+        showPhaseStops || cornerMenu != null || host.selection.inspectedCard != null || host.inspectingZoneTitle != null -> io.magicmobile.android.game.LessonBoardCover.PANEL
+        playerCardID != null -> io.magicmobile.android.game.LessonBoardCover.PLAYER_CARD
+        else -> io.magicmobile.android.game.LessonBoardCover.NONE
+    }
+    LaunchedEffect(lessonCover) { lessonCoverReport?.invoke(lessonCover) }
     var safeArea by remember { mutableStateOf(ArenaSafeArea()) }
     /** The trigger order chosen in the ability browser (ability ids, first to place first) and the prompt it last answered. */
     var triggerPlan by remember { mutableStateOf(listOf<String>()) }
@@ -1089,6 +1097,19 @@ private fun ArenaDrawnLayers(host: ArenaBoardHost, canvas: ArenaCanvas, revealID
                 val color = if (theirs) rgb(1.0, 0.38, 0.27) else rgb(0.55, 0.85, 1.0)
                 if (targets.isNotEmpty()) ArenaStackArc(from, targets, color)
                 if (targetIds.isNotEmpty()) targets.forEach { ArenaTargetReticle(it, color) }
+            }
+        }
+        // The lesson coach's rings: a card on the table or in hand, a player's medallion, or the corner button.
+        val focus = LocalLessonFocus.current
+        if (show && !focus.isEmpty) {
+            for (id in focus.ids.sorted()) {
+                val rect = bounds[id] ?: bounds["hand:$id"]
+                if (rect != null) io.magicmobile.android.ui.LessonFocusRing(rect)
+                else if (id == host.opponent.playerId) bounds[TavernSeatAnchor.top]?.let { io.magicmobile.android.ui.LessonFocusRing(it, circle = true) }
+            }
+            when (focus.control) {
+                "primary" -> io.magicmobile.android.ui.LessonFocusRing(canvas.rect(canvas.layout.primary))
+                "medallion" -> bounds[TavernSeatAnchor.bottom]?.let { io.magicmobile.android.ui.LessonFocusRing(it, circle = true) }
             }
         }
         val layout = canvas.layout

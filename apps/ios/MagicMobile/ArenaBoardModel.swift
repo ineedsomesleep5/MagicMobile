@@ -838,8 +838,7 @@ enum ArenaCombatPhase: Equatable {
         let actions = snapshot.legalActions ?? []
         if actions.contains(where: { $0.type == "declare_attackers" }) { return .attackers }
         if actions.contains(where: { $0.type == "declare_blockers" }) { return .blockers }
-        guard let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId),
-              prompt.responseKind.lowercased() == "target" || prompt.responseCommand?.type?.lowercased() == "choose_target" else { return nil }
+        guard let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId), prompt.isCombatSelection else { return nil }
         let step = (snapshot.step ?? snapshot.phase).lowercased().replacingOccurrences(of: "_", with: "-")
         if step.contains("declare-attack") { return .attackers }
         if step.contains("declare-block") { return .blockers }

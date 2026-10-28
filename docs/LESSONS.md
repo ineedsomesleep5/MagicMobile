@@ -123,6 +123,11 @@ contradicting one.
 
 ## Gameplay
 
+- 2026-10-27 (Claude): Gogo's "copy which ability?" target, asked in the declare attackers step, showed "Choose attackers."
+  and 1 Attacker and the game could not go on: `ArenaCombatPhase` (iOS, Android, web `combatPhase`) took any target
+  prompt plus a declare-attackers/blockers step name for the attack declaration. **Fix / rule:** combat is the prompt's
+  own marker, `isCombatSelection` (`GAME_SELECT` answered with a target); never infer combat from the step name alone.
+  `MobilePromptPresentation`'s step fallback now also defers to that marker.
 - 2026-10-27 (Claude): Smart pass let your own trigger resolve whatever you held, so Gogo could never copy Zur's attack
   trigger (no priority with the trigger on the stack). `respondsToStack` is too broad for your own items (any counterspell
   says yes). **Fix / rule:** on your own top item, stop only for a non-spell, non-mana row with an explicit
@@ -969,3 +974,26 @@ contradicting one.
   `ranked_engine_builds`' check refused, so no web build was listed (every web win: `unverified`, engine_build); and New
   Game after a ranked game reused the setup, so it ran with no ticket and the same seed. A web engine release must list
   its build (migration web_engine_builds), and a ranked rematch is `startRankedAI()`, a new ticket.
+- Lessons (2026-10-27, docs/LESSONS_TUTORIAL.md): traps met while recording and playing them.
+  - **Deck size.** XMage's test cheat adds staged cards on top of the dealt game, so every library showed 101. The
+    recorder trims each library to 99 minus what it stages in hand, play and graveyard. Check that the zones add to 100.
+  - **XMage picks a sole target itself.** No target question comes, so a coach line written for one ends up on the
+    payment. Read the `LESSON_DEBUG=1` trace before writing `then` lines.
+  - **The Arena board's words.** The corner says Next / To Combat, All Attack, 1 Attacker, 1 Blocker, Auto Pay. Casting a
+    commander is three taps (portrait, Command, Cast), and the commander question's button says Move to command.
+  - **Only the first opponent shows** at a multiplayer Arena table (BoardFocusTracker), so the recorder puts the lesson's
+    focus player first in `players`.
+  - **A turned-down move is an engine rejection.** Each session would show its error panel (Refresh, Leave, error
+    report). Errors with `lesson_wrong_move` and `lesson_not_now` are kept out of every platform's error state.
+  - **No engine in simulator builds.** The app gates everything on the engine. A lesson needs none:
+    `--ondevice-setup-ui-test` with `MAGICMOBILE_UI_TEST_LESSON=<id>` opens one in DEBUG.
+  - **Overlays outside the board miss the Arena look.** Maren's and the guided game's cards are the root's overlays, not
+    the board's, so they never got `arenaBoard` (iOS) or `LocalArenaBoard` (Android) and drew leather tags. Give them
+    the board mode's value. Android's `TavernTag`, `TavernPanelTitle`, `TavernSealButton` and `TavernMenuDivider`, and
+    iOS's `TavernPanelTitle` and `TavernMenuDivider`, had no Arena version at all; the phase stops grid neither.
+  - **A full-screen measuring layer swallows taps (iOS).** A `GeometryReader` around Maren's card blocked every tap on
+    the board. Measure on a `Color.clear` with `allowsHitTesting(false)` and put the card in its overlay.
+  - **A spring overshoots below zero (Android).** `animateDpAsState` with a spring went negative and `padding` threw
+    "Padding must be non-negative". Clamp with `coerceAtLeast(0.dp)`.
+  - **A remembered nudge replayed.** The coach card leaves the table between notes; its "wrong move" effect saw the
+    run's old count when it came back and showed the nudge over the finish text. Compare with the last count seen.

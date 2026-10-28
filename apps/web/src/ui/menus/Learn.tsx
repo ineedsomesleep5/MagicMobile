@@ -8,6 +8,8 @@ import { useEffect, useState } from "react";
 import { gameAudio } from "../audio";
 import { DeckArt } from "./DeckBox";
 import { Btn, CloseButton, BackChevron } from "./kit";
+import { type LessonInfo, LessonText } from "../../core/lessons";
+import { lessonProgress } from "../../table/lessonTable";
 
 interface LearnPage { id: string; title: string; body: string }
 /** `art`: the card whose art fills the tutorial's tile, `colors` its glass until the art loads. */
@@ -40,8 +42,12 @@ export const TUTORIALS: Tutorial[] = [
   ] },
 ];
 
-export function LearnPanel({ onClose }: { onClose: () => void }) {
+/** `playLesson` starts a lesson (lessons.ts); the chooser offers the lessons first when there are any. */
+export function LearnPanel({ onClose, lessons = [], playLesson }: { onClose: () => void; lessons?: LessonInfo[]; playLesson?: (id: string) => void }) {
   const [tutorial, setTutorial] = useState<Tutorial>();
+  const [lessonList, setLessonList] = useState(false);
+  const completed = lessonProgress.completed();
+  const firstUnfinished = lessons.find((lesson) => !completed.has(lesson.id))?.id;
   const [index, setIndex] = useState(0);
   const page = tutorial?.pages[index];
   const step = (delta: number) => {
@@ -64,12 +70,35 @@ export function LearnPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="mlearn">
       <header className="mpanelhead centered">
-        {tutorial ? <BackChevron onBack={() => setTutorial(undefined)} /> : <span className="mspacer" />}
-        <h2>{tutorial?.title ?? "How to play"}</h2>
+        {tutorial || lessonList ? <BackChevron onBack={() => { setTutorial(undefined); setLessonList(false); }} /> : <span className="mspacer" />}
+        <h2>{tutorial?.title ?? (lessonList ? LessonText.title : "How to play")}</h2>
         <CloseButton onClose={onClose} />
       </header>
-      {!tutorial || !page ? (
+      {lessonList && playLesson ? (
+        // The lessons in order, a check on each one finished (iOS LessonListView).
+        <div className="mlessons">
+          {lessons.map((lesson, index) => {
+            const done = completed.has(lesson.id), next = lesson.id === firstUnfinished;
+            return (
+              <button key={lesson.id} type="button" className={`mlesson ${next ? "next" : ""}`} data-id={`lessons.${lesson.id}`}
+                aria-label={done ? `${lesson.title}, finished` : lesson.title} onClick={() => { gameAudio.play("ui-open"); onClose(); playLesson(lesson.id); }}>
+                <i className={done ? "done" : ""}>{done ? "✓" : index + 1}</i>
+                <b>{lesson.title}</b>
+                <span className={`mbtn ${next ? "" : "secondary"} compact`}>{done ? "Replay" : "Play"} ›</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : !tutorial || !page ? (
         <div className="mlearnchooser">
+          {playLesson && lessons.length > 0 && (
+            <button type="button" className="mlearncard" data-id="learn.lessons" aria-label={LessonText.title}
+              onClick={() => { gameAudio.play("ui-open"); setLessonList(true); }}>
+              <DeckArt name="Grizzly Bears" colors={["G"]} focus={0.3} />
+              <i className="mlearnshade" />
+              <span className="mlearntitle"><b>{LessonText.title}</b><span className="mbtn compact">Begin ›</span></span>
+            </button>
+          )}
           {TUTORIALS.map((t) => (
             // Arena's Learn tile (HowToPlayChooser.upright): the art fills it, framed on its upper part, the title and plaque on a
             // shade along its foot. What it teaches is the screen reader's.

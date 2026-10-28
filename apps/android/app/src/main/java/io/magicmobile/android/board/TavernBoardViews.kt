@@ -354,22 +354,31 @@ fun TavernPlayerStatusPanel(name: String, summary: PlayerStatusSummary, inspect:
     }
 }
 
-/** The bottom of an opponent's pop-over in a pod: swap the board to another opponent; the current one wears an ember ring. */
+/**
+ * The bottom of an opponent's pop-over in a pod: swap the board to another opponent; the current one wears an ember ring and
+ * each portrait has its player's name under it. A lesson's swap step rings the opponent to pick.
+ */
 @Composable
 fun TavernOpponentSwap(opponents: List<PlayerGameState>, current: String, label: (String) -> String, select: (String) -> Unit) {
+    val lessonFocus = LocalLessonFocus.current
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         TavernMenuDivider()
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             SfImage("arrow.left.arrow.right.circle.fill", TavernPalette.brass, 22.dp)
             for (opponent in opponents) {
                 val chosen = opponent.playerId == current
-                Box(Modifier.alpha(if (opponent.isOut) 0.45f else 1f)
-                    .glow(if (chosen) TavernPalette.ember.copy(alpha = 0.7f) else Color.Transparent, 4.dp, 18.dp)
-                    .clickable { select(opponent.playerId) }
-                    .semantics { contentDescription = "Swap to ${label(opponent.playerId)}" + if (chosen) ", selected" else "" }) {
-                    PlayerPortrait(opponent, 36.dp)
-                    Box(Modifier.requiredSize(36.dp).border(if (chosen) 2.5.dp else 1.2.dp,
-                        if (chosen) TavernPalette.ember else TavernPalette.brass.copy(alpha = 0.6f), CircleShape))
+                Column(Modifier.alpha(if (opponent.isOut) 0.45f else 1f).clickable { select(opponent.playerId) }
+                    .semantics(mergeDescendants = true) { contentDescription = "Swap to ${label(opponent.playerId)}" + if (chosen) ", selected" else "" },
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Box(Modifier.glow(if (chosen) TavernPalette.ember.copy(alpha = 0.7f) else Color.Transparent, 4.dp, 18.dp)) {
+                        PlayerPortrait(opponent, 36.dp)
+                        Box(Modifier.requiredSize(36.dp).border(if (chosen) 2.5.dp else 1.2.dp,
+                            if (chosen) TavernPalette.ember else TavernPalette.brass.copy(alpha = 0.6f), CircleShape))
+                        if (!chosen && opponent.playerId in lessonFocus.ids)
+                            Box(Modifier.requiredSize(42.dp).border(3.dp, io.magicmobile.android.menus.ArenaMenuStyle.gold, CircleShape))
+                    }
+                    Text(label(opponent.playerId), Modifier.widthIn(max = 56.dp), color = TavernPalette.parchment, maxLines = 1,
+                        style = sf(11f, SfWeight.semibold, SfDesign.SERIF))
                 }
             }
             Spacer(Modifier.weight(1f))

@@ -336,6 +336,13 @@ fun TextStyle.engraved(alpha: Float = 0.7f, y: Float = 1f): TextStyle = copy(sha
 /** TavernPanelTitle: a panel title engraved in gold capitals (read in normal case by accessibility services). */
 @Composable
 fun TavernPanelTitle(text: String, modifier: Modifier = Modifier, size: Float = 16f) {
+    if (LocalArenaBoard.current) {
+        // On the Arena board (iOS TavernPanelTitle): Arena's serif in plain gold, not the engraved tavern capitals.
+        FitText(text.uppercase(), io.magicmobile.android.menus.ArenaMenuStyle.font(size, SfWeight.bold).copy(color = io.magicmobile.android.menus.ArenaMenuStyle.gold,
+            letterSpacing = androidx.compose.ui.unit.TextUnit(1f, androidx.compose.ui.unit.TextUnitType.Sp)),
+            modifier.semantics { contentDescription = text }, minimumScale = 0.7f)
+        return
+    }
     FitText(text.uppercase(), tavernDisplay(size, tracking = 1.2f).copy(brush = TavernPalette.goldText).engraved(),
         modifier.semantics { contentDescription = text }, minimumScale = 0.7f)
 }
@@ -345,6 +352,8 @@ fun TavernPanelTitle(text: String, modifier: Modifier = Modifier, size: Float = 
 fun TavernSealButton(onClick: () -> Unit, modifier: Modifier = Modifier, contentDescription: String = "Close") {
     Box(modifier.size(44.dp).clickable(remember { MutableInteractionSource() }, null, onClick = onClick)
         .semantics { this.contentDescription = contentDescription; role = Role.Button }, contentAlignment = Alignment.Center) {
+        // On the Arena board (iOS TavernSealLabel): Arena's glass close button, no wax seal.
+        if (LocalArenaBoard.current) { io.magicmobile.android.board.ArenaCloseLabel(); return@Box }
         val seal = tavernImage(R.drawable.tavern_ui_seal)
         // The x pressed into the wax is faint; a gold x on top reads at a glance (Caleb, 2026-10-03).
         Box(Modifier.size(32.dp).glow(Color.Black.copy(alpha = 0.5f), 3.dp, 16.dp).drawBehind { drawStretched(seal) }, contentAlignment = Alignment.Center) {
@@ -378,6 +387,16 @@ fun TavernGenericGem(value: Int, size: Dp = 30.dp, modifier: Modifier = Modifier
 /** TavernTag: a small tag in a thin brass rim; parchment for labels ("PAY COST"), leather for status chips, with an optional coloured jewel. */
 @Composable
 fun TavernTag(text: String, modifier: Modifier = Modifier, leather: Boolean = false, accent: Color? = null) {
+    if (LocalArenaBoard.current) {
+        // On the Arena board (iOS TavernTag.arenaTag): gold capitals on glass, no leather or parchment.
+        Row(modifier.defaultMinSize(minHeight = 22.dp).background(Color.White.copy(alpha = 0.07f), CircleShape)
+            .border(0.8.dp, io.magicmobile.android.menus.ArenaGlass.hairline, CircleShape).padding(horizontal = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (accent != null) Box(Modifier.size(6.dp).glow(accent, 3.dp, 3.dp).background(accent, CircleShape))
+            FitText(text, sf(10f, SfWeight.heavy, SfDesign.SERIF, tracking = 1f), color = io.magicmobile.android.menus.ArenaMenuStyle.gold, minimumScale = 0.7f)
+        }
+        return
+    }
     Row(modifier.tavernCapsuleRim(thin = true).defaultMinSize(minHeight = 22.dp)
         .padding(1.5.dp).tavernFill(if (leather) TavernMaterial.LEATHER else TavernMaterial.PARCHMENT, CircleShape)
         .padding(horizontal = 10.5.dp), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -644,6 +663,10 @@ fun TavernMenuHeading(title: String) {
 /** TavernMenuDivider: a thin brass rule between groups of tavern menu rows. */
 @Composable
 fun TavernMenuDivider() {
+    if (LocalArenaBoard.current) {
+        Box(Modifier.fillMaxWidth().padding(vertical = 2.dp).height(1.dp).background(io.magicmobile.android.menus.ArenaGlass.hairline, alpha = 0.45f))
+        return
+    }
     Box(Modifier.fillMaxWidth().padding(vertical = 2.dp).height(1.dp).alpha(0.7f).background(TavernPalette.brassLine))
 }
 
