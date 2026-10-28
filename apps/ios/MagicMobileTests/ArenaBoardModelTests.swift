@@ -334,6 +334,28 @@ final class ArenaBoardModelTests: XCTestCase {
         XCTAssertEqual(ArenaAutoPay.next(in: resolving), .done)
     }
 
+    /// Gogo copying Zur's attack trigger asks for a target in the declare attackers step: that question is a target
+    /// to pick, not the attack declaration (it showed "Choose attackers." and 1 Attacker, and the game could not go on).
+    /// A library search there is a search.
+    func testOtherQuestionsDuringDeclareAttackersAreNotCombat() throws {
+        let attackers = try poll("2p-attackers")
+        var snapshot = try OnDeviceSnapshotAdapter.snapshot(attackers, expectedSeatID: attackers.seatID)
+        let viewer = try XCTUnwrap(snapshot.promptEnvelopeV2?.playerId)
+        func prompt(_ method: String, _ kind: String, _ command: String) throws -> PromptEnvelopeV2 {
+            try JSONDecoder().decode(PromptEnvelopeV2.self, from: JSONSerialization.data(withJSONObject: [
+                "id": "question", "method": method, "messageId": 9, "playerId": viewer, "responseKind": kind,
+                "message": "Select target activated or triggered ability you control",
+                "responseCommand": ["type": command, "promptId": "question", "messageId": 9]] as [String: Any]))
+        }
+        snapshot.legalActions = []
+        snapshot.promptEnvelopeV2 = try prompt("GAME_PICK_TARGET", "target", "choose_target")
+        XCTAssertNil(ArenaCombatPhase.current(in: snapshot))
+        XCTAssertNotEqual(MobilePromptPresentation.make(snapshot: snapshot, legalActions: [])?.kind, .combat)
+        snapshot.promptEnvelopeV2 = try prompt("GAME_CHOOSE_CARD", "choose_card", "choose_card")
+        XCTAssertNil(ArenaCombatPhase.current(in: snapshot))
+        XCTAssertNotEqual(MobilePromptPresentation.make(snapshot: snapshot, legalActions: [])?.kind, .combat)
+    }
+
     func testExtraHandHoldsOnlyCardsPlayableFromGraveyardOrExile() throws {
         func card(_ id: String, _ name: String) -> ZoneCard {
             ZoneCard(instanceId: id, card: CardIdentity(name: name, typeLine: "Sorcery", oracleText: nil), tapped: nil,

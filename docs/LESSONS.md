@@ -123,6 +123,11 @@ contradicting one.
 
 ## Gameplay
 
+- 2026-10-27 (Claude): Gogo's "copy which ability?" target, asked in the declare attackers step, showed "Choose attackers."
+  and 1 Attacker and the game could not go on: `ArenaCombatPhase` (iOS, Android, web `combatPhase`) took any target
+  prompt plus a declare-attackers/blockers step name for the attack declaration. **Fix / rule:** combat is the prompt's
+  own marker, `isCombatSelection` (`GAME_SELECT` answered with a target); never infer combat from the step name alone.
+  `MobilePromptPresentation`'s step fallback now also defers to that marker.
 - 2026-10-27 (Claude): Smart pass let your own trigger resolve whatever you held, so Gogo could never copy Zur's attack
   trigger (no priority with the trigger on the stack). `respondsToStack` is too broad for your own items (any counterspell
   says yes). **Fix / rule:** on your own top item, stop only for a non-spell, non-mana row with an explicit

@@ -688,7 +688,7 @@ enum class ArenaCombatPhase {
             if (actions.any { it.type == "declare_blockers" }) return BLOCKERS
             val prompt = snapshot.promptEnvelopeV2 ?: return null
             if (!snapshot.isViewer(prompt.playerId)) return null
-            if (prompt.responseKind.lowercase() != "target" && prompt.responseCommand?.type?.lowercase() != "choose_target") return null
+            if (!prompt.isCombatSelection) return null
             val step = (snapshot.step ?: snapshot.phase).lowercase().replace("_", "-")
             if (step.contains("declare-attack")) return ATTACKERS
             if (step.contains("declare-block")) return BLOCKERS

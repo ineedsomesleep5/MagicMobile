@@ -4,7 +4,7 @@
  * and which combat declaration is being asked. Checked by test/arenaBoard.test.ts against parity/arena-board-cases.json.
  */
 import type { GameSnapshot, LegalAction, PlayerGameState, ZoneCard } from "./models";
-import { displayPower, displayToughness, isCreatureCard, playerLabel, viewerID } from "./models";
+import { displayPower, displayToughness, isCombatSelection, isCreatureCard, playerLabel, viewerID } from "./models";
 
 /** ArenaKeywordGlossary: what each keyword on a card means, in a sentence. */
 export const GLOSSARY: [string, string][] = [
@@ -173,8 +173,7 @@ export function combatPhase(snapshot: GameSnapshot): "attackers" | "blockers" | 
   if (actions.some((a) => a.type === "declare_attackers")) return "attackers";
   if (actions.some((a) => a.type === "declare_blockers")) return "blockers";
   const prompt = snapshot.promptEnvelopeV2;
-  if (!prompt || prompt.playerId !== viewerID(snapshot) ||
-    !(prompt.responseKind.toLowerCase() === "target" || prompt.responseCommand?.type?.toLowerCase() === "choose_target")) return undefined;
+  if (!prompt || prompt.playerId !== viewerID(snapshot) || !isCombatSelection(prompt)) return undefined;
   const step = (snapshot.step ?? snapshot.phase).toLowerCase().replaceAll("_", "-");
   if (step.includes("declare-attack")) return "attackers";
   if (step.includes("declare-block")) return "blockers";
