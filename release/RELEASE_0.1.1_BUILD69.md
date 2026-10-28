@@ -1,7 +1,7 @@
 # TestFlight 0.1.1 (69): choose targets on the stack, turn to the opponent with choices
 
 Uploaded October 28, 2026 and distributed to Internal and External testers (both `IN_BETA_TESTING`). Released with
-Android build 47 (`release/RELEASE_ANDROID_0.1.1_BUILD47.md`) and the web deploy `dpl_FBgLpiWUZ7thWC7Bm4PFqs49nGbb`, from
+Android build 47 (`release/RELEASE_ANDROID_0.1.1_BUILD47.md`) and the web deploy `dpl_9ZPd6ScXHQBArDM3a5cHmREbTwT5` (which also carries #238, the web card tilt), from
 PR #261 (merged as `80a80457`).
 
 ## What changed (PR #261)
