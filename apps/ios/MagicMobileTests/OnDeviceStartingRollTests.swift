@@ -52,6 +52,17 @@ final class OnDeviceStartingRollTests: XCTestCase {
         XCTAssertEqual(roll.winnerSeatID, "a-bot")
     }
 
+    func testRollingTitleSaysYouRollForTheViewer() {
+        let ai = ["human": "You", "ai-1": "AI opponent"]
+        XCTAssertEqual(OnDeviceStartingRoll.rollingTitle(seatID: "human", localSeatID: "human", seatNames: ai), "You roll")
+        XCTAssertEqual(OnDeviceStartingRoll.rollingTitle(seatID: "human", localSeatID: nil, seatNames: ai), "You roll")
+        XCTAssertEqual(OnDeviceStartingRoll.rollingTitle(seatID: "ai-1", localSeatID: "human", seatNames: ai), "AI opponent rolls")
+        let table = ["player1": "Caleb", "player2": "Ruthie"]
+        XCTAssertEqual(OnDeviceStartingRoll.rollingTitle(seatID: "player1", localSeatID: "player1", seatNames: table), "You roll")
+        XCTAssertEqual(OnDeviceStartingRoll.rollingTitle(seatID: "player2", localSeatID: "player1", seatNames: table), "Ruthie rolls")
+        XCTAssertEqual(OnDeviceStartingRoll.rollingTitle(seatID: "player3", localSeatID: "player1", seatNames: table), "Player rolls")
+    }
+
     func testRejectsInventedWinnerOrOutOfRangeValue() throws {
         let seats = ["player1", "player2"]
         let badWinner: MagicMobileOnDevice.JSONValue = .object([

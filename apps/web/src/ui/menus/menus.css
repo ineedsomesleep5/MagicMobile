@@ -737,6 +737,8 @@ button.mtoolcoin:disabled { opacity: .35; }
 .minspect { display: flex; gap: 18px; padding: 18px; border-radius: 16px; max-width: min(760px, 100% - 32px); max-height: calc(100% - 40px); }
 .minspect img { width: 300px; border-radius: 14px; flex: none; align-self: flex-start; }
 .minspect > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mownpicture { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.mownpicture small { flex-basis: 100%; color: var(--warning, #ffbd66); }
 .minspect b { font: 700 20px/1.2 var(--serif); }
 .minspect small { font: 600 12px/1.3 var(--sans); color: var(--gold); }
 .minspect p { margin: 4px 0 8px; white-space: pre-line; font: 500 13px/1.45 var(--sans); overflow-y: auto; }

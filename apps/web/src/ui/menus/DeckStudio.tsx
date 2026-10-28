@@ -6,7 +6,7 @@
  * commander's round art, name and quick check, the cards by type with − and + on each line, the gold mana curve, and
  * Done beside Play at its foot. Ideas and Analysis take the left pane while the deck stays on the right.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AIDeck } from "../../core/aiDeckPool";
 import { bracketReasons, type BracketRules, CommanderBracket } from "../../core/brackets";
 import { averageManaValue, cardGroups, manaCurve, RoleGroups, SampleHand, statistics } from "../../core/deckStudio/analysis";
@@ -19,6 +19,7 @@ import {
 import { type DeckLibrary, DeckLibraryRecord } from "../../core/deckStudio/library";
 import { gameAudio } from "../audio";
 import { cardImageURL, manaSymbols } from "../cardArt";
+import { hasCustomArt, removeCustomArt, saveCustomArt } from "../customArt";
 import { ManaSymbol, RulesText } from "../arena/Symbols";
 import { DeckArt } from "./DeckBox";
 import { ImportPanel } from "./DeckImport";
@@ -379,6 +380,25 @@ function Curve({ bins }: { bins: number[] }) {
   );
 }
 
+/** Your own picture for this card (customArt.ts): it fills the art box everywhere, in this browser only. */
+function OwnPicture({ name }: { name: string }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string>();
+  const own = hasCustomArt(name);
+  return (
+    <div className="mownpicture">
+      <input ref={input} type="file" accept="image/*" hidden onChange={(e) => {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (file) void saveCustomArt(name, file).then((ok) => setError(ok ? undefined : "That picture couldn't be used. Try another."));
+      }} />
+      <Btn kind="secondary" compact onClick={() => input.current?.click()}>{own ? "Change my picture" : "Use my own picture"}</Btn>
+      {own && <Btn kind="secondary" compact onClick={() => void removeCustomArt(name)}>Remove my picture</Btn>}
+      {error && <small>{error}</small>}
+    </div>
+  );
+}
+
 /** The card, large, with its words (DeckStudio inspect). */
 function Inspect({ name, card, close }: { name: string; card?: CatalogueCard; close: () => void }) {
   useEffect(() => {
@@ -394,6 +414,7 @@ function Inspect({ name, card, close }: { name: string; card?: CatalogueCard; cl
           <b>{name}</b>
           {card?.typeLine && <small>{card.typeLine}</small>}
           {card?.oracleText && <p><RulesText text={card.oracleText.replace(/<br>/g, "\n")} /></p>}
+          <OwnPicture name={name} />
           <Btn kind="secondary" compact onClick={close}>Close</Btn>
         </div>
       </div>

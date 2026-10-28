@@ -187,6 +187,14 @@ struct UpdateNewsMessage: Identifiable {
 /// The releases' notes, newest first, dated by the day they were written (git history of this file).
 enum UpdateNews {
     static let messages: [UpdateNewsMessage] = [
+        UpdateNewsMessage(id: "own-art", title: String(localized: "Your own card art"), day: 27,
+                          art: "Zur the Enchanter", colors: ["W", "U", "B"],
+                          lede: String(localized: "Put your own picture on any card in Deck Studio. It fills the card's art box, and only you see it."),
+                          notes: [
+                            String(localized: "The art you chose shows from a game's first moment, without the default art swapping in."),
+                            String(localized: "Smart Auto-Pass waits on your own trigger when you have an ability that can use it, like Gogo copying Zur's attack trigger."),
+                            String(localized: "The starting roll says \"You roll\" when it's your turn to roll."),
+                          ]),
         UpdateNewsMessage(id: "arena-menus", title: String(localized: "The menus follow the Arena board"), day: 22,
                           art: "Rhystic Study", colors: ["U"],
                           lede: String(localized: "Every menu now matches the Arena board: Play opens a panel beside your deck boxes, and the boxes open when you choose one."),

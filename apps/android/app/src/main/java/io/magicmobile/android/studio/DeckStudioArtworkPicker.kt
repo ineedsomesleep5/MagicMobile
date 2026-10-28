@@ -3,6 +3,9 @@ package io.magicmobile.android.studio
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.LruCache
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -132,13 +136,33 @@ fun DeckStudioArtworkPicker(name: String, current: CardPrinting?, choose: (CardP
 
 @Composable
 private fun Header(name: String, current: CardPrinting?, choose: (CardPrinting?) -> Boolean, dismiss: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val custom = remember(name, io.magicmobile.android.CustomCardArt.revision) { io.magicmobile.android.CustomCardArt.has(context, name) }
+    var customError by remember { mutableStateOf<String?>(null) }
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) scope.launch {
+            val saved = withContext(Dispatchers.IO) { runCatching { io.magicmobile.android.CustomCardArt.save(context, name, uri) }.getOrDefault(false) }
+            customError = if (saved) null else "That picture couldn't be used. Try another."
+        }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(name, color = DeckStudioPalette.ink, style = sf(22f, SfWeight.bold, SfDesign.SERIF))
-        Text(current?.let { "Showing ${it.label}" } ?: "Showing the default artwork", Modifier.testTag("deckStudio.artwork.current"),
+        Text(if (custom) "Showing your picture" else current?.let { "Showing ${it.label}" } ?: "Showing the default artwork", Modifier.testTag("deckStudio.artwork.current"),
             color = DeckStudioPalette.secondaryInk, style = sf(14f, SfWeight.semibold, SfDesign.SERIF))
         Text("The art you pick is saved with this card in this deck. It shows in the deck, on the board and in exports, and never changes the card's rules.",
             color = DeckStudioPalette.secondaryInk, style = sf(13f, design = SfDesign.SERIF))
         if (current != null) BinderPlaque(Modifier.testTag("deckStudio.artwork.default"), title = "Use the default artwork") { if (choose(null)) dismiss() }
+        // Your own picture fills this card's art box everywhere, on this device only; its rules stay the card's.
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BinderPlaque(Modifier.testTag("deckStudio.artwork.custom"), title = if (custom) "Change my picture" else "Use my own picture") {
+                pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }
+            if (custom) BinderPlaque(Modifier.testTag("deckStudio.artwork.customRemove"), title = "Remove my picture") {
+                io.magicmobile.android.CustomCardArt.remove(context, name)
+            }
+        }
+        customError?.let { Text(it, color = DeckStudioPalette.warning, style = sf(13f, design = SfDesign.SERIF)) }
     }
 }
 

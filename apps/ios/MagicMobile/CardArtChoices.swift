@@ -17,7 +17,8 @@ enum CardArtSelection: Hashable {
 /// Android's CardArtChoices (core/CardPrinting.kt) follows the same order.
 final class CardArtChoices: @unchecked Sendable {
     /// The app's choices. The bundled catalogue is read for reverse faces only once some card has a choice.
-    static let shared = CardArtChoices(reverseFaceLoader: { (try? NativeDeckMetadataCatalogue.bundled())?.reverseFaceFronts })
+    static let shared = CardArtChoices(reverseFaceLoader: { (try? NativeDeckMetadataCatalogue.bundled())?.reverseFaceFronts },
+                                       prefetch: { cards in Task { await NativeDeckArtwork.shared.prefetchChosenArt(cards) } })
     /// Posted (on the main thread) when the choices a card name resolves to change.
     static let didChange = Notification.Name("MagicMobileCardArtChoicesChanged")
 
@@ -41,8 +42,14 @@ final class CardArtChoices: @unchecked Sendable {
     private var reverse: [String: String] = [:]
     private let reverseFaceLoader: (@Sendable () -> [String: String]?)?
     private var loadingReverseFaces = false
+    /// The playing deck's chosen printings by card name, saved ahead of the game (NativeDeckArtwork.prefetchChosenArt).
+    private var playing: [String: CardPrinting] = [:]
+    private let prefetch: (@Sendable ([(name: String, printing: CardPrinting)]) -> Void)?
 
-    init(reverseFaceLoader: (@Sendable () -> [String: String]?)? = nil) { self.reverseFaceLoader = reverseFaceLoader }
+    init(reverseFaceLoader: (@Sendable () -> [String: String]?)? = nil,
+         prefetch: (@Sendable ([(name: String, printing: CardPrinting)]) -> Void)? = nil) {
+        self.reverseFaceLoader = reverseFaceLoader; self.prefetch = prefetch
+    }
 
     static func key(_ name: String) -> String { NativeAssetStore.cardKey(name) }
 
@@ -54,11 +61,14 @@ final class CardArtChoices: @unchecked Sendable {
     private func apply(_ change: () -> Void) {
         lock.lock()
         change()
+        let previous = playing
         let changed = rebuild()
+        let fetch = playing != previous ? playing.sorted { $0.key < $1.key }.map { (name: $0.key, printing: $0.value) } : nil
         let load = !byName.isEmpty && reverse.isEmpty && !loadingReverseFaces && reverseFaceLoader != nil
         if load { loadingReverseFaces = true }
         lock.unlock()
         if changed { Self.announce() }
+        if let fetch, let prefetch { prefetch(fetch) }
         if load, let loader = reverseFaceLoader {
             DispatchQueue.global(qos: .utility).async { [self] in
                 if let faces = loader() { setReverseFaces(faces) }
@@ -95,6 +105,7 @@ final class CardArtChoices: @unchecked Sendable {
         var ordered = library.sorted { $0.updated > $1.updated }
         if let selectedID, let index = ordered.firstIndex(where: { $0.id == selectedID }) { ordered.insert(ordered.remove(at: index), at: 0) }
         var next: [String: CardPrinting] = [:]
+        var nextPlaying: [String: CardPrinting] = [:]
         var decided = Set<String>()
         for (position, saved) in ordered.enumerated() {
             let playing = position == 0 && saved.id == selectedID
@@ -103,12 +114,15 @@ final class CardArtChoices: @unchecked Sendable {
                 let key = Self.key(entry.cardName)
                 guard !decided.contains(key) else { continue }
                 held.insert(key)
-                if let printing = entry.printing, next[key] == nil { next[key] = printing }
+                if let printing = entry.printing, next[key] == nil {
+                    next[key] = printing
+                    if playing { nextPlaying[entry.cardName] = printing }
+                }
             }
             if playing { decided.formUnion(held) }
             else { decided.formUnion(held.filter { next[$0] != nil }) }
         }
-        defer { byName = next }
+        defer { byName = next; self.playing = nextPlaying }
         return next != byName
     }
 

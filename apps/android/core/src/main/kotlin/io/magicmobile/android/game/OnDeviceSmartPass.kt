@@ -71,7 +71,9 @@ object OnDeviceSmartPass {
                           *  without the field counts as a response, so older engines keep today's stops). */
                          val hasResponse: Boolean = true,
                          /** The top of the stack is an opponent's and threatens what you control ([threatensViewer]). */
-                         val threatensMe: Boolean = false)
+                         val threatensMe: Boolean = false,
+                         /** An activated ability (not a spell, not mana) could answer the stack: Gogo copying your own trigger. */
+                         val hasAbilityResponse: Boolean = false)
 
     /** The prompt to pass, or null when the player should decide. */
     fun passPrompt(value: Situation, settings: Settings): OnDeviceYieldPolicy.Prompt? {
@@ -88,7 +90,9 @@ object OnDeviceSmartPass {
         // Something on the stack: your own spell or trigger resolves (unless you asked to stop for those);
         // otherwise stop only when you hold a play that actually answers it.
         if (!context.emptyStack) {
-            if (value.topStackIsMine == true && !settings.stopForOwnSpells) return prompt
+            // Your own trigger still stops when an ability of yours could use it (Caleb, 2026-10-27: Gogo copying Zur's
+            // attack trigger never got the chance); a counterspell in hand doesn't stop it.
+            if (value.topStackIsMine == true && !settings.stopForOwnSpells) return if (value.hasAbilityResponse) null else prompt
             return if (value.hasResponse) null else prompt
         }
         val step = Step.fromEngine(value.step) ?: return null
@@ -128,6 +132,20 @@ object OnDeviceSmartPass {
             stats.obj.orEmpty().any { (category, rows) ->
                 rows.array.orEmpty().any { row ->
                     !(row["manaAbility"].bool ?: (category == "basicManaAbilities")) && row["respondsToStack"].bool != false
+                }
+            }
+        }
+    }
+
+    /** Whether an activated ability (engine `spellAbility` false, not a mana ability) could answer the stack. Only an
+     *  explicit `respondsToStack` counts, so older engines keep passing on your own triggers. */
+    fun hasAbilityResponse(gameView: J?): Boolean {
+        val objects = gameView["canPlayObjects"]["objects"].obj ?: return false
+        return objects.values.any { stats ->
+            stats.obj.orEmpty().any { (category, rows) ->
+                rows.array.orEmpty().any { row ->
+                    !(row["manaAbility"].bool ?: (category == "basicManaAbilities")) &&
+                        row["spellAbility"].bool == false && row["respondsToStack"].bool == true
                 }
             }
         }

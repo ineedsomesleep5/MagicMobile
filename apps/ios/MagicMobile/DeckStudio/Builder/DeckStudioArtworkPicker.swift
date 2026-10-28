@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// Choosing the artwork of one card in a deck: every printing Scryfall lists for the card, as sleeves on
@@ -17,6 +18,10 @@ struct DeckStudioArtworkPicker: View {
     @State private var busy = false
     @State private var error: String?
     @State private var loaded = false
+    @State private var photo: PhotosPickerItem?
+    /// The player's own picture for this card (CustomCardArt), by revision.
+    @State private var custom: String?
+    @State private var customError: String?
 
     var body: some View {
         NavigationStack {
@@ -46,7 +51,7 @@ struct DeckStudioArtworkPicker: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(name).font(.system(size: 22, weight: .bold, design: .serif)).fixedSize(horizontal: false, vertical: true)
-            Text(current.map { "Showing \($0.label)" } ?? "Showing the default artwork")
+            Text(custom != nil ? "Showing your picture" : current.map { "Showing \($0.label)" } ?? "Showing the default artwork")
                 .font(ArenaMenuStyle.font(14, .semibold)).foregroundStyle(DeckStudioPalette.secondaryInk)
                 .accessibilityIdentifier("deckStudio.artwork.current")
             Text("The art you pick is saved with this card in this deck. It shows in the deck, on the board and in exports, and never changes the card's rules.")
@@ -55,6 +60,33 @@ struct DeckStudioArtworkPicker: View {
                 Button("Use the default artwork") { choose(nil); dismiss() }
                     .buttonStyle(BinderPlaqueButtonStyle()).fixedSize(horizontal: true, vertical: false)
                     .accessibilityIdentifier("deckStudio.artwork.default")
+            }
+            // Your own picture fills this card's art box everywhere, on this device only; its rules stay the card's.
+            HStack(spacing: 10) {
+                PhotosPicker(selection: $photo, matching: .images) { Text(custom == nil ? "Use my own picture" : "Change my picture") }
+                    .buttonStyle(BinderPlaqueButtonStyle()).fixedSize(horizontal: true, vertical: false)
+                    .accessibilityIdentifier("deckStudio.artwork.custom")
+                if custom != nil {
+                    Button("Remove my picture") { CustomCardArt.shared.remove(forName: name); custom = nil }
+                        .buttonStyle(BinderPlaqueButtonStyle()).fixedSize(horizontal: true, vertical: false)
+                        .accessibilityIdentifier("deckStudio.artwork.customRemove")
+                }
+            }
+            if let customError { Text(customError).font(ArenaMenuStyle.font(13, .regular)).foregroundStyle(MagicPalette.warningAmber) }
+        }
+        .onAppear { custom = CustomCardArt.shared.revision(forName: name) }
+        .onChange(of: photo) { _, item in
+            guard let item else { return }
+            Task {
+                do {
+                    guard let data = try await item.loadTransferable(type: Data.self) else { return }
+                    let name = name
+                    try await Task.detached(priority: .userInitiated) { try CustomCardArt.shared.save(data, forName: name) }.value
+                    custom = CustomCardArt.shared.revision(forName: name); customError = nil
+                } catch {
+                    customError = "That picture couldn't be used. Try another."
+                }
+                photo = nil
             }
         }
     }

@@ -295,7 +295,9 @@ struct MultiplayerD20View: View {
         if playbackFinished, let winnerName {
             return isLocalWinner ? "You go first" : "\(winnerName) goes first"
         }
-        if let activeSeatID { return "\(seatNames[activeSeatID] ?? "Player") rolls" }
+        if let activeSeatID {
+            return OnDeviceStartingRoll.rollingTitle(seatID: activeSeatID, localSeatID: localSeatID, seatNames: seatNames)
+        }
         if let nextWaitingSeatID {
             return nextWaitingSeatID == localSeatID ? "Your roll" : "\(seatNames[nextWaitingSeatID] ?? "Player")'s roll"
         }
