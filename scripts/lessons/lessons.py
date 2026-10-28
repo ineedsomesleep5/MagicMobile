@@ -127,14 +127,23 @@ def table(r):
     r.play([
         note('Commander is usually played by four. Turns go around the table, and each time you attack you choose which player to attack.',
              title='Around the table'),
+        Step(YOU, 'swap', {'title': 'Look around', 'spot': 'Rook', 'gesture': 'tap',
+                           'text': 'The top of the table shows one opponent at a time. Tap Rook\u2019s portrait, then Bryn, to see her side.',
+                           'desktop': 'Everyone sits across the top. Bryn, at 31 life, has a Colossal Dreadmaw. Rook is down to 3.'},
+             player='Bryn'),
+        Step(YOU, 'swap', {'title': 'The biggest threat', 'spot': 'Bryn', 'gesture': 'tap',
+                           'text': 'That\u2019s Bryn\u2019s side. Tap the table to close her card and see her Colossal Dreadmaw, the biggest threat here. '
+                                   'Then swap back: tap Bryn\u2019s portrait, then Rook.',
+                           'desktop': 'Bryn\u2019s Dreadmaw is the biggest threat at the table, but Rook is the one you can knock out today.'},
+             player='Rook'),
         you('pass', {'title': 'To combat', 'text': 'Tap Next to go to combat.', 'spot': 'primary', 'gesture': 'tap'},
             step='PRECOMBAT_MAIN'),
-        you('attack', {'title': 'Pick a player', 'text': 'Rook, at the top, is down to 3. Tap Serra Angel to attack.', 'spot': 'Serra Angel', 'gesture': 'tap'},
+        you('attack', {'title': 'Pick a player', 'text': 'Rook is down to 3. Tap Serra Angel to attack.', 'spot': 'Serra Angel', 'gesture': 'tap'},
             cards=['Serra Angel'], defender='Rook',
             then=[{'title': 'Pick a player', 'text': 'Choose Rook.', 'spot': 'Rook', 'gesture': 'tap'},
                   {'title': 'Pick a player', 'text': 'Tap 1 Attacker to confirm.', 'spot': 'primary', 'gesture': 'tap'}]),
-        end('Rook is out, and the game goes on with three. In a full game, keep an eye on the biggest threat at the table: '
-            'friends today can be rivals tomorrow.', at='POSTCOMBAT_MAIN'),
+        end('Rook is out, and the game goes on with three. In a full game, keep an eye on the biggest threat at the table, like '
+            'Bryn\u2019s Dreadmaw. Friends today can be rivals tomorrow.', at='POSTCOMBAT_MAIN'),
     ])
 
 

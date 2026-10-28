@@ -54,6 +54,8 @@ class LessonFrame(
     var poll: J,
     var expect: J?,
     val note: Boolean,
+    /** A note that waits for the board to show this player (by name) instead of for Got it. */
+    val focus: String?,
     val complete: Boolean,
     val coach: LessonCoach?,
     /** How long the board shows a frame that moves on by itself, in milliseconds. */
@@ -84,7 +86,7 @@ class LessonScript(value: J) {
         var previous: J? = null
         frames = rows.mapNotNull { row ->
             val poll = row["poll"] ?: return@mapNotNull null
-            LessonFrame(poll, row["expect"], row["note"].bool == true, row["complete"].bool == true,
+            LessonFrame(poll, row["expect"], row["note"].bool == true, row["focus"].string, row["complete"].bool == true,
                 LessonCoach.from(row["coach"]), hold(poll, previous)).also { previous = poll }
         }
     }

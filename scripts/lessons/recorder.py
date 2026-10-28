@@ -75,6 +75,11 @@ class Recorder:
                              [self.battlefield_row(card) for card in value] if key == 'battlefield' else value)
                        for key, value in spec.items()} for seat, spec in stage.items()}
         staged = self.engine.call('lessonStage', matchId=self.match, seats=rows)['staged']
+        # A Commander deck is 100 cards: no player may show more, in the library or anywhere else.
+        for player in self.poll(self.viewer)['snapshot']['gameView']['players']:
+            total = player['libraryCount'] + player['handCount'] + len(player['battlefield']) + len(player['graveyard']) \
+                + len(player['commandList']) + len(player['exile'])
+            if total != 100: raise RuntimeError(f"{player['name']}'s deck has {total} cards after staging, not 100")
         for rows in staged.values():
             for row in rows: self.names.setdefault(row['id'], row['name'])
         self.capture(force=True)
@@ -145,6 +150,10 @@ class Recorder:
                 # A coach card the learner reads before going on: it sits on the frame with no move.
                 frame = self.capture(force=True); frame['note'] = True; frame['poll'] = strip_prompt(frame['poll'])
                 frame.update(coach_of(step.coach)); self.steps.pop(0); continue
+            if step is not None and step.kind == 'swap' and seat == self.viewer and prompt['kind'] == 'SELECT':
+                # The learner switches the board to another opponent: the lesson waits for that, not for a move.
+                frame = self.capture(force=True); frame['note'] = True; frame['poll'] = strip_prompt(frame['poll'])
+                frame['focus'] = step.args['player']; frame.update(coach_of(step.coach)); self.steps.pop(0); continue
             answer, done, expected = None, False, False
             while step is not None and step.seat == seat and step.kind not in ('note', 'end'):
                 answer, done = self.apply(step, poll)

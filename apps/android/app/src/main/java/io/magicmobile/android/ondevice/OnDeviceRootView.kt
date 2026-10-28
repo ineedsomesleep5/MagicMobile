@@ -1341,6 +1341,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                     CompositionLocalProvider(
                         LocalInspectorBattlefield provides (session.snapshot?.players?.flatMap { it.zones.battlefield } ?: emptyList()),
                         io.magicmobile.android.board.LocalLessonFocus provides (lessonRun?.focus ?: io.magicmobile.android.game.LessonSpot.Focus()),
+                        io.magicmobile.android.board.LocalLessonFocusReport provides lessonRun?.let { run -> { id: String -> run.boardFocused(id) } },
                         LocalGameRematchTitle provides when {
                             lessonRun != null -> if (io.magicmobile.android.game.LessonCatalog.next(lessonRun!!.lesson.id,
                                 io.magicmobile.android.ui.LessonAssets.all(context)) == null) io.magicmobile.android.game.LessonText.GUIDED

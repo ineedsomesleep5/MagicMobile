@@ -48,6 +48,15 @@ describe("lessons", () => {
     }
   });
 
+  it("never shows a library of 100 or more", () => {
+    for (const { id } of LessonCatalog.parse(json("lessons.json"))) {
+      for (const frame of script(id).frames) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const player of (frame.poll as any).snapshot.gameView.players) expect(player.libraryCount, `${id}: ${player.name}`).toBeLessThan(100);
+      }
+    }
+  });
+
   it("turns a wrong move down and nudges", async () => {
     const { lesson, transport, client, advance, counts } = setup("first-spells");
     const match = str(get(await client.call("create", { configuration: {} }), "matchId"))!;

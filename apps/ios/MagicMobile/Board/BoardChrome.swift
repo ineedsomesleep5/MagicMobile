@@ -2514,12 +2514,14 @@ struct TavernPlayerStatusPanel: View {
 }
 
 /// The bottom of an opponent's pop-over in a pod: swap to another opponent's information.
-/// The current one carries an ember ring.
+/// The current one carries an ember ring; each portrait has its player's name under it.
 struct TavernOpponentSwap: View {
     let opponents: [PlayerGameState]
     let current: String
     let label: (String) -> String
     let select: (String) -> Void
+    /// A lesson's swap step rings the opponent to pick (LessonViews.swift).
+    @Environment(\.lessonFocus) private var lessonFocus
 
     var body: some View {
         VStack(spacing: 6) {
@@ -2533,11 +2535,21 @@ struct TavernOpponentSwap: View {
                 ForEach(opponents) { opponent in
                     let chosen = opponent.playerId == current
                     Button { select(opponent.playerId) } label: {
-                        PlayerPortrait(player: opponent, size: 36)
-                            .overlay(Circle().strokeBorder(chosen ? TavernPalette.ember : TavernPalette.brass.opacity(0.6),
-                                                           lineWidth: chosen ? 2.5 : 1.2))
-                            .opacity(opponent.isOut ? 0.45 : 1)
-                            .shadow(color: chosen ? TavernPalette.ember.opacity(0.7) : .clear, radius: 4)
+                        VStack(spacing: 3) {
+                            PlayerPortrait(player: opponent, size: 36)
+                                .overlay(Circle().strokeBorder(chosen ? TavernPalette.ember : TavernPalette.brass.opacity(0.6),
+                                                               lineWidth: chosen ? 2.5 : 1.2))
+                                .shadow(color: chosen ? TavernPalette.ember.opacity(0.7) : .clear, radius: 4)
+                                .overlay { if lessonFocus.ids.contains(opponent.playerId) && !chosen {
+                                    GeometryReader { proxy in LessonFocusRing(rect: proxy.frame(in: .local), circle: true) }
+                                } }
+                            Text(label(opponent.playerId))
+                                .font(.system(size: 11, weight: .semibold, design: .serif))
+                                .foregroundStyle(TavernPalette.parchment)
+                                .lineLimit(1)
+                                .frame(maxWidth: 56)
+                        }
+                        .opacity(opponent.isOut ? 0.45 : 1)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Swap to \(label(opponent.playerId))")

@@ -71,6 +71,16 @@ final class LessonsTests: XCTestCase {
         }
     }
 
+    func testNoLibraryShowsAFullDeck() throws {
+        for id in try ids() {
+            for frame in try script(id).frames {
+                for player in frame.poll["snapshot"]?["gameView"]?["players"]?.array ?? [] {
+                    XCTAssertLessThan(player["libraryCount"]?.integer ?? 0, 100, "\(id): \(player["name"]?.string ?? "")")
+                }
+            }
+        }
+    }
+
     func testAWrongMoveIsTurnedDownAndNudges() async throws {
         let script = try script("first-spells")
         let clock = Clock()
@@ -121,6 +131,20 @@ final class LessonsTests: XCTestCase {
             }
             _ = try await client.respond(matchID: match, seatID: script.viewer, prompt: prompt, answer: expect)
         }
+    }
+
+    func testTheSwapStepWaitsForThatOpponent() throws {
+        let script = try script("table")
+        let frame = try XCTUnwrap(script.frames.first { $0.focus == "Bryn" })
+        let bryn = try XCTUnwrap(frame.poll["snapshot"]?["gameView"]?["players"]?.array?.first { $0["name"]?.string == "Bryn" }?["playerId"]?.string)
+        let run = LessonRun(script: LessonInfo(id: script.id, title: script.title), defaults: defaults)
+        run.show(frame)
+        XCTAssertEqual(run.waitsForFocus, bryn)
+        XCTAssertFalse(run.waitsForGotIt, "A swap step has no Got it")
+        run.boardFocused("someone-else")
+        XCTAssertEqual(run.waitsForFocus, bryn)
+        run.boardFocused(bryn)
+        XCTAssertNil(run.waitsForFocus)
     }
 
     func testFinishingALessonRemembersIt() async throws {

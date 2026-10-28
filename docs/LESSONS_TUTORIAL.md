@@ -10,7 +10,7 @@ rings what to touch and waits for the move. The guided game against the easy AI 
 | 2 | Combat | block, power and toughness, flying |
 | 3 | Instants and the stack | answer Rook's Shock with Giant Growth; the last spell cast resolves first |
 | 4 | Your commander | cast from the command zone, back to the command zone, commander tax, 40 life, 21 commander damage, deck rules |
-| 5 | Around the table | four players, choosing whom to attack, a player knocked out |
+| 5 | Around the table | four players, swapping which opponent the board shows (to Bryn and her Dreadmaw, back to Rook), choosing whom to attack, a player knocked out |
 
 ## How it works
 
@@ -25,6 +25,9 @@ JVM build) and saves the learner's view after every change. The apps play that r
   with `lesson_wrong_move`: Maren's card shakes and says so, and the board shows no error of its own.
 - **Pacing.** Frames without a move go on by themselves when polled: briefly when only the step changed, longer when
   something happened on the table. A note waits for Got it.
+- **Swap steps.** A frame with `focus` (a player's name) waits for the board to show that opponent: the phones' Arena
+  board reports each swap from the player card's swap row, which names each portrait and rings the one to pick. The web
+  board shows every opponent at once, so there the step is a note with its own `desktop` words.
 - **Rings.** The coach's `spot` names a card (the expected one when it has that name), a player, `primary` (the corner
   button) or `medallion`.
 - **Not counted.** Lessons never reach stats, ranked, saves or game records. Finished lessons are remembered on the

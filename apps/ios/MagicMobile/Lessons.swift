@@ -83,6 +83,8 @@ struct LessonScript {
         var poll: LessonJSON
         var expect: LessonJSON?
         let note: Bool
+        /// A note that waits for the board to show this player (by name) instead of for Got it.
+        let focus: String?
         let complete: Bool
         let coach: LessonCoach?
         /// How long the board shows a frame that moves on by itself.
@@ -116,7 +118,8 @@ struct LessonScript {
         frames = rows.compactMap { row in
             guard let poll = row["poll"] else { return nil }
             defer { previous = poll }
-            return Frame(poll: poll, expect: row["expect"], note: row["note"]?.bool == true, complete: row["complete"]?.bool == true,
+            return Frame(poll: poll, expect: row["expect"], note: row["note"]?.bool == true, focus: row["focus"]?.string,
+                         complete: row["complete"]?.bool == true,
                          coach: LessonCoach(row["coach"]), hold: Self.hold(poll, after: previous))
         }
     }
@@ -142,6 +145,8 @@ final class LessonRun: ObservableObject {
     @Published private(set) var coach: LessonCoach?
     /// The coach card waits for Got it before the lesson goes on.
     @Published private(set) var waitsForGotIt = false
+    /// The player the board must switch to before the lesson goes on (a swap step), by engine ID.
+    @Published private(set) var waitsForFocus: String?
     @Published private(set) var complete = false
     /// Counts wrong moves, so the coach card can shake each time.
     @Published private(set) var nudges = 0
@@ -161,6 +166,14 @@ final class LessonRun: ObservableObject {
         Task { await transport?.release(); refresh?() }
     }
 
+    /// The board now shows this opponent at the top: a swap step it was waiting for goes on.
+    func boardFocused(_ playerID: String) {
+        guard let waited = waitsForFocus, waited == playerID else { return }
+        waitsForFocus = nil
+        waitsForGotIt = true
+        gotIt()
+    }
+
     func show(_ frame: LessonScript.Frame) {
         if frame.complete || frame.poll["phase"]?.string == "ended" {
             if !complete { LessonProgress.complete(script.id, in: defaults) }
@@ -168,9 +181,14 @@ final class LessonRun: ObservableObject {
         }
         // A frame without a note of its own keeps the last one up while its move is still to make.
         if let coach = frame.coach { self.coach = coach } else if frame.expect == nil { self.coach = frame.note ? self.coach : nil }
-        waitsForGotIt = frame.note
+        let focusID = frame.focus.flatMap { name in
+            frame.poll["snapshot"]?["gameView"]?["players"]?.array?.first { $0["name"]?.string == name }?["playerId"]?.string
+        }
+        waitsForFocus = focusID
+        waitsForGotIt = frame.note && focusID == nil
         let spot = LessonSpot.resolve(frame.coach?.spot, poll: frame.poll, expect: frame.expect)
-        spotIDs = spot.ids; spotControl = spot.control
+        // A swap step also rings the opponent to switch to, in the player card's swap row.
+        spotIDs = spot.ids.union(focusID.map { [$0] } ?? []); spotControl = spot.control
     }
 
     func nudge() { nudges += 1 }

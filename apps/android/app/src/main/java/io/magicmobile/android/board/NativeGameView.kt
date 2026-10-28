@@ -534,6 +534,9 @@ fun NativeGameView(
     }
     // The tracker starts over by itself when the game changes.
     LaunchedEffect(BoardFocusTracker.observationKey(board, followTurns)) { focusTracker = focusTracker.observe(board, followTurns) }
+    // A lesson's swap step waits for the opponent the player switches to.
+    val lessonFocusReport = LocalLessonFocusReport.current
+    LaunchedEffect(focusTracker.focusedID) { focusTracker.focusedID?.let { lessonFocusReport?.invoke(it) } }
     // A card's first arrival, cast or hit plays at once instead of waiting on SoundPool to decode it.
     LaunchedEffect(Unit) { GameAudio.preload(GameAudio.boardSounds) }
     LaunchedEffect(Unit) {

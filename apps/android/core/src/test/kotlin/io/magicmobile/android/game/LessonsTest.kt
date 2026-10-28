@@ -55,6 +55,14 @@ class LessonsTest {
         }
     }
 
+    @Test fun noLibraryShowsAFullDeck() {
+        for (id in LessonCatalog.parse(File(lessons, "lessons.json").readBytes()).map { it.id }) {
+            for (frame in script(id).frames) for (player in frame.poll["snapshot"]["gameView"]["players"].array!!) {
+                assertTrue("$id: ${player["name"].string}", (player["libraryCount"].integer ?: 0) < 100)
+            }
+        }
+    }
+
     @Test fun aWrongMoveIsTurnedDownAndNudges() = runBlocking {
         val script = script("first-spells")
         var now = 0L
@@ -98,6 +106,10 @@ class LessonsTest {
             }
             client.respond(match, script.viewer, prompt, expect)
         }
+    }
+
+    @Test fun theTableLessonAsksForBothSwaps() {
+        assertEquals(listOf("Bryn", "Rook"), script("table").frames.mapNotNull { it.focus })
     }
 
     @Test fun theCoachPointsAtTheExpectedCardByName() {

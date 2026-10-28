@@ -59,6 +59,9 @@ import io.magicmobile.android.game.LessonScript
 import io.magicmobile.android.game.LessonSpot
 import io.magicmobile.android.game.LessonText
 import io.magicmobile.android.game.EngineJson
+import io.magicmobile.android.game.array
+import io.magicmobile.android.game.get
+import io.magicmobile.android.game.string
 import io.magicmobile.android.menus.ArenaGlass
 import io.magicmobile.android.menus.ArenaMenuStyle
 import io.magicmobile.android.menus.ArenaPanelHeader
@@ -83,6 +86,8 @@ object LessonAssets {
 class LessonRun(val lesson: LessonInfo) : LessonListener {
     var coach by mutableStateOf<LessonCoach?>(null); private set
     var waitsForGotIt by mutableStateOf(false); private set
+    /** The player the board must switch to before the lesson goes on (a swap step), by engine ID. */
+    var waitsForFocus by mutableStateOf<String?>(null); private set
     var complete by mutableStateOf(false); private set
     var nudges by mutableIntStateOf(0); private set
     var focus by mutableStateOf(LessonSpot.Focus()); private set
@@ -91,6 +96,12 @@ class LessonRun(val lesson: LessonInfo) : LessonListener {
 
     fun gotIt() { if (waitsForGotIt) { waitsForGotIt = false; release?.invoke() } }
 
+    /** The board now shows this opponent at the top: a swap step it was waiting for goes on. */
+    fun boardFocused(playerID: String) {
+        if (waitsForFocus == null || waitsForFocus != playerID) return
+        waitsForFocus = null; waitsForGotIt = true; gotIt()
+    }
+
     override fun show(frame: LessonFrame) {
         if (frame.complete || frame.ended) {
             if (!complete) LessonAssets.complete(lesson.id)
@@ -98,8 +109,13 @@ class LessonRun(val lesson: LessonInfo) : LessonListener {
         }
         // A frame without a note of its own keeps the last one up while its move is still to make.
         if (frame.coach != null) coach = frame.coach else if (frame.expect == null && !frame.note) coach = null
-        waitsForGotIt = frame.note
-        focus = LessonSpot.resolve(frame.coach?.spot, frame.poll, frame.expect)
+        val focusID = frame.focus?.let { name ->
+            frame.poll["snapshot"]["gameView"]["players"].array?.firstOrNull { it["name"].string == name }?.get("playerId").string
+        }
+        waitsForFocus = focusID
+        waitsForGotIt = frame.note && focusID == null
+        // A swap step also rings the opponent to switch to, in the player card's swap row.
+        focus = LessonSpot.resolve(frame.coach?.spot, frame.poll, frame.expect).let { if (focusID == null) it else it.copy(ids = it.ids + focusID) }
     }
 
     override fun nudge() { nudges += 1 }

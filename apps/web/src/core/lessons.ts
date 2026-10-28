@@ -25,7 +25,8 @@ export const forDesktop = (text: string) => text.replace(/\bPress and hold\b/g, 
 export const LESSONS_COMPLETED_KEY = "magicmobile.lessons.completed";
 
 /** What the coach says on a frame: a title, a sentence or two, and what it points at. */
-export interface LessonCoach { title?: string; text: string; spot?: string; gesture?: string }
+/** `desktop`: the web's own words where its board differs (everyone sits across the top, so there is no swapping). */
+export interface LessonCoach { title?: string; text: string; desktop?: string; spot?: string; gesture?: string }
 export interface LessonInfo { id: string; title: string }
 
 export interface LessonFrame {
@@ -40,7 +41,8 @@ export interface LessonFrame {
 
 const coachOf = (value: J | undefined): LessonCoach | undefined => {
   const text = str(get(value, "text"));
-  return text === undefined ? undefined : { text, title: str(get(value, "title")), spot: str(get(value, "spot")), gesture: str(get(value, "gesture")) };
+  return text === undefined ? undefined : { text, desktop: str(get(value, "desktop")), title: str(get(value, "title")), spot: str(get(value, "spot")),
+    gesture: str(get(value, "gesture")) };
 };
 
 export const LessonCatalog = {

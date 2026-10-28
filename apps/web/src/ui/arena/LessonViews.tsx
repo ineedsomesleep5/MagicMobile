@@ -12,7 +12,7 @@ export function LessonCoachCard({ table }: { table: LessonTable }) {
   const [shake, setShake] = useState(0);
   useEffect(() => { if (nudges > 0) { setNudged(true); setShake((n) => n + 1); } }, [nudges]);
   useEffect(() => { setNudged(false); }, [coach]);
-  const text = forDesktop(nudged ? LessonText.nudge : complete && !coach ? LessonText.allComplete : coach?.text ?? "");
+  const text = forDesktop(nudged ? LessonText.nudge : complete && !coach ? LessonText.allComplete : coach?.desktop ?? coach?.text ?? "");
   return (
     <div key={shake} className={`alessoncoach ${shake > 0 ? "shake" : ""}`} data-id="lesson.coach" role="status">
       <header>

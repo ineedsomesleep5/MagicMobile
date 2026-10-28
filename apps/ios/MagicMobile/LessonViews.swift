@@ -8,11 +8,17 @@ struct LessonFocus: Equatable {
 }
 
 private struct LessonFocusKey: EnvironmentKey { static let defaultValue = LessonFocus() }
+/// The board tells a lesson which opponent it shows (a swap step waits for one).
+private struct LessonFocusReportKey: EnvironmentKey { static let defaultValue: ((String) -> Void)? = nil }
 
 extension EnvironmentValues {
     var lessonFocus: LessonFocus {
         get { self[LessonFocusKey.self] }
         set { self[LessonFocusKey.self] = newValue }
+    }
+    var lessonFocusReport: ((String) -> Void)? {
+        get { self[LessonFocusReportKey.self] }
+        set { self[LessonFocusReportKey.self] = newValue }
     }
 }
 
@@ -21,6 +27,7 @@ struct LessonFocusProvider: ViewModifier {
     @ObservedObject var run: LessonRun
     func body(content: Content) -> some View {
         content.environment(\.lessonFocus, LessonFocus(ids: run.spotIDs, control: run.spotControl))
+            .environment(\.lessonFocusReport, { run.boardFocused($0) })
     }
 }
 
