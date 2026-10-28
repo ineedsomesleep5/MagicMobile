@@ -425,3 +425,9 @@ actor NativeDeckArtwork {
         }
     }
 }
+
+/// Online card images (Scryfall) are opt-in. Here, beside the loader, so the presentation checks build it too.
+enum NativeArtworkPreference {
+    /// One spelling of the consent key, so a new surface cannot drift onto its own store.
+    static let key = "magicmobile.deckArtworkNetworkEnabled"
+}
