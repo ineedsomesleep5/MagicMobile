@@ -152,9 +152,12 @@ actor NativeAssetStore {
         var values = URLResourceValues(); values.isExcludedFromBackup = true
         try location.setResourceValues(values)
     }
-    func save(_ data: Data, key: String, quality: NativeArtworkQuality = .high) throws {
+    /// `announce: false` keeps an image fetched live for a view that already shows it: no notice, so every card's
+    /// decoded images aren't thrown away for it.
+    func save(_ data: Data, key: String, quality: NativeArtworkQuality = .high, announce: Bool = true) throws {
         guard quality.accepts(data) else { throw StoreError.invalidImage }
         try write(data, to: file(key: qualityKey(key, quality: quality)))
+        guard announce else { return }
         let name = key.hasPrefix("token:") ? storedTokens()[key]?.name : nil
         NotificationCenter.default.post(name: Self.didStoreArtwork, object: nil,
                                         userInfo: ["key": key, "name": name ?? ""])

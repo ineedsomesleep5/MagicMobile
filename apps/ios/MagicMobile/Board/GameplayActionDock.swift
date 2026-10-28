@@ -780,7 +780,8 @@ struct PlayerZoneMenu: View {
             }
             if swapOpponents.count > 1, let swap {
                 TavernOpponentSwap(opponents: swapOpponents, current: player.playerId,
-                                   label: { game?.playerLabel($0) ?? "Opponent" }, select: swap)
+                                   label: { game?.playerLabel($0) ?? "Opponent" }, select: swap,
+                                   withChoices: game.map { Set(ArenaTargetReach.of($0, targetable: GameBoardInteractionState.boardTargetableIds(for: $0)).hiddenOpponents) } ?? [])
             }
         } label: {
             if let customLabel { customLabel } else { defaultLabel }

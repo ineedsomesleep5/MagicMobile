@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.tappableElement
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,10 +63,13 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import io.magicmobile.android.game.ArenaAutoPay
+import io.magicmobile.android.ondevice.LocalVoiceRoom
+import io.magicmobile.android.ondevice.VoiceRoom
 import io.magicmobile.android.game.ArenaCanvas
 import io.magicmobile.android.game.ArenaCombatPhase
 import io.magicmobile.android.game.ArenaCommanderSteal
 import io.magicmobile.android.game.ArenaCornerText
+import io.magicmobile.android.game.ArenaTargetReach
 import io.magicmobile.android.game.ArenaExtraHand
 import io.magicmobile.android.game.ArenaHandFanLayout
 import io.magicmobile.android.game.ArenaHandPosture
@@ -74,6 +79,7 @@ import io.magicmobile.android.game.ArenaScreens
 import io.magicmobile.android.game.PromptDisplayText
 import io.magicmobile.android.game.XmagePromptAbility
 import io.magicmobile.android.game.ArenaLanePlanner
+import io.magicmobile.android.game.ArenaStackTuck
 import io.magicmobile.android.game.ArenaTableRules
 import io.magicmobile.android.game.BoardFXDirector
 import io.magicmobile.android.game.BoardOpponentFocus
@@ -199,7 +205,18 @@ fun ArenaBoard(host: ArenaBoardHost) {
     var playerCardID by remember { mutableStateOf<String?>(null) }
     var revealID by remember { mutableStateOf<String?>(null) }
     var landedStackIDs by remember { mutableStateOf(setOf<String>()) }
+    // The stack card stepped aside for this top object (ArenaStackTuck), or was brought back while picking.
+    var stackTuckedTop by remember { mutableStateOf<String?>(null) }
+    var stackPeekTop by remember { mutableStateOf<String?>(null) }
     var showPhaseStops by remember { mutableStateOf(false) }
+    // A lesson's coach gets out of the way of what the board opens (LessonBoardCover).
+    val lessonCoverReport = LocalLessonCoverReport.current
+    val lessonCover = when {
+        showPhaseStops || cornerMenu != null || host.selection.inspectedCard != null || host.inspectingZoneTitle != null -> io.magicmobile.android.game.LessonBoardCover.PANEL
+        playerCardID != null -> io.magicmobile.android.game.LessonBoardCover.PLAYER_CARD
+        else -> io.magicmobile.android.game.LessonBoardCover.NONE
+    }
+    LaunchedEffect(lessonCover) { lessonCoverReport?.invoke(lessonCover) }
     var safeArea by remember { mutableStateOf(ArenaSafeArea()) }
     /** The trigger order chosen in the ability browser (ability ids, first to place first) and the prompt it last answered. */
     var triggerPlan by remember { mutableStateOf(listOf<String>()) }
@@ -211,6 +228,12 @@ fun ArenaBoard(host: ArenaBoardHost) {
     // MARK: Decisions
 
     val targetableIds = GameBoardInteractionState.boardTargetableIds(snapshot)
+    // A target question whose choices are on the stack opens the stack to choose (ArenaTargetReach); Done steps aside until
+    // the stack card is tapped.
+    val stackChoices = ArenaTargetReach.of(snapshot, targetableIds).stack.toSet()
+    val stackPick = if (stackChoices.isEmpty()) null else snapshot.promptEnvelopeV2?.let { "${it.id}:${it.messageId}" }
+    var stackPickDismissed by remember { mutableStateOf<String?>(null) }
+    val stackOpen = host.isStackOpen || (stackPick != null && stackPick != stackPickDismissed)
     val combatPhase = ArenaCombatPhase.current(snapshot)
     val openingHand = OpeningHandChoice.of(snapshot) != null
     fun handPosture(spread: Boolean = handSpread): ArenaHandPosture {
@@ -234,7 +257,7 @@ fun ArenaBoard(host: ArenaBoardHost) {
         ArenaScreens.pilePrompt(snapshot, screenContext) else null
     val question = ArenaScreens.question(snapshot, targetableIds, host.pendingActionId, host.isPromptDetailOpen, screenContext)
     /** A full-table screen is up: it hides the corner, the caption, the stack card and the arrows over the table. */
-    val screenUp = host.isCardChoiceOpen || host.isStackOpen || host.inspectingZoneTitle != null || abilityPrompt != null || modePrompt != null ||
+    val screenUp = host.isCardChoiceOpen || stackOpen || host.inspectingZoneTitle != null || abilityPrompt != null || modePrompt != null ||
         choicePrompt != null || playerPrompt != null || splitPrompt != null || pilePrompt != null || question != null
     val amountPrompt = if (screenUp) null else ArenaTableRules.amountPrompt(snapshot, startingRollVisible)
 
@@ -279,15 +302,17 @@ fun ArenaBoard(host: ArenaBoardHost) {
         if (targetableIds.isEmpty()) return null
         return CombatPlayerIdentity.ids(playerID, snapshot).firstOrNull { it in targetableIds }
     }
-    fun submitPlayerTarget(id: String) {
+    /** Answers a target question with a player or a stack object the table doesn't draw as a card. */
+    fun submitTargetID(id: String, label: String) {
         val prompt = snapshot.promptEnvelopeV2 ?: return
         if ((prompt.maxChoices ?: 1) > 1 || (prompt.minChoices ?: 1) > 1) { host.openPromptDetailSheet(); return }
         val promptId = prompt.responseCommand?.promptId ?: prompt.id
         val command = UniversalPromptResponseCommandBuilder.command(snapshot.id, snapshot.bridgeRevision, prompt, "choose_target", promptId, prompt.playerId, listOf(id))
             ?: run { GameHaptics.warning(view); host.onInteractionFeedback("XMage did not expose a mobile-safe target command"); return }
         GameHaptics.success(view)
-        host.runCommand(command, "Target ${snapshot.playerLabel(id)}", "$promptId-$id")
+        host.runCommand(command, label, "$promptId-$id")
     }
+    fun submitPlayerTarget(id: String) = submitTargetID(id, "Target ${snapshot.playerLabel(id)}")
     fun tapTable() {
         if (liftedCardID != null) liftedCardID = null
         else if (posture == ArenaHandPosture.RAISED || posture == ArenaHandPosture.SPREAD) { handOpen = false; handSpread = false; GameAudio.play(GameSound.CARD_PICKUP) }
@@ -511,7 +536,12 @@ fun ArenaBoard(host: ArenaBoardHost) {
         }
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { registry?.boardOrigin = it.positionInRoot() }) {
+    // The board fills the screen, as on iPhone, except where Android's 3-button navigation bar must stay tappable (an Android
+    // tester, 2026-10-26: Next and the life medallion sat under Back/Home/Recents). Gesture navigation has no tappable bar.
+    BoxWithConstraints(Modifier.fillMaxSize()
+        .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.tappableElement
+            .only(androidx.compose.foundation.layout.WindowInsetsSides.Bottom + androidx.compose.foundation.layout.WindowInsetsSides.Horizontal))
+        .onGloballyPositioned { registry?.boardOrigin = it.positionInRoot() }) {
         val screen = BoardSize(maxWidth.value, maxHeight.value)
         val canvas = remember(screen) { ArenaCanvas(screen) }
         val layout = canvas.layout
@@ -573,13 +603,27 @@ fun ArenaBoard(host: ArenaBoardHost) {
                 }
                 val revealing = revealID == top.id
                 val reveal by animateFloatAsState(if (revealing) 1f else 0f, tween(300), label = "stackReveal")
-                Box(Modifier.zIndex(30f).alpha(if (screenUp) 0f else 1f).place(rect).graphicsLayer {
+                val count = snapshot.xmage?.stack?.size ?: snapshot.stackTopFirst.size
+                // It tucks itself while you pick on the table, never when the choices are on the stack.
+                val tucked = !revealing && ArenaStackTuck.isTucked(top.id, stackTuckedTop, stackPeekTop,
+                    io.magicmobile.android.game.AppConfigState.current.isOn("stackAutoTuck") && targetableIds.isNotEmpty() && stackChoices.isEmpty())
+                if (tucked) {
+                    // The slim tab at the table's edge brings the card back.
+                    ArenaStackTab(true, count, Modifier.zIndex(30f).alpha(if (screenUp) 0f else 1f)
+                        .centerAt(canvas.screen.width - 22 - safeArea.trailing.value, rect.midY)) {
+                        GameAudio.play(GameSound.UI_OPEN); stackTuckedTop = null; stackPeekTop = top.id
+                    }
+                } else Box(Modifier.zIndex(30f).alpha(if (screenUp) 0f else 1f).place(rect).graphicsLayer {
                     val scale = 1 + 0.2f * reveal; scaleX = scale; scaleY = scale
                     translationX = -rect.width * 0.8f * reveal * density; translationY = rect.height * 0.14f * reveal * density
                 }.cardBounds("arena.stack")) {
-                    ArenaStackCard(top, snapshot.xmage?.stack?.size ?: snapshot.stackTopFirst.size, DpSize(rect.width.dp, rect.height.dp),
+                    ArenaStackCard(top, count, DpSize(rect.width.dp, rect.height.dp),
                         commander = ArenaTableRules.isCommanderSpell(top, snapshot), fallbackSource = ArenaTableRules.sourceCard(top, snapshot),
                         lands = top.id !in landedStackIDs || revealing, inspect = { host.selection.inspectedCard = it }, openStack = { host.setStackOpen(true) })
+                    // The eye at its lower left, under the tab that opens the whole stack, tucks it aside.
+                    if (!revealing) ArenaStackTab(false, count, Modifier.align(Alignment.BottomStart).offset(x = (-43).dp, y = (-6).dp)) {
+                        GameAudio.play(GameSound.UI_CLOSE); stackTuckedTop = top.id; stackPeekTop = null
+                    }
                 }
             }
 
@@ -658,7 +702,9 @@ fun ArenaBoard(host: ArenaBoardHost) {
                 cornerMenu?.let { menu ->
                     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.25f)).clearAndSetSemantics { }
                         .clickable(remember { MutableInteractionSource() }, null) { cornerMenu = null })
-                    val items = if (menu == "game") arenaGameMenuItems(snapshot, turnControl, host, { host.setStackOpen(true) }, { showPhaseStops = true })
+                    val reportFreeze = io.magicmobile.android.ondevice.LocalFreezeReport.current
+                    val items = if (menu == "game") arenaGameMenuItems(snapshot, turnControl, host, { host.setStackOpen(true) }, { showPhaseStops = true }, reportFreeze,
+                        LocalVoiceRoom.current)
                         else turnControl?.let(::arenaPassAheadItems) ?: emptyList()
                     val gear = canvas.point(layout.menu)
                     val modifier = if (menu == "game") Modifier.align(Alignment.TopEnd).padding(top = (gear.y + 26).dp, end = max(12f, canvas.screen.width - gear.x - 22).dp)
@@ -721,12 +767,19 @@ fun ArenaBoard(host: ArenaBoardHost) {
                         choose = { pile -> answer(piles, "choose_pile", "Choose ${pile.label}", "${piles.id}-pile-${pile.id}", pile = pile.explicitPileNumber) },
                         inspect = inspect)
                 } }
-                if (host.isStackOpen && snapshot.stackTopFirst.isNotEmpty()) {
+                if (stackOpen && snapshot.stackTopFirst.isNotEmpty()) {
                     val resolve = GameplayAffordances.resolveStackCommand(snapshot, host.pendingActionId, answerActions.supported)
                     ArenaStackBrowser(snapshot, resolve?.let { command -> {
                         host.setStackOpen(false)
                         host.runCommand(command, "Resolve the stack", "resolve-stack-${command.promptId ?: ""}")
-                    } }, turnControl?.let { control -> if (control.isAutoPassing) control.stop else null }, inspect) { host.setStackOpen(false) }
+                    } }, turnControl?.let { control -> if (control.isAutoPassing) control.stop else null }, inspect,
+                        choosable = if (host.pendingActionId == null) stackChoices else emptySet(),
+                        choose = if (stackPick == null) null else { id ->
+                            host.setStackOpen(false)
+                            submitTargetID(id, "Choose ${snapshot.stackTopFirst.firstOrNull { it.id == id }?.displaySourceName ?: "it"}")
+                        }, answers = if (stackPick == null) emptyList() else promptAnswers(setOf("choose_target"))) {
+                        host.setStackOpen(false); stackPickDismissed = stackPick
+                    }
                 }
                 // Questions: the question stage for yours (a yes or no, a few choices), the pop-up for players the table doesn't show.
                 val playerTargets = targetableIds.any { id -> snapshot.players.any { CombatPlayerIdentity.ids(it.playerId, snapshot).contains(id) } } &&
@@ -781,7 +834,7 @@ fun ArenaBoard(host: ArenaBoardHost) {
 
 /** The gear's menu, as an Arena menu card on the table. */
 private fun arenaGameMenuItems(snapshot: GameSnapshot, control: NativeTurnControl?, host: ArenaBoardHost, openStack: () -> Unit,
-                               openStops: () -> Unit): List<ArenaMenuItem> = buildList {
+                               openStops: () -> Unit, reportFreeze: (() -> Unit)?, voice: VoiceRoom?): List<ArenaMenuItem> = buildList {
     add(ArenaMenuItem("log", "Game Log", symbol = "list.bullet.rectangle", action = host.openLog))
     if (snapshot.stackTopFirst.isNotEmpty()) add(ArenaMenuItem("stack", "Stack (${snapshot.stackTopFirst.size})", symbol = "square.stack.3d.up", action = openStack))
     add(ArenaMenuItem("stops", "Phase Stops", symbol = "pause.circle", action = openStops))
@@ -790,7 +843,11 @@ private fun arenaGameMenuItems(snapshot: GameSnapshot, control: NativeTurnContro
             lit = it.isFullControl, action = it.toggleFullControl))
     }
     if (snapshot.source == "xmage-ondevice") add(ArenaMenuItem("more", "More actions", symbol = "ellipsis", action = host.openPromptDetails))
+    voice?.takeIf { it.state.stage == io.magicmobile.android.game.VoiceChatState.Stage.LIVE }?.let { room ->
+        add(ArenaMenuItem("leave-voice", "Leave Voice Chat", symbol = "mic.slash.fill", action = { room.leave() }))
+    }
     add(ArenaMenuItem("settings", "Game Settings", symbol = "gearshape.fill", action = host.openSettings))
+    reportFreeze?.let { add(ArenaMenuItem("report-freeze", "Report a freeze", symbol = "exclamationmark.bubble", action = it)) }
 }
 
 /** Revealed and looked-at cards, as small glass pills beside the opponent's piles, clear of the creature rows. */
@@ -895,6 +952,7 @@ private fun ArenaOpponentSeat(host: ArenaBoardHost, canvas: ArenaCanvas, lean: A
                 glow = if (attackID != null) ArenaPalette.attackGlow else if (targetID != null) ArenaPalette.targetGlow else null)
         }
         LocalTurnClock.current?.let { feed -> opponent.displayName?.let { TurnClockRing(feed, it, (diameter * 1.08f).dp) } }
+        LocalVoiceRoom.current?.let { room -> room.seatNamed(opponent.displayName)?.let { ArenaVoiceHalo(room, it, diameter.dp, badge = true) } }
         LocalEmoteCenter.current?.let { center ->
             OpponentEmoteSlot(center, snapshot, opponent.playerId, Modifier.align(Alignment.BottomCenter).offset(y = (diameter * 0.9f).dp).wrapContentSize(unbounded = true))
         }
@@ -914,6 +972,8 @@ private fun ArenaOpponentSeat(host: ArenaBoardHost, canvas: ArenaCanvas, lean: A
             .background(Brush.verticalGradient(listOf(ArenaGlass.top, ArenaGlass.bottom)), CircleShape).border(1.dp, ArenaGlass.hairline, CircleShape),
             contentAlignment = Alignment.Center) { SfImage("gearshape.fill", ArenaGlass.text, 14.dp) }
     }
+    // Voice chat's mic under the gear, clear of the hand and the screen's edge (the iPhone's and the web's spot).
+    LocalVoiceRoom.current?.let { ArenaVoiceMic(it, Modifier.centerAt(gear.x, gear.y + 40f)) }
 }
 
 /** Your seat: piles, exile, your medallion with its glance, quick chat and floating mana. */
@@ -960,6 +1020,9 @@ private fun ArenaViewerSeat(host: ArenaBoardHost, canvas: ArenaCanvas, lean: Are
                 commanderReady = castable.isNotEmpty())
         }
         LocalTurnClock.current?.let { TurnClockRing(it, null, (diameter * 1.08f).dp) }
+        LocalVoiceRoom.current?.let { room ->
+            ArenaVoiceHalo(room, room.account, diameter.dp, badge = false)
+        }
         // Poison and commander damage at a glance; the player's card lists every status.
         TavernStatusGlance(PlayerStatusSummary(human, snapshot), Modifier.align(Alignment.BottomEnd).offset((diameter * 0.3f).dp, (diameter * 0.05f).dp).wrapContentSize(unbounded = true))
         LocalEmoteCenter.current?.let { center ->
@@ -1051,6 +1114,19 @@ private fun ArenaDrawnLayers(host: ArenaBoardHost, canvas: ArenaCanvas, revealID
                 val color = if (theirs) rgb(1.0, 0.38, 0.27) else rgb(0.55, 0.85, 1.0)
                 if (targets.isNotEmpty()) ArenaStackArc(from, targets, color)
                 if (targetIds.isNotEmpty()) targets.forEach { ArenaTargetReticle(it, color) }
+            }
+        }
+        // The lesson coach's rings: a card on the table or in hand, a player's medallion, or the corner button.
+        val focus = LocalLessonFocus.current
+        if (show && !focus.isEmpty) {
+            for (id in focus.ids.sorted()) {
+                val rect = bounds[id] ?: bounds["hand:$id"]
+                if (rect != null) io.magicmobile.android.ui.LessonFocusRing(rect)
+                else if (id == host.opponent.playerId) bounds[TavernSeatAnchor.top]?.let { io.magicmobile.android.ui.LessonFocusRing(it, circle = true) }
+            }
+            when (focus.control) {
+                "primary" -> io.magicmobile.android.ui.LessonFocusRing(canvas.rect(canvas.layout.primary))
+                "medallion" -> bounds[TavernSeatAnchor.bottom]?.let { io.magicmobile.android.ui.LessonFocusRing(it, circle = true) }
             }
         }
         val layout = canvas.layout

@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -162,6 +163,8 @@ fun PhaseStopsGrid() {
     val enabled by AppPreferences.boolean(OnDeviceSmartPass.ENABLED_KEY, true)
     var raw by AppPreferences.string(OnDeviceSmartPass.STOPS_KEY, OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops))
     val stops = OnDeviceSmartPass.Settings.decode(raw)
+    // On the Arena board: gold titles, glass rows, Arena's orange plaque for a stop (iOS PhaseStopButton).
+    val arena = io.magicmobile.android.menus.LocalArenaBoard.current
     Column(Modifier.fillMaxWidth()) {
         // In the Arena look the grid speaks for itself (AGENTS.md: no helper text); off, it says why nothing stops.
         if (!io.magicmobile.android.menus.LocalArenaBoard.current || !enabled) Text(if (enabled) "With something to play, the game stops at the steps you mark. With nothing to play it passes for you. It stops when you can answer an opponent's spell or attack, and lets your own spells resolve unless you turn on Stop for My Own Spells in Settings."
@@ -170,14 +173,16 @@ fun PhaseStopsGrid() {
         Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Spacer(Modifier.weight(1f))
             for (title in listOf("YOUR TURN", "THEIRS")) {
-                Text(title, Modifier.width(76.dp), style = sf(10f, SfWeight.heavy, SfDesign.SERIF, tracking = 0.8f).copy(brush = TavernPalette.goldText),
+                Text(title, Modifier.width(76.dp), style = sf(10f, SfWeight.heavy, SfDesign.SERIF, tracking = 0.8f)
+                    .let { if (arena) it.copy(color = io.magicmobile.android.menus.ArenaMenuStyle.gold) else it.copy(brush = TavernPalette.goldText) },
                     textAlign = TextAlign.Center, maxLines = 1)
             }
         }
         for (step in OnDeviceSmartPass.Step.entries) {
             Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text(step.title, Modifier.weight(1f), color = TavernPalette.parchment, style = sf(15f, SfWeight.semibold, SfDesign.SERIF), maxLines = 1)
+                Text(step.title, Modifier.weight(1f), color = if (arena) io.magicmobile.android.menus.ArenaMenuStyle.text else TavernPalette.parchment,
+                    style = if (arena) io.magicmobile.android.menus.ArenaMenuStyle.font(15f, SfWeight.semibold) else sf(15f, SfWeight.semibold, SfDesign.SERIF), maxLines = 1)
                 for (myTurn in listOf(true, false)) {
                     val key = OnDeviceSmartPass.stopKey(step, myTurn)
                     val on = key in stops
@@ -187,8 +192,10 @@ fun PhaseStopsGrid() {
                         contentDescription = "${step.title}, ${if (myTurn) "your turn" else "opponents\u2019 turns"}"
                         stateDescription = if (on) "Stop" else "Pass"; role = Role.Checkbox
                     }, contentAlignment = Alignment.Center) {
-                        Box(Modifier.fillMaxWidth().height(36.dp).padding(1.5.dp)
-                            .tavernFill(if (on) TavernMaterial.EMBER else TavernMaterial.LEATHER, CircleShape).tavernCapsuleRim(thin = true),
+                        Box(Modifier.fillMaxWidth().height(36.dp).then(
+                            if (arena) Modifier.background(if (on) io.magicmobile.android.menus.ArenaMenuStyle.orange else SolidColor(Color.Black.copy(alpha = 0.45f)), CircleShape)
+                                .border(if (on) 1.2.dp else 0.8.dp, io.magicmobile.android.menus.ArenaGlass.hairline, CircleShape)
+                            else Modifier.padding(1.5.dp).tavernFill(if (on) TavernMaterial.EMBER else TavernMaterial.LEATHER, CircleShape).tavernCapsuleRim(thin = true)),
                             contentAlignment = Alignment.Center) {
                             SfImage(if (on) "hand.raised.fill" else "circle.dotted",
                                 if (on) Color(0xFFFFE8A8) else TavernPalette.brass.copy(alpha = 0.6f), 15.dp)
@@ -196,7 +203,8 @@ fun PhaseStopsGrid() {
                     }
                 }
             }
-            Box(Modifier.fillMaxWidth().height(1.dp).background(TavernPalette.brass.copy(alpha = 0.35f)))
+            Box(Modifier.fillMaxWidth().height(1.dp).then(if (arena) Modifier.background(io.magicmobile.android.menus.ArenaGlass.hairline, alpha = 0.45f)
+                else Modifier.background(TavernPalette.brass.copy(alpha = 0.35f))))
         }
         TavernButton({ raw = OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops) },
             Modifier.align(Alignment.CenterHorizontally).padding(top = 14.dp).semantics { contentDescription = "phaseStops.reset" },

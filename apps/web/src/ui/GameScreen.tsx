@@ -4,7 +4,7 @@
  * the corner plaques or on the table, and anything else in a full-table glass browser. Solo games and relay tables
  * share it; both answer through the same GuestSession.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { type BoardFXLevel, resolvedLevel } from "../core/boardEvents";
 import { EngineDisplayText } from "../core/displayText";
 import {
@@ -13,6 +13,10 @@ import {
 } from "../core/models";
 import type { RankChange } from "../core/rankLadder";
 import { rollPlates } from "../core/startingRoll";
+import { appConfig } from "../core/appConfig";
+import { TableLeaveRules } from "../core/tableLeave";
+import { DEFAULT_PUSH_TO_TALK_BIND, PUSH_TO_TALK_BIND_KEY, PUSH_TO_TALK_KEY, VOICE_SWITCH, VoiceChat } from "../core/voiceChat";
+import { VoiceRoom, type VoiceTokenSource } from "../table/voiceRoom";
 import { loadSmartPass, saveSmartPass, type SmartPassSettings } from "../core/smartPass";
 import { GameEmotes, TableChatFilter } from "../core/tableChat";
 import type { GameTable } from "../table/gameTable";
@@ -26,6 +30,7 @@ import {
 import { isStackAbility } from "./arena/AbilityCard";
 import { AutoPayRun, autoPayReady, manaUndoActions, paymentPrompt } from "./arena/autoPayRun";
 import { Check, type MenuItem, MenuCard, Panel, PhaseStops } from "./arena/Menus";
+import { TalkKeyButton } from "./menus/kit";
 import { Inspector } from "./arena/Inspector";
 import { StatusBadge } from "./arena/StatusBadge";
 import { GameResult } from "./arena/GameResult";
@@ -36,11 +41,12 @@ import { CombatLogReasons } from "../core/gameLog";
 import { TriggerPlan, type TriggerPick } from "./arena/triggerPlan";
 import type { CardChoicePlan } from "../core/cardChoicePlan";
 import { allAttackTargets, AttackQueue, boardTargetableIds, combatArrows, declaredCount, finishTitle } from "./arena/combat";
-import { combatPhase, commandersTaken, commanderTakenNotice, extraHandCards } from "../core/arenaBoard";
+import { arenaStackTucked, combatPhase, stackChoices, commandersTaken, commanderTakenNotice, extraHandCards } from "../core/arenaBoard";
 import { GameStats } from "../core/gameStats";
 import { BoardFXOverlay, FXBoundary, type FXAnchors } from "./arena/BoardFX";
 import { fxNow, useBoardFX } from "./arena/useBoardFX";
 import { usePacedSnapshot } from "./arena/usePacedSnapshot";
+import { castableZones, glowClasses } from "./arena/glow";
 import { type CardReader, readProps } from "./arena/inspectGesture";
 import { GAME_SPEED_KEY, GAME_SPEED_TITLES, GAME_SPEEDS, type GameSpeed, loadGameSpeed, MAX_PACE_LAG, TABLE_PACE_LAG } from "../core/gameSpeed";
 import { ArenaPile } from "./arena/ArenaPile";
@@ -50,6 +56,9 @@ import { ManaSymbol, RulesText } from "./arena/Symbols";
 import "./arena/arena.css";
 import { CardArt, cardImageURL } from "./cardArt";
 import { storage } from "./storage";
+import { LessonCoachCard } from "./arena/LessonViews";
+import { isLessonNudge } from "../core/lessons";
+import { LessonTable } from "../table/lessonTable";
 import { gameAudio, SOUND_KEYS } from "./audio";
 
 const PHASE_TITLES = ["Beginning", "Main phase 1", "Declare attackers", "Declare blockers", "Combat damage", "End of combat", "Main phase 2", "End step"];
@@ -58,6 +67,10 @@ const PHASE_TITLES = ["Beginning", "Main phase 1", "Declare attackers", "Declare
  * The phase strip (ArenaPhaseStrip): eight icons on a brass track, the part of the turn already played lit in the turn's
  * colour, the current step lit; moving on sends a spark along the track, then the icon ignites. A click opens Phase Stops.
  */
+/** Voice chat's mic, on and off (the mic button and the small badge on an opponent in voice). */
+const MIC = <svg viewBox="0 0 20 20"><rect x="7" y="2" width="6" height="10" rx="3" /><path d="M4.5 9a5.5 5.5 0 0 0 11 0" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M9.2 14.4h1.6V18H9.2z" /></svg>;
+const MIC_OFF = <svg viewBox="0 0 20 20"><rect x="7" y="2" width="6" height="10" rx="3" /><path d="M4.5 9a5.5 5.5 0 0 0 11 0" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M9.2 14.4h1.6V18H9.2z" /><path d="M3 2.5l14 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>;
+
 /** The player card's zone icons (ArenaPlayerCard.zones). */
 const ZONE_GLYPHS = {
   command: <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 15h16l1-9-5 4-4-6-4 6-5-4zM2 16.5h16V18H2z" /></svg>,
@@ -71,6 +84,7 @@ const EYE = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4C5.5 4 2.2
 const EYE_OPEN = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4C5.5 4 2.2 7 1 10c1.2 3 4.5 6 9 6s7.8-3 9-6c-1.2-3-4.5-6-9-6z" fill="none" stroke="currentColor" strokeWidth="1.6" /><circle cx="10" cy="10" r="2.6" /></svg>;
 const SUN = <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="4.2" /><path d="M10 1v3M10 16v3M1 10h3M16 10h3M3.6 3.6l2.1 2.1M14.3 14.3l2.1 2.1M3.6 16.4l2.1-2.1M14.3 5.7l2.1-2.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>;
 const MOON = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M13.5 2.2A8 8 0 1 0 17.8 13 6.4 6.4 0 0 1 13.5 2.2z" /></svg>;
+const EYE_OFF = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M1.5 10S4.8 4 10 4s8.5 6 8.5 6-3.3 6-8.5 6S1.5 10 1.5 10z" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="10" cy="10" r="2.6" /><path d="M3 17L17 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>;
 
 function PhaseStrip({ step, side, top, onOpen }: { step?: string; side: "me" | "opp"; top: number; onOpen: () => void }) {
   const { items, current } = phaseStrip(step);
@@ -162,12 +176,20 @@ function phaseIndex(step: string | undefined): number | undefined {
 }
 
 /**
- * `rankChange`: how a ranked game moved you, shown on the result once the menu shell has recorded the game. `versus`: the
- * chosen decks for the versus intro, when the table itself doesn't know its seats' commanders (a solo game).
+ * `rankChange`: how a ranked game moved you, shown on the result once the menu shell has recorded the game, and `rankNote`
+ * why the server left a win off the ladder. `versus`: the
+ * chosen decks for the versus intro, when the table itself doesn't know its seats' commanders (a solo game); its
+ * `you.tier` frames your seat in every intro, a table's own seats included.
  */
-export function GameScreen({ table, rankChange, versus }: { table: GameTable; rankChange?: RankChange; versus?: { you: VersusSeat; opponents: VersusSeat[] } }) {
+export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: {
+  table: GameTable; rankChange?: RankChange; rankNote?: string; versus?: { you: VersusSeat; opponents: VersusSeat[] };
+  /** Voice chat tokens (PlayerAccount.voiceToken); without it the board has no mic. */
+  voiceToken?: VoiceTokenSource;
+}) {
   useTable(table);
   const session = table.session;
+  /** A lesson (lessons.ts): Maren's card and her rings over the board. */
+  const lesson = table instanceof LessonTable ? table : undefined;
   // While a combo loop repeats, the board shows its quiet copy without the prompts the repeats answer.
   const live = session?.state.comboRun ? session.presentedSnapshot : session?.state.snapshot;
   // Game speed (Options → Gameplay): the board shows each opponent action for its time before the next one; the live game
@@ -210,6 +232,8 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
     session?.setSmartPass(next);
   };
   const [stackOpen, setStackOpen] = useState(false);
+  /** The target question whose stack choices the player stepped away from (Done): the browser waits for the stack card. */
+  const [stackPickDismissed, setStackPickDismissed] = useState<string>();
   /** When each stack object first showed, so its landing plays once. */
   const stackSeen = useRef(new Map<string, number>());
   // Card Frames (iOS Settings, per board mode): off by default on the Arena board, the reference game's cards.
@@ -255,6 +279,9 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
   const suppressClick = useRef(false);
   /** An opponent's spell is revealed larger toward the middle for its first 1.3 s, then settles onto the stack card. */
   const [revealID, setRevealID] = useState<string>();
+  /** The stack card stepped aside for this top object (ArenaStackTuck), or was brought back while picking. */
+  const [stackTuckedTop, setStackTuckedTop] = useState<string>();
+  const [stackPeekTop, setStackPeekTop] = useState<string>();
   const [, setClockTick] = useState(0);
   useEffect(() => { if (session?.smartPass) setSmartSettings(session.smartPass); }, [session]);
   // Development only: the table, for checking a game from the console.
@@ -279,13 +306,14 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
     if (!versusShown) return undefined;
     const seats = table.state.tableSeats;
     const local = seats.find((seat) => seat.isLocal);
+    const tier = versus?.you.tier;
     if (local && seats.length > 1) {
-      return { you: { id: local.id, name: local.name, commander: local.commanders[0] ?? versus?.you.commander },
+      return { you: { id: local.id, name: local.name, commander: local.commanders[0] ?? versus?.you.commander, tier },
         opponents: seats.filter((seat) => !seat.isLocal).slice(0, 3).map((seat) => ({ id: seat.id, name: seat.name, commander: seat.commanders[0] })) };
     }
     if (versus && versus.opponents.length > 0) return { you: versus.you, opponents: versus.opponents.slice(0, 3) };
     if (snapshot && me && opponents.length > 0) {
-      return { you: { id: me.playerId, name: me.displayName ?? "You", commander: commanderName(me) },
+      return { you: { id: me.playerId, name: me.displayName ?? "You", commander: commanderName(me), tier },
         opponents: opponents.slice(0, 3).map((p) => ({ id: p.playerId, name: p.displayName ?? "Opponent", commander: commanderName(p) })) };
     }
     return undefined;
@@ -294,6 +322,11 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
   const envelope = snapshot?.promptEnvelopeV2;
   const finished = snapshot !== undefined && isCompleted(snapshot);
   const targetIDs = new Set([...(envelope?.targetIds ?? []), ...(envelope?.targets ?? []).map((t) => t.id)]);
+  // A target question whose choices are on the stack opens the stack to choose them (stackChoices).
+  const stackPicks = stackChoices(snapshot, targetIDs);
+  const stackPick = stackPicks.length > 0 && envelope ? `${envelope.id}:${envelope.messageId}` : undefined;
+  const stackShown = stackOpen || (stackPick !== undefined && stackPick !== stackPickDismissed);
+  const closeStack = () => { setStackOpen(false); setStackPickDismissed(stackPick); };
   // Which combat declaration the table asks for (ArenaCombatPhase): XMage's target prompt in the declare steps.
   const combat = snapshot ? combatPhase(snapshot) : undefined;
   const combatSelect = combat !== undefined;
@@ -315,11 +348,58 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
     setNotice({ text, until: fxNow() + seconds });
     window.setTimeout(() => setNotice((n) => (n && n.until <= fxNow() + 0.05 ? undefined : n)), seconds * 1000 + 50);
   }, []);
+  // A player left the table and the others play on (TableLeaveRules).
+  const tableNotice = table.state.tableNotice;
+  useEffect(() => {
+    if (!tableNotice) return;
+    showNotice(tableNotice, 5);
+    table.clearTableNotice?.();
+  }, [tableNotice, table, showNotice]);
   const activeIsMe = snapshot?.activePlayerId !== undefined && snapshot.activePlayerId === viewer;
   const stack = snapshot?.xmage?.stack ?? [];
+  // Voice chat (VoiceRoom; docs/VOICE_CHAT.md): a table with people gets a mic by your medallion once the game has its
+  // channel and the server's voiceChat switch is on. Nobody is in voice until they tap it.
+  const voiceOn = useSyncExternalStore(appConfig.subscribe, () => appConfig.isOn(VOICE_SWITCH, false));
+  const voiceChannel = table.voiceChannel;
+  const voiceAccount = VoiceChat.account(table.state.localSeatID);
+  const [voice, setVoice] = useState<VoiceRoom>();
+  useEffect(() => {
+    if (table.solo || !voiceOn || !voiceToken || !voiceChannel || !voiceAccount) return undefined;
+    const room = new VoiceRoom(voiceChannel, voiceAccount, voiceToken);
+    setVoice(room);
+    return () => { room.close(); setVoice(undefined); };
+  }, [table.solo, voiceOn, voiceToken, voiceChannel, voiceAccount]);
+  const subscribeVoice = useCallback((listener: () => void) => voice?.subscribe(listener) ?? (() => undefined), [voice]);
+  const voiceState = useSyncExternalStore(subscribeVoice, () => voice?.state);
+  const showMic = voiceState !== undefined && VoiceChat.shown({ switchOn: voiceOn, solo: table.solo, channel: voiceChannel !== undefined,
+    account: voiceAccount !== undefined, unavailable: voiceState.stage === "unavailable" });
+  // Push to talk (Options → Audio, Game Settings): the mic stays off except while the mic or the talk key is held.
+  const [pushToTalk, setPushToTalk] = useState(() => storage.get(PUSH_TO_TALK_KEY) === "on");
+  const [talkKey, setTalkKey] = useState(() => storage.get(PUSH_TO_TALK_BIND_KEY) ?? DEFAULT_PUSH_TO_TALK_BIND);
+  useEffect(() => { void voice?.setPushToTalk(pushToTalk); }, [voice, pushToTalk]);
+  useEffect(() => {
+    if (!voice || !pushToTalk) return undefined;
+    const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+    const down = (event: KeyboardEvent) => {
+      if (event.code !== talkKey || typing(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+      event.preventDefault();
+      if (!event.repeat) void voice.talk(true);
+    };
+    const up = (event: KeyboardEvent) => { if (event.code === talkKey) void voice.talk(false); };
+    const release = () => { void voice.talk(false); };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", release);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); window.removeEventListener("blur", release); release(); };
+  }, [voice, pushToTalk, talkKey]);
+  // It tucks itself while you pick on the table, never when the choices are on the stack.
+  const pickingOnTable = appConfig.isOn("stackAutoTuck") && snapshot !== undefined && boardTargetableIds(snapshot).size > 0 && stackPicks.length === 0;
+  const stackTucked = (id: string) => revealID !== id && arenaStackTucked(id, stackTuckedTop, stackPeekTop, pickingOnTable);
   const promptActions = (snapshot?.legalActions ?? []).filter((a) => a.cardInstanceId === undefined && a.sourceInstanceId === undefined);
 
   const fail = useCallback((error: unknown) => {
+    // A lesson's turned-down move: Maren's card says so.
+    if (isLessonNudge(error)) return;
     gameAudio.play("ui-error");
     const message = error instanceof Error ? error.message : String(error);
     setBannerError(message);
@@ -386,10 +466,12 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
       const current = session.state.snapshot;
       if (!plan || !current) return;
       const busy = session.state.working || session.state.pendingActionID !== undefined;
-      // No prompt after its last answer: the choice is over once that holds for 5 s.
+      // No prompt after its last answer: the choice is over once that holds for 5 s, or 30 s while a selection still owes
+      // answers (a slow engine between prompts is not the end of the choice).
       if (!current.promptEnvelopeV2 && !busy && plan.lastPrompt !== undefined) {
         const last = plan.lastPrompt;
-        done = window.setTimeout(() => { if (cardPlan.current?.lastPrompt === last && !session.state.snapshot?.promptEnvelopeV2) { cardPlan.current = undefined; setChoosing(false); } }, 5000);
+        done = window.setTimeout(() => { if (cardPlan.current?.lastPrompt === last && !session.state.snapshot?.promptEnvelopeV2) { cardPlan.current = undefined; setChoosing(false); } },
+          plan.expectsMorePrompts ? 30000 : 5000);
         return;
       }
       const command = plan.next(current, busy);
@@ -436,7 +518,7 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
     return (id: string) => ids.has(id);
   }, [snapshot, me]);
   // With a D20 roll the table answers XMage's starting-player question itself, so that question never shows.
-  const rawBrowser = browserKind(envelope, onTable, (name) => snapshot !== undefined && cardNamed(snapshot, name) !== undefined);
+  const rawBrowser = stackPicks.length > 0 ? undefined : browserKind(envelope, onTable, (name) => snapshot !== undefined && cardNamed(snapshot, name) !== undefined);
   const browser = playerPanel !== undefined && playerPanel === envelope?.id ? "players"
     : rawBrowser === "players" && table.state.roll !== undefined ? undefined : rawBrowser;
   // Auto Pay answers its own colour question; it never opens the choice browser.
@@ -606,7 +688,7 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
   }, [handIDs.join(",")]);
   useEffect(() => () => arrivalTimers.current.forEach((t) => window.clearTimeout(t)), []);
   // A browser over the table keeps the hand resting under its veil.
-  const covered = showBrowser || zone !== undefined || stackOpen || commanderView !== undefined;
+  const covered = showBrowser || zone !== undefined || stackShown || commanderView !== undefined;
   const carrying = carry?.moved === true;
   // The hand rests tucked along the bottom edge; the card under the pointer pops up whole (ArenaHandPosture: the
   // landscape board never opens the fan). A browser over the table or a carried card puts the pop down.
@@ -614,21 +696,9 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
   const shownPop = !covered && !carrying && !mulligan && popped !== undefined && fanIDs.includes(popped) ? popped : undefined;
   const cards = new Map<string, ArenaCardProps>();
   const add = (props: ArenaCardProps) => { if (!cards.has(props.id)) cards.set(props.id, props); };
-  const classFor = (card: ZoneCard, onBattlefield: boolean) => {
-    const list: string[] = [];
-    if (onBattlefield && card.tapped) list.push("tapped");
-    if (onBattlefield && card.isAttacking) list.push("atk");
-    if (onBattlefield && (card.blocking?.length ?? 0) > 0) list.push("blk");
-    if (targetIDs.has(card.instanceId)) list.push(combatSelect ? "can-act" : "targetable");
-    else if (!pending && snapshot && envelope) {
-      const actions = actionsFor(snapshot, card.instanceId);
-      if (paying) { if (actions.some((a) => a.type === "make_mana")) list.push("payable"); }
-      else if (actions.some((a) => a.type !== "make_mana")) list.push("playable");
-    }
-    // Lands you could use glow softer, so a full mana row doesn't shout (ArenaOutlineGlow strength 0.65).
-    if (onBattlefield && /\bland\b/i.test(card.card.typeLine)) list.push("landish");
-    return list.join(" ");
-  };
+  const classFor = (card: ZoneCard, onBattlefield: boolean) => glowClasses(card, snapshot?.legalActions ?? [], {
+    onBattlefield, targetable: targetIDs.has(card.instanceId), combatSelect, answering: !pending && snapshot !== undefined && envelope !== undefined, paying,
+  }).join(" ");
   const clickAt = (place: Place) => (id: string) => clickCard(id, place);
   if (snapshot && me) {
     battlefieldPlaces(me.zones.battlefield, "me", undefined, geo, frames).forEach((place, id) => {
@@ -644,6 +714,8 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
         add({ id: `backs-${opponent.playerId}-${i}`, place, view: "back" }));
     });
     const handPlace = mulligan ? mulliganPlaces(handIDs, geo) : handPlaces(fanIDs, handUp, shownPop, geo, handRoom);
+    // Past eight cards the fan is crowded: the cost shows only on the popped card (ArenaHandFan.crowded).
+    const crowded = !mulligan && me.zones.hand.length + extraHand.length > 8;
     [...me.zones.hand, ...(mulligan ? [] : extraHand)].forEach((card) => {
       const home = handPlace.get(card.instanceId)!;
       const arrival = arrivals.get(card.instanceId);
@@ -655,11 +727,11 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
         : arrival === 1 ? { ...home, x: ARENA.draw.x, y: Y(ARENA.draw.y), r: 0, s: (ARENA.draw.w * geo.grow) / home.w, z: 950 } : home;
       add({ id: card.instanceId, place, view: "face", card, owner: "me", inHand: true,
         extraZone: extra ? actionsFor(snapshot, card.instanceId).find((a) => a.sourceZone)?.sourceZone ?? (me.zones.graveyard.includes(card) ? "graveyard" : "exile") : undefined,
-        classes: `${classFor(card, false)} ${carrying && carry?.id === card.instanceId ? "carried" : ""} ${arrival !== undefined ? `arrive-${arrival}` : ""} ${mulligan ? "opening" : ""}`,
+        classes: `${classFor(card, false)} ${carrying && carry?.id === card.instanceId ? "carried" : ""} ${arrival !== undefined ? `arrive-${arrival}` : ""} ${mulligan ? "opening" : ""} ${crowded && card.instanceId !== shownPop ? "nocost" : ""}`,
         onClick: mulligan ? () => reader.open({ name: card.card.name, card }, false) : clickHand, onPress: mulligan ? undefined : pressHand, reader });
     });
-    // Only the top of the stack stands on the table (ArenaStackCard); the tab opens the rest.
-    stack.slice(0, 1).forEach((item, depth) => {
+    // Only the top of the stack stands on the table (ArenaStackCard); the tab opens the rest. Tucked, it steps aside.
+    stack.slice(0, 1).filter((item) => !stackTucked(item.id)).forEach((item, depth) => {
       const name = item.sourceCard?.card.name ?? item.sourceName ?? item.name;
       const ability = isStackAbility(item);
       const source = item.sourceCard ?? (item.sourceInstanceId ? battlefieldCard(item.sourceInstanceId) : undefined);
@@ -791,8 +863,8 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
 
   // ---------------- the starting roll, the result ----------------
   const roll = table.state.roll;
-  const showRoll = roll !== undefined && !rollDismissed &&
-    (roll.nextSeatID !== undefined || !snapshot || (snapshot.turn <= 1 && !envelope?.message.toLowerCase().includes("mulligan")));
+  // The last die lands and its result shows before the opening hand (Caleb, 2026-10-26: the mulligan came up mid-roll).
+  const showRoll = roll !== undefined && !rollDismissed && (roll.nextSeatID !== undefined || !snapshot || snapshot.turn <= 1);
   useEffect(() => {
     if (roll && roll.nextSeatID === undefined) { const t = window.setTimeout(() => setRollDismissed(true), 3500); return () => window.clearTimeout(t); }
   }, [roll?.nextSeatID, roll]);
@@ -837,6 +909,7 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
       lit: fullControl, action: () => session.toggleFullControl() }] : []),
     // Everything you can do right now, in one list (the prompt details iOS opens from More actions).
     ...(session && (snapshot?.legalActions ?? []).length > 0 ? [{ id: "more", title: "More actions", glyph: "more", action: () => setSheet("actions") }] : []),
+    ...(showMic && voiceState?.stage === "live" ? [{ id: "leave-voice", title: "Leave Voice Chat", glyph: "mic", action: () => { void voice?.leave(); } }] : []),
     { id: "settings", title: "Game Settings", glyph: "settings", action: () => setSheet("settings") },
   ];
   // Your commander on an opponent's battlefield is named, with why (ArenaCommanderSteal): 7 s in the caption.
@@ -867,16 +940,22 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
       : { x: opponents.length > 1 ? 150 + (650 * (index + 0.5)) / opponents.length : spot.x, y: T(spot.y) };
     const d = spot.d * geo.grow;
     const ready = mine && commandActions.length > 0;
+    // ArenaHeroMedallion.commanderReady: a breathing green-gold ring and a crown while you can cast from your command
+    // zone, graveyard, exile or library (castableZones).
+    const glowing = mine && !pending && snapshot !== undefined && castableZones(player, snapshot).size > 0;
     const targetable = targetIDs.has(player.playerId) && !pending;
     const seat = seatOf(player);
     const clock = rope && rope.seat === seat ? rope : undefined;
     const bubble = seat ? table.state.bubbles[seat] : undefined;
     const circumference = Math.PI * 2 * 46;
+    const talking = showMic && seat !== undefined && voiceState.speaking.includes(seat);
+    const inVoice = showMic && !mine && seat !== undefined && voiceState.stage === "live" && voiceState.inVoice.includes(seat);
+    const quiet = seat !== undefined && (voiceState?.selfMuted.includes(seat) || voiceState?.silenced.includes(seat));
     return (
       <div key={player.playerId}>
-        <button type="button" className={`amed ${targetable ? (combat === "attackers" ? "targetable attack" : "targetable") : ready ? "ready" : ""} ${isOut(player) ? "out" : ""} ${snapshot?.activePlayerId === player.playerId ? "active" : ""}`}
+        <button type="button" className={`amed ${targetable ? (combat === "attackers" ? "targetable attack" : "targetable") : glowing ? "ready" : ""} ${isOut(player) ? "out" : ""} ${snapshot?.activePlayerId === player.playerId ? "active" : ""}`}
           style={{ left: at.x, top: at.y, ["--d" as string]: `${d}px` }}
-          aria-label={`${mine ? "You" : player.displayName ?? "Opponent"}, ${player.life} life${ready ? ", your commander can be cast" : ""}`}
+          aria-label={`${mine ? "You" : player.displayName ?? "Opponent"}, ${player.life} life${ready ? ", your commander can be cast" : glowing ? ", you can play from a zone" : ""}`}
           onClick={(event) => {
             event.stopPropagation();
             // A player target with several picks opens its panel (arenaSubmitPlayerTarget); one pick answers here.
@@ -886,7 +965,10 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
             else if (ready) setCommanderView(player.playerId);
             else setPlayerCard(playerCard === player.playerId ? undefined : player.playerId);
           }}>
+          {glowing && !targetable && <i className="aready" aria-hidden="true"><b>♛</b></i>}
+          {talking && <i className="aspeak" aria-hidden="true" />}
           <div className="av"><Portrait player={player} viewer={mine} /></div>
+          {inVoice && <i className={`avoice ${quiet ? "muted" : ""}`} aria-hidden="true">{quiet ? MIC_OFF : MIC}</i>}
           <span className={`hp ${isOut(player) ? "out" : ""}`}>{isOut(player) ? "Out" : Math.max(0, player.life)}</span>
           {clock && (
             <svg className="rope" viewBox="0 0 100 100" aria-hidden="true">
@@ -895,10 +977,38 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
             </svg>
           )}
         </button>
+        {mine && showMic && (
+          <button type="button" className={`amic ${voiceState.stage} ${voiceState.muted ? "muted" : ""} ${talking ? "speaking" : ""}`}
+            style={{ left: ARENA.menu.x, top: T(ARENA.menu.y) + 36 }} data-id="board.voice.mic"
+            aria-label={voiceState.stage === "off" ? "Join voice chat" : voiceState.micBlocked ? "Microphone blocked, try again"
+              : pushToTalk ? `Hold to talk (or hold ${VoiceChat.keyLabel(talkKey)})` : voiceState.muted ? "Turn your microphone on" : "Turn your microphone off"}
+            aria-pressed={voiceState.stage === "live" && !voiceState.muted}
+            onPointerDown={(event) => { event.stopPropagation(); if (pushToTalk && voiceState.stage === "live" && !voiceState.micBlocked) { event.currentTarget.setPointerCapture(event.pointerId); void voice?.talk(true); } }}
+            onPointerUp={() => { if (pushToTalk) void voice?.talk(false); }}
+            onPointerCancel={() => { if (pushToTalk) void voice?.talk(false); }}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (voiceState.stage === "off") voice?.join().catch(() => showNotice("Voice chat didn't connect.", 3));
+              else if (!pushToTalk || voiceState.micBlocked) void voice?.toggleMute();
+            }}>
+            {voiceState.stage === "live" && !voiceState.muted ? MIC : MIC_OFF}
+          </button>
+        )}
         {/* Several opponents need their names; iOS's one opponent seat shows none (its card names them). */}
         {!mine && opponents.length > 1 && (
           <div className="aname under" style={{ left: at.x, top: at.y + d / 2 + 4 }}>{player.displayName}{isOut(player) ? " (left)" : ""}</div>
         )}
+        {/* Your poison and the worst commander damage you took, at a glance by your medallion (TavernStatusGlance). */}
+        {mine && (() => {
+          const pressing = statusBadges(player, snapshot ?? undefined);
+          const worst = pressing.filter((b) => b.icon === "commander").sort((a, b) => (b.count ?? 0) - (a.count ?? 0))[0];
+          const shown = [...pressing.filter((b) => b.icon === "poison"), ...(worst ? [worst] : [])];
+          return shown.length > 0 && (
+            <div className="aglance" style={{ left: at.x + d / 2 - 4, top: at.y + d / 2 - 6 }} aria-hidden="true">
+              {shown.map((badge) => <StatusBadge key={badge.id} badge={badge} size={22} />)}
+            </div>
+          );
+        })()}
         {/* Commander damage, poison, the monarch… curve round the opponent's medallion, toward the table (TavernEffectOrbitBadges). */}
         {!mine && (() => {
           const radius = d / 2 + 14 * geo.grow;
@@ -982,7 +1092,7 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
   const undoMana = snapshot && paying && !autoPaying ? manaUndoActions(snapshot).find((a) => a.type === "undo_mana") : undefined;
   const closeTop = menu ? () => setMenu(undefined) : cornerMenu ? () => setCornerMenu(undefined)
     : playerCard ? () => setPlayerCard(undefined) : confirmConcede ? () => setConfirmConcede(false) : sheet ? () => setSheet(undefined)
-    : commanderView ? () => setCommanderView(undefined) : zone ? () => setZone(undefined) : stackOpen ? () => setStackOpen(false)
+    : commanderView ? () => setCommanderView(undefined) : zone ? () => setZone(undefined) : stackShown ? closeStack
     : panel ? () => setPanel(undefined) : undefined;
   const keys = useRef<{ primary?: () => void; fullControl?: () => void; undo?: () => void; close?: () => void; reading: boolean }>({ reading: false });
   keys.current = {
@@ -1087,6 +1197,25 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
         <div onClick={stop}>
           {[...cards.values()].map((props) => <ArenaCard key={props.id} {...props} />)}
         </div>
+        {lesson && snapshot && !showBrowser && !finished && (
+          // Where Maren points (LessonFocusRing): a card on the table or in hand, a player's medallion, or the corner plaque.
+          <div className="alessonrings" aria-hidden="true">
+            {lesson.run.focus.ids.map((id) => {
+              const place = places.current.get(id);
+              if (place) return <i key={id} style={{ left: place.x - place.w / 2 - 6, top: place.y - place.h / 2 - 6, width: place.w + 12, height: place.h + 12 }} />;
+              if (!snapshot.players.some((p) => p.playerId === id)) return null;
+              const at = anchors.player(id);
+              return <i key={id} className="round" style={{ left: at.x - 34, top: at.y - 34, width: 68, height: 68 }} />;
+            })}
+            {lesson.run.focus.control === "primary" && (
+              <i style={{ left: ARENA.primary.x - 6, top: B(ARENA.primary.y) - 6, width: ARENA.primary.w + 12, height: ARENA.primary.h + 12 }} />
+            )}
+            {lesson.run.focus.control === "medallion" && (
+              <i className="round" style={{ left: ARENA.viewerMedallion.x - 40, top: B(ARENA.viewerMedallion.y) - 40, width: 80, height: 80 }} />
+            )}
+          </div>
+        )}
+
         {snapshot && (snapshot.xmage?.combat.length ?? 0) > 0 && !showBrowser && (
           // Combat on the table (ArenaCombatArrows): red arcs from attackers to what they attack, grey once blocked, gold from
           // blockers to the attacker they hold.
@@ -1113,7 +1242,7 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
             })}
           </svg>
         )}
-        {snapshot && stack[0] && revealID !== stack[0].id && !showBrowser && !reading && !playerCard && !stackOpen && !zone && !commanderView && (() => {
+        {snapshot && stack[0] && revealID !== stack[0].id && !showBrowser && !reading && !playerCard && !stackShown && !zone && !commanderView && (() => {
           // The top of the stack points at its targets, a spell as well as an ability, with a reticle on each target while it
           // waits; an ability without targets points back at its source (ArenaStackArc, ArenaTargetReticle).
           const top = stack[0];
@@ -1215,14 +1344,33 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
             })}
           </div>
         )}
-        {stack.length > 0 && (() => {
-          // A tab on the stack card's left edge opens the whole stack, with how many objects are on it.
+        {stack.length > 0 && stackTucked(stack[0].id) && (
+          // Tucked: a slim tab at the table's edge brings the card back (ArenaStackTuck).
+          <button type="button" className="astack-show" data-id="arena.stack.show" style={{ top: stackPlace(0, geo).y - 42 }}
+            aria-label={`Show the stack, ${stack.length} on it`}
+            onClick={(event) => { event.stopPropagation(); gameAudio.play("ui-open"); setStackTuckedTop(undefined); setStackPeekTop(stack[0].id); }}>
+            <i>{EYE}</i><i>‹</i>{stack.length > 1 && <b>{stack.length}</b>}
+          </button>
+        )}
+        {stack.length > 0 && !stackTucked(stack[0].id) && (() => {
+          // A tab on the stack card's left edge opens the whole stack, with how many objects are on it; the eye under it
+          // tucks the card aside (ArenaStackTuck).
           const top = stackPlace(0, geo);
           const height = stack.length > 1 ? 58 : 44;
           return (
             <button type="button" className="astack-tab" style={{ left: top.x - top.w / 2 - 26, top: top.y - height / 2, height }}
               aria-label={stack.length > 1 ? `Open the stack, ${stack.length} objects` : "Open the stack"} onClick={(event) => { event.stopPropagation(); setStackOpen(true); }}>
               {stack.length > 1 && <b>{stack.length}</b>}<i>‹</i>
+            </button>
+          );
+        })()}
+        {stack.length > 0 && !stackTucked(stack[0].id) && revealID !== stack[0].id && (() => {
+          const top = stackPlace(0, geo);
+          return (
+            <button type="button" className="astack-tab astack-tuck" data-id="arena.stack.tuck" style={{ left: top.x - top.w / 2 - 26, top: top.y + top.h / 2 - 46, height: 40 }}
+              aria-label="Tuck the stack away"
+              onClick={(event) => { event.stopPropagation(); gameAudio.play("ui-close"); setStackTuckedTop(stack[0].id); setStackPeekTop(undefined); }}>
+              <i>{EYE_OFF}</i>
             </button>
           );
         })()}
@@ -1301,8 +1449,7 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
           if (!player) return null;
           const mine = player.playerId === viewer;
           const name = mine ? "You" : player.displayName ?? "Opponent";
-          const plays = mine && !pending ? (snapshot.legalActions ?? []).filter((a) => (a.type === "cast_spell" || a.type === "play_land") && a.playerId === player.playerId) : [];
-          const lit = (cards: ZoneCard[]) => cards.some((c) => plays.some((a) => a.cardInstanceId === c.instanceId || a.sourceInstanceId === c.instanceId));
+          const lit: ReadonlySet<string> = mine && !pending ? castableZones(player, snapshot) : new Set();
           const zones = player.zones;
           const label = (zoneTitle: string) => (mine ? zoneTitle : `${player.displayName ?? "Opponent"} · ${zoneTitle}`);
           const icons = [
@@ -1328,8 +1475,17 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
                   <div key={badge.id} className={badge.nearLethal ? "lethal" : ""}><StatusBadge badge={badge} size={26} /><span>{badge.label}</span></div>
                 ))}</div>
               )}
+              {(() => {
+                const seat = seatOf(player);
+                if (mine || !showMic || voiceState.stage !== "live" || seat === undefined || !voiceState.inVoice.includes(seat)) return null;
+                const silenced = voiceState.silenced.includes(seat);
+                return (
+                  <button type="button" className="aplaque secondary inline avoicemute" data-id="board.voice.silence"
+                    onClick={() => voice?.silence(seat, !silenced)}>{silenced ? "Unmute Voice" : "Mute Voice"}</button>
+                );
+              })()}
               <div className="zonegrid">{icons.map((icon) => {
-                const on = mine && (icon.key === "command" ? commandActions.length > 0 : icon.key !== "hand" && lit(icon.cards));
+                const on = lit.has(icon.key);
                 return (
                   <button key={icon.key} type="button" className={on ? "lit" : ""} aria-label={on ? `${icon.name}, ${icon.count}, you can play from it` : `${icon.name}, ${icon.count}`}
                     onClick={() => {
@@ -1388,6 +1544,8 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
               )}
               <label><Check on={soundsOn} label="Sounds" onToggle={() => { const on = !soundsOn; setSoundsOn(on); storage.set(SOUND_KEYS.effects, on ? "on" : "off"); }} />Sounds</label>
               <label><Check on={frames} label="Card Frames" onToggle={() => { const on = !frames; setFrames(on); storage.set("mm.web.cardFrames", on ? "on" : "off"); }} />Card Frames</label>
+              <label><Check on={pushToTalk} label="Push to Talk" onToggle={() => { const on = !pushToTalk; setPushToTalk(on); storage.set(PUSH_TO_TALK_KEY, on ? "on" : "off"); }} />Push to Talk</label>
+              {pushToTalk && <TalkKeyButton code={talkKey} id="settings.talkKey" onChange={(code) => { setTalkKey(code); storage.set(PUSH_TO_TALK_BIND_KEY, code); }} />}
               <div className="seg" role="group" aria-label="Game speed"><span>Game speed</span>
                 {GAME_SPEEDS.map((value) => (
                   <button key={value} type="button" aria-pressed={speed === value} onClick={() => { setSpeed(value); storage.set(GAME_SPEED_KEY, value); }}>
@@ -1482,11 +1640,17 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
 
         {reading && snapshot && (
           <Inspector card={reading.card} name={reading.name} battlefield={snapshot.players.flatMap((p) => p.zones.battlefield)} height={geo.height}
-            close={() => setReading(undefined)} />
+            holding={reading.held} close={() => setReading(undefined)} />
         )}
-        {stackOpen && snapshot && (
+        {stackShown && snapshot && stack.length > 0 && (
           <div onClick={stop}>
-            <StackBrowser snapshot={snapshot} height={geo.height} inspect={reader} close={() => setStackOpen(false)}
+            <StackBrowser snapshot={snapshot} height={geo.height} inspect={reader} close={closeStack}
+              choosable={pending ? undefined : new Set(stackPicks)}
+              choose={stackPick ? (id) => {
+                setStackOpen(false);
+                send({ type: "choose_target", targetIds: [id] }, `Choose ${stack.find((s) => s.id === id)?.sourceName ?? "it"}`);
+              } : undefined}
+              answers={stackPick ? promptActions.filter((a) => a.type === "answer_yes_no").map((a) => ({ id: a.id, title: a.label, action: () => sendAction(a) })) : undefined}
               resolveAll={secondary?.label === "Resolve All" ? secondary.onClick : undefined}
               stopSkipping={skipping && session ? () => session.stopAutoPass() : undefined} />
           </div>
@@ -1563,9 +1727,11 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
         {(finished || table.state.stage === "failed") && (
           // The result, Arena's (ArenaGameResultView): the word on its flare, then your medallion, rank, numbers and the ways on.
           <GameResult snapshot={snapshot} me={me} finished={finished} stoppedTitle={table.solo ? "Game stopped" : "Table closed"}
-            stoppedLine={table.state.status} numbers={stats.current} rankChange={rankChange}
-            rematch={table.rematch ? () => table.rematch?.() : undefined} leave={() => table.leave()} />
+            stoppedLine={table.state.status} numbers={stats.current} rankChange={rankChange} rankNote={rankNote}
+            rematch={table.rematch ? () => table.rematch?.() : undefined} rematchTitle={lesson?.nextTitle} leave={() => table.leave()} />
         )}
+
+        {lesson && !finished && (lesson.run.coach || lesson.run.complete) && <LessonCoachCard table={lesson} />}
 
         {(() => {
           // The recovery banner (OnDeviceRootView.recoveryBanner): what went wrong, and Refresh, Retry response, Leave.
@@ -1582,6 +1748,17 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
                     onClick={() => { if (message === session?.state.errorMessage) setDismissedError(message); setBannerError(undefined); }}>✕</button>
                 </div>
               ) : <div className="line"><span>{table.state.status}</span></div>}
+              {!message && table.state.continueVote && (
+                // Everyone still at the table may vote to go on without a player who is away (TableLeaveRules).
+                <div className="actions">
+                  <button type="button" className="aplaque primary inline" data-id="ondevice.continueWithout" disabled={table.state.continueVote.voted}
+                    onClick={() => table.voteToContinue?.()}>
+                    {table.state.continueVote.voted
+                      ? `Waiting for the others (${table.state.continueVote.voters.length}/${table.state.continueVote.needed})`
+                      : TableLeaveRules.buttonTitle(table.state.continueVote)}
+                  </button>
+                </div>
+              )}
               <div className="actions">
                 {session && <button type="button" className="aplaque primary inline" disabled={session.state.working} onClick={() => { session.refresh().catch(fail); }}>Refresh</button>}
                 {session?.hasPending && (

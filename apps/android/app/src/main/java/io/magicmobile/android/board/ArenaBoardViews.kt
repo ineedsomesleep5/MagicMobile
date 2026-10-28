@@ -176,6 +176,8 @@ val LocalCardFrames = compositionLocalOf { true }
 
 /** A mana payment is open on the Arena board: the permanents that can pay glow orange instead of cyan. */
 val LocalArenaPaying = compositionLocalOf { false }
+/** The battlefield tile being drawn has a non-mana ability to use now (ArenaBattlefieldCard sets it for its own frame). */
+val LocalArenaAbility = compositionLocalOf { false }
 
 /**
  * The table's camera, so lanes and piles lying on it lean the way the rendered table does: the plate's pitch (landscape 22°,
@@ -210,6 +212,8 @@ object ArenaPalette {
 /** The web board's colours (playable #7ff0ff, target #c6f8ff, selected #ffe08f, attacking #ff5a2e, blocking #ffd38a). */
 val ArenaGlowTone.color: Color get() = when (this) {
     ArenaGlowTone.PLAYABLE -> rgb(0.5, 0.94, 1.0)
+    // A permanent with an ability you can use now (Caleb, 2026-10-26: not the same white as a card to cast).
+    ArenaGlowTone.ABILITY -> rgb(1.0, 0.88, 0.23)
     ArenaGlowTone.TARGET -> rgb(0.78, 0.97, 1.0)
     ArenaGlowTone.PAYABLE -> rgb(1.0, 0.62, 0.3)
     ArenaGlowTone.SELECTED -> rgb(1.0, 0.88, 0.56)
@@ -818,6 +822,36 @@ fun ArenaCloseLabel(modifier: Modifier = Modifier) {
 // MARK: - The stack card
 
 /**
+ * The stack card's eye (iOS ArenaStackTab, ArenaStackTuck): at the card's lower left, under the tab that opens the whole
+ * stack, it tucks the card aside; tucked, a slim tab at the table's edge with the stack's count brings it back. A 44 dp
+ * target around the slim tab, the tab at its right edge (against the card, or the table's edge).
+ */
+@Composable
+fun ArenaStackTab(tucked: Boolean, count: Int, modifier: Modifier = Modifier, action: () -> Unit) {
+    val shape = RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp, topEnd = if (tucked) 4.dp else 0.dp, bottomEnd = if (tucked) 4.dp else 0.dp)
+    Box(modifier.size(44.dp, if (tucked) 92.dp else 44.dp)
+        .clickable(onClick = action)
+        .semantics {
+            contentDescription = if (tucked) "Show the stack, $count on it" else "Tuck the stack away"
+            testTag = if (tucked) "arena.stack.show" else "arena.stack.tuck"
+        }, contentAlignment = Alignment.CenterEnd) {
+        Column(Modifier.size(if (tucked) 30.dp else 26.dp, if (tucked) 84.dp else 40.dp)
+            .background(Brush.verticalGradient(listOf(io.magicmobile.android.menus.ArenaGlass.top.copy(alpha = 0.96f),
+                io.magicmobile.android.menus.ArenaGlass.bottom.copy(alpha = 0.96f))), shape)
+            .border(1.dp, io.magicmobile.android.menus.ArenaMenuStyle.gold.copy(alpha = 0.55f), shape),
+            verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
+            val gold = io.magicmobile.android.menus.ArenaMenuStyle.gold
+            io.magicmobile.android.ui.SfImage(if (tucked) "eye.fill" else "eye.slash.fill", gold, 12.dp)
+            if (tucked) {
+                io.magicmobile.android.ui.SfImage("chevron.left", gold, 11.dp)
+                if (count > 1) Text("$count", color = gold, style = io.magicmobile.android.ui.sf(12f, io.magicmobile.android.ui.SfWeight.black,
+                    io.magicmobile.android.ui.SfDesign.SERIF))
+            }
+        }
+    }
+}
+
+/**
  * The top of the stack as a big card on the right (the reference's stack), with a tab on its left edge that opens the whole
  * stack and says how many objects it holds. It lands with a settle, a bloom of its colour, a shine and a few motes.
  */
@@ -1005,6 +1039,9 @@ fun ArenaPlayerCard(player: PlayerGameState, snapshot: GameSnapshot, pendingActi
                 SfImage("xmark", ArenaGlass.text.copy(alpha = 0.8f), 13.dp)
             }
         }
+        io.magicmobile.android.ondevice.LocalVoiceRoom.current?.takeIf { !viewer }?.let { room ->
+            room.seatNamed(player.displayName)?.let { ArenaVoiceSilenceButton(room, it) }
+        }
         val summary = PlayerStatusSummary(player, snapshot)
         if (summary.orbit.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             for (badge in summary.orbit) Row(Modifier.semantics(mergeDescendants = true) { contentDescription = badge.label },
@@ -1038,7 +1075,8 @@ fun ArenaPlayerCard(player: PlayerGameState, snapshot: GameSnapshot, pendingActi
                 Text("${reference.cards(snapshot).size}", color = ArenaGlass.text, style = ArenaMenuStyle.font(13f, SfWeight.heavy).copy(fontFeatureSettings = "tnum"))
             }
         }
-        if (opponents.size > 1 && swap != null) TavernOpponentSwap(opponents, player.playerId, { snapshot.playerLabel(it) }, swap)
+        if (opponents.size > 1 && swap != null) TavernOpponentSwap(opponents, player.playerId, { snapshot.playerLabel(it) }, swap,
+            io.magicmobile.android.game.ArenaTargetReach.of(snapshot).hiddenOpponents.toSet())
     }
 }
 

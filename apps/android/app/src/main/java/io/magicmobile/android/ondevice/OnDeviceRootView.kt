@@ -197,7 +197,27 @@ class OnDeviceViewModel(application: Application) : AndroidViewModel(application
     /** A deck changed here or a tombstone waits to go up. */
     fun deckSyncPending(): Boolean = runCatching { deckSync.hasPending() }.getOrDefault(false)
 
+    /** Voice chat for this online game (VoiceRoom); null in solo games and while the server's switch is off. */
+    var voiceRoom by mutableStateOf<VoiceRoom?>(null); private set
+
+    /**
+     * Voice chat (VoiceRoom; docs/VOICE_CHAT.md): one room per online game once it has its channel and the server's
+     * voiceChat switch is on. Nobody is in voice until they tap the mic; leaving the game leaves the channel.
+     */
+    fun syncVoiceRoom(table: RelayTable?) {
+        val channel = table?.voiceChannel
+        val seat = io.magicmobile.android.game.VoiceChatRules.account(table?.endpoint?.seatID)
+        val on = io.magicmobile.android.game.AppConfigState.current.isOn(io.magicmobile.android.game.VoiceChatRules.SWITCH, default = false)
+        voiceRoom?.let { if (on && it.channel == channel && it.account == seat) return }
+        voiceRoom?.close()
+        voiceRoom = null
+        if (!on || table == null || channel == null || seat == null) return
+        voiceRoom = VoiceRoom(getApplication(), channel, seat, viewModelScope) { c, s -> account.voiceToken(c, s) }
+            .also { room -> room.seatNames = { table.seatNames } }
+    }
+
     override fun onCleared() {
+        voiceRoom?.close()
         // The engine must stop its workers even when the activity is finished for good.
         MainScope().launch { runCatching { setup.close() } }
         super.onCleared()
@@ -251,6 +271,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var guidedShownTips by AppPreferences.string(GuidedGameLaunch.SHOWN_TIPS_KEY, "")
     var guidedGame by rememberSaveable { mutableStateOf(false) }
     var guidedTipID by rememberSaveable { mutableStateOf<String?>(null) }
+    // The game on the table is a lesson (Lessons.kt): recorded, coached, never counted.
+    var lessonRun by remember { mutableStateOf<io.magicmobile.android.ui.LessonRun?>(null) }
     var showFriends by remember { mutableStateOf(false) }
     // A friend's message during a game (the banner) and the Messages sheet it opens (a name, or "" for the list).
     var messageBanner by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -276,6 +298,15 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     }
     var studioOpen by remember { mutableStateOf<io.magicmobile.android.studio.DeckStudioOpen?>(null) }
     var confirmLeave by remember { mutableStateOf(false) }
+    // The freeze log (docs/FREEZE_LOG.md): the game menu's Report a freeze, and the launch question once answered.
+    var confirmFreezeReport by remember { mutableStateOf(false) }
+    var freezeOfferClosed by remember { mutableStateOf<String?>(null) }
+    // When this game's engine match began, for the game's length on the profile.
+    var gameStartedAt by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(session.matchID) { gameStartedAt = if (session.matchID != null) System.currentTimeMillis() else null }
+    // The launch question asks at most once in FreezeRules.ASK_INTERVAL_SECONDS (Unix seconds; -1 before it ever asked).
+    var freezeAskedAt by AppPreferences.double("magicmobile.freeze.askedAt", -1.0)
+    var freezeOfferAsked by remember { mutableStateOf<String?>(null) }
     var bannerError by remember { mutableStateOf<String?>(null) }
     /** The session error the player closed; a different error shows again. */
     var dismissedSessionError by remember { mutableStateOf<String?>(null) }
@@ -315,10 +346,14 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var quickBracket by AppPreferences.int("magicmobile.quick.opponentBracket", 0)
     var quickDeckID by AppPreferences.string("magicmobile.quick.opponentDeck", "")
     var quickSkill by AppPreferences.int("magicmobile.quick.aiSkill", 3)
+    /** Easy, Medium or Hard pick the AI's deck by Power and set its skill; "advanced" keeps the bracket, deck and skill controls. */
+    var quickLevel by AppPreferences.string("magicmobile.quick.level", "medium")
     var activeMatch by remember { mutableStateOf<ActiveMatch?>(null) }
     // Who goes first in this AI game: Ranked always rolls, other games follow the player's choice.
     fun startingPlayerMode(): String = activeMatch?.mode?.startingPlayerMode(aiStartingPlayerMode) ?: aiStartingPlayerMode
     var rankChange by remember { mutableStateOf<io.magicmobile.android.game.RankChange?>(null) }
+    /** Why the last ranked win left the ladder alone, once the server answers. */
+    var rankNote by remember { mutableStateOf<String?>(null) }
     var ceremony by remember { mutableStateOf<io.magicmobile.android.game.RankChange?>(null) }
     var showBracketSheet by remember { mutableStateOf(false) }
     var bracketRevision by remember { mutableIntStateOf(0) }
@@ -400,12 +435,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
 
     fun makeVersusIntro(): Pair<VersusSeat, List<VersusSeat>> {
         val name = playerDisplayName.trim()
-        val you = VersusSeat("you", name.ifEmpty { "You" }, selectedDeck?.commanderName)
+        val tier = record.file.rank.position.tier
+        val you = VersusSeat("you", name.ifEmpty { "You" }, selectedDeck?.commanderName, tier)
         // A table knows everyone's commander before its first snapshot shows the command zones.
         val tableSeats = (setup.multiplayer as? RelayTable)?.tableSeats.orEmpty()
         if (setup.usingMultiplayer && tableSeats.any { it.isLocal } && tableSeats.any { !it.isLocal }) {
             val local = tableSeats.first { it.isLocal }
-            return VersusSeat("you", local.name, local.commanders.firstOrNull() ?: you.commander) to
+            return VersusSeat("you", local.name, local.commanders.firstOrNull() ?: you.commander, tier) to
                 tableSeats.filter { !it.isLocal }.take(3).map { VersusSeat(it.id, it.name, it.commanders.firstOrNull()) }
         }
         session.snapshot?.let { snapshot ->
@@ -425,24 +461,38 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     val mayStartSolo = validName && selectedDeck != null && selectedDeckBracket != null && setup.identity != null &&
         !setup.isBusy && !setup.needsLeave && matchPhase == io.magicmobile.android.game.RankedMatchmaker.Phase.Idle
 
+    /** `repick`: a ranked game's AI deck for the Power its server ticket names (ranked_ai_tuning). */
     fun startSolo(mode: io.magicmobile.android.game.PlayMode, deck: Deck, deckBracket: io.magicmobile.android.game.CommanderBracket,
-                  opponent: io.magicmobile.android.game.AIDeck, skill: Int) {
+                  opponent: io.magicmobile.android.game.AIDeck, skill: Int, repick: ((Double) -> io.magicmobile.android.game.AIDeck?)? = null) {
         try { playerDisplayName = OnDeviceSetupModel.playerName(playerDisplayName) }
         catch (error: EngineError) { setup.errorMessage = error.message; return }
         activeMatch = ActiveMatch(mode, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, deckBracket.level,
             listOf(io.magicmobile.android.game.MatchOpponent(opponent.name, opponent.commander, true)), opponent.bracket.level, skill, opponent.id)
-        rankChange = null
+        rankChange = null; rankNote = null
         if (mode == io.magicmobile.android.game.PlayMode.RANKED) record.beginRankedAIGame(null)
         val settings = GameResumeSettings(selectedDeckID, listOf(opponent.id), skill, mode.startingPlayerMode(aiStartingPlayerMode), mode.raw, deckBracket.level)
         scope.launch {
             // The server's ticket for a ranked game, so its result counts there too; its seed deals this game.
             var seed: Long? = null
+            var foe = opponent
+            var aiSkill = skill
+            var mistakes: Int? = null
+            var resumeSettings = settings
             if (mode == io.magicmobile.android.game.PlayMode.RANKED) {
                 val ticket = vm.account.startRankedAIGame(deckBracket.level)
                 record.beginRankedAIGame(ticket?.id, seeded = ticket != null)
                 seed = ticket?.seed
+                // The server tunes the AI without an app build: its skill, mistakes and the deck's Power.
+                ticket?.ai?.let { tuned ->
+                    foe = repick?.invoke(tuned.power) ?: opponent
+                    aiSkill = tuned.skill; mistakes = tuned.mistakePercent
+                    resumeSettings = settings.copy(aiDeckIDs = listOf(foe.id), aiSkill = aiSkill)
+                    activeMatch = activeMatch?.copy(opponents = listOf(io.magicmobile.android.game.MatchOpponent(foe.name, foe.commander, true)),
+                        opponentBracket = foe.bracket.level, aiSkill = aiSkill, aiDeckID = foe.id)
+                }
             }
-            setup.startAI(playerDisplayName, deck, listOf(opponent.deck), skill, settings, deckID = selectedDeckID, seed = seed)
+            setup.startAI(playerDisplayName, deck, listOf(foe.deck), aiSkill, resumeSettings, deckID = selectedDeckID, seed = seed,
+                aiMistakePercent = mistakes)
             if (session.matchID == null) activeMatch = null
         }
     }
@@ -465,12 +515,55 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         activeMatch = ActiveMatch(io.magicmobile.android.game.PlayMode.CASUAL, GuidedGameSetup.PLAYER_DECK_ID, deck.name, deck.commanderName, colors,
             core.level, listOf(io.magicmobile.android.game.MatchOpponent(opponent.name, opponent.commander, true)), opponent.bracket.level,
             GuidedGameSetup.AI_SKILL, opponent.id)
-        rankChange = null
+        rankChange = null; rankNote = null
         val settings = GameResumeSettings(GuidedGameSetup.PLAYER_DECK_ID, listOf(opponent.id), GuidedGameSetup.AI_SKILL, aiStartingPlayerMode,
             io.magicmobile.android.game.PlayMode.CASUAL.raw, core.level)
         scope.launch {
             setup.startAI(name, deck, listOf(opponent.deck), GuidedGameSetup.AI_SKILL, settings, deckID = GuidedGameSetup.PLAYER_DECK_ID)
             if (session.matchID == null) { activeMatch = null; endGuidedTips() }
+        }
+    }
+
+    // MARK: Lessons (OnDeviceRootView.swift)
+
+    /** A lesson: the recorded game on the real board, with Maren's notes. Nothing is saved or counted. */
+    fun startLesson(id: String) {
+        val info = io.magicmobile.android.ui.LessonAssets.all(context).firstOrNull { it.id == id } ?: return
+        val script = try { io.magicmobile.android.ui.LessonAssets.script(context, id) }
+        catch (error: Throwable) { setup.errorMessage = error.message; return }
+        howToPlaySeenVersion = HowToPlayLaunch.seenVersionAfterClosing(howToPlaySeenVersion)
+        if (guidedGame) endGuidedTips()
+        val run = io.magicmobile.android.ui.LessonRun(info)
+        val transport = io.magicmobile.android.game.LessonTransport(script, run)
+        run.release = { scope.launch { transport.release(); runCatching { session.refresh() } } }
+        lessonRun = run
+        lobby = null; showSetup = false
+        activeMatch = null; rankChange = null; rankNote = null
+        scope.launch {
+            setup.startLesson(script, transport)
+            if (session.matchID == null) lessonRun = null
+        }
+    }
+
+    /** The next lesson, or after the last one the guided game. */
+    fun nextLesson() {
+        val run = lessonRun ?: return
+        val next = io.magicmobile.android.game.LessonCatalog.next(run.lesson.id, io.magicmobile.android.ui.LessonAssets.all(context))
+        scope.launch {
+            if (!setup.close()) return@launch
+            selection.selectedCard = null; selection.inspectedCard = null
+            lessonRun = null
+            if (next != null) startLesson(next.id) else startGuidedGame()
+        }
+    }
+
+    /** Back to the lessons. */
+    fun finishLesson() {
+        scope.launch {
+            if (!setup.close()) return@launch
+            selection.selectedCard = null; selection.inspectedCard = null
+            lessonRun = null
+            showHowToPlay = true
         }
     }
 
@@ -483,6 +576,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun startQuickMatch() {
         val deck = selectedDeck ?: return
         val bracket = selectedDeckBracket ?: return
+        val level = setup.deckPower?.quickMatch?.get(quickLevel)
+        if (level != null) {
+            io.magicmobile.android.game.AIDeckPool.pickByPower(level.power, null, deck.commanderName, record.file.recentAIDecks, aiPool,
+                setup.deckPower?.closest ?: 3)?.let { return startSolo(io.magicmobile.android.game.PlayMode.QUICK, deck, bracket, it, level.skill) }
+        }
         val opponentBracket = if (quickBracket == 0) minOf(4, bracket.level) else quickBracket
         val opponent = quickDeckID.takeIf { it.isNotEmpty() }?.let { id -> aiPool.firstOrNull { it.id == id } }
             // "Match my deck" at Core or below meets a precon: the Core AI decks are tuned tribal lists.
@@ -493,10 +591,17 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
 
     fun startRankedAI(deck: Deck, bracket: io.magicmobile.android.game.CommanderBracket) {
         val position = record.file.rank.position
-        val opponent = io.magicmobile.android.game.AIDeckPool.pick(position.opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool,
+        // The deck nearest the division's Power from the tier's bracket or lower (docs/DECK_POWER.md); by bracket if unrated.
+        // The server's ticket can name the Power instead (ranked_ai_tuning), when the game starts.
+        val power = setup.deckPower
+        val byPower = { target: Double -> power?.let {
+            io.magicmobile.android.game.AIDeckPool.pickByPower(target, position.tier.maxDeckBracket, deck.commanderName, record.file.recentAIDecks, aiPool, it.closest)
+        } }
+        val opponent = power?.let { byPower(io.magicmobile.android.game.AIDeckPool.rankedTarget(position.tier.ordinal, position.division, it.rankedTiers)) }
+            ?: io.magicmobile.android.game.AIDeckPool.pick(position.opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool,
             preconsOnly = position.tier.preconOpponentsOnly,
             onlyPrecons = if (position.tier.preconOpponentsOnly) io.magicmobile.android.game.AIDeckPool.gentlestPrecons else null) ?: return
-        startSolo(io.magicmobile.android.game.PlayMode.RANKED, deck, bracket, opponent, position.tier.aiSkill)
+        startSolo(io.magicmobile.android.game.PlayMode.RANKED, deck, bracket, opponent, position.tier.aiSkill, repick = byPower)
     }
 
     /** The host opens a two-seat relay table and shares its code; the guest joins. A table that never fills hands the seat to an AI. */
@@ -504,7 +609,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         val matchID = ticket.matchId ?: return startRankedAI(deck, bracket)
         activeMatch = ActiveMatch(io.magicmobile.android.game.PlayMode.RANKED, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, bracket.level,
             listOf(io.magicmobile.android.game.MatchOpponent(ticket.opponent ?: "Challenger", null, false)), null, null, null, matchID)
-        rankChange = null
+        rankChange = null; rankNote = null
         if (ticket.isHost) {
             setup.hostOnline(playerDisplayName, deck, 2, emptyList(), 2)
             (setup.multiplayer as? RelayTable)?.tableCode?.let { matchmaker.shareTable(matchID, it) }
@@ -573,7 +678,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             delay(450)  // after the friends sheet closes
             activeMatch = ActiveMatch(mode, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, bracket.level,
                 listOf(io.magicmobile.android.game.MatchOpponent(friend, null, false)), null, null, null, privateTable = true)
-            rankChange = null
+            rankChange = null; rankNote = null
             challengeTarget = friend to mode
             setup.hostOnline(playerDisplayName, deck, 2, emptyList(), 2)
             val code = (setup.multiplayer as? RelayTable)?.tableCode
@@ -611,7 +716,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 val code = accepted.tableCode ?: throw io.magicmobile.android.social.SupabaseLite.Failure("challenge_closed")
                 activeMatch = ActiveMatch(challenge.playMode, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, bracket.level,
                     listOf(io.magicmobile.android.game.MatchOpponent(friend, null, false)), null, null, null, accepted.matchId, privateTable = true)
-                rankChange = null
+                rankChange = null; rankNote = null
                 setup.joinOnline(code, playerDisplayName, deck)
                 watchPersonTable(friend)
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -626,19 +731,27 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                    gameRecordFile: String? = null) {
         val colors = match.colors.ifEmpty { io.magicmobile.android.game.PlayerStats.colors(snapshot?.human?.zones?.command?.firstOrNull()?.card?.manaCost) }
         val change = record.record(match.mode, outcome, match.opponents, match.opponentBracket, match.aiSkill, match.deckID, match.deckName,
-            match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID, gameRecordFile)
+            match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID, gameRecordFile,
+            gameStartedAt?.let { ((System.currentTimeMillis() - it) / 1000).toInt() })
         rankChange = change
+        rankNote = null
+        val ranked = match.mode == io.magicmobile.android.game.PlayMode.RANKED
+        val recordedID = if (ranked) record.file.matches.firstOrNull()?.id else null
         scope.launch {
             match.rankedMatchID?.let { id -> matchmaker.report(id, outcome) }
             // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile),
             // then upload the game so its rank history point is the standing after it.
-            if (match.mode == io.magicmobile.android.game.PlayMode.RANKED) vm.account.afterRefresh?.invoke()
+            if (ranked) vm.account.afterRefresh?.invoke()
+            // The server's word replaces the phone's guess on the result screen still showing this game.
+            val settled = recordedID?.let { id -> record.file.matches.firstOrNull { it.id == id } }
+            if (settled != null && rankChange == change) { rankChange = settled.rankChange; rankNote = settled.rankNote }
         }
         if (change != null && change.isMilestone) scope.launch { delay(1500); if (rankChange == change) ceremony = change }
     }
 
     /** Records a finished game once: every game goes into the profile, ranked games move the ladder. */
     fun recordFinishedGameIfNeeded() {
+        if (lessonRun != null) return
         val snapshot = session.snapshot ?: return
         if (!snapshot.isCompleted && !snapshot.isSpectating) return
         val current = activeMatch ?: selectedDeck?.let { deck ->
@@ -676,8 +789,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         scope.launch {
             if (setup.leave()) {
                 if (guidedGame) endGuidedTips()
+                lessonRun = null
                 selection.selectedCard = null; selection.inspectedCard = null
-                activeMatch = null; rankChange = null; ceremony = null; matchmaker.finish(); rankedConnectJob?.cancel()
+                activeMatch = null; rankChange = null; rankNote = null; ceremony = null; matchmaker.finish(); rankedConnectJob?.cancel()
             }
         }
     }
@@ -688,7 +802,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun startAI() {
         val deck = selectedDeck ?: return
         if (aiPrecons.size != opponentCount) return
-        activeMatch = null; rankChange = null
+        activeMatch = null; rankChange = null; rankNote = null
         val opponentDecks = aiPrecons.map { it.deck }
         val settings = GameResumeSettings(selectedDeckID, aiIDs.take(opponentCount.coerceIn(1, 3)), aiSkill, aiStartingPlayerMode)
         scope.launch {
@@ -713,7 +827,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                     saved.deckBracket ?: 2, foes.map { io.magicmobile.android.game.MatchOpponent(it.name, it.commander, true) },
                     foes.firstOrNull()?.bracket?.level, saved.aiSkill, foes.firstOrNull()?.id)
             }
-            rankChange = null
+            rankChange = null; rankNote = null
             if (mode == null && ids.size == saved.aiDeckIDs.size && ids.size in 1..3) {
                 opponentCount = ids.size
                 ids.getOrNull(0)?.let { aiPreconID = it }; ids.getOrNull(1)?.let { aiPrecon2ID = it }; ids.getOrNull(2)?.let { aiPrecon3ID = it }
@@ -731,11 +845,12 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         if (session.snapshot?.isCompleted != true || setup.usingMultiplayer) return requestLeave()
         val mode = activeMatch?.mode
         val guided = guidedGame
+        if (lessonRun != null) return nextLesson()
         scope.launch {
             if (!setup.close()) return@launch
             if (guided) return@launch startGuidedGame()
             selection.selectedCard = null; selection.inspectedCard = null
-            activeMatch = null; rankChange = null
+            activeMatch = null; rankChange = null; rankNote = null
             // Quick Match deals a new opponent; Ranked looks for the next match.
             when (mode) {
                 io.magicmobile.android.game.PlayMode.QUICK -> startQuickMatch()
@@ -859,6 +974,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // Deck sync (docs/DECK_SYNC.md): when the profile is ready or its name changes, on returning to the app and every
     // 5 minutes while it is open; a change here goes up a few seconds after the last one, when something waits to go up.
     val accountReady = vm.account.phase == PlayerAccount.Phase.READY
+    // The server's settings for this build (AppConfig): the menu's notice, name fixes, feature switches.
+    LaunchedEffect(accountReady) { if (accountReady) vm.account.refreshAppConfig() }
     LaunchedEffect(accountReady, vm.account.username, appForeground) {
         if (!accountReady || !appForeground) return@LaunchedEffect
         while (true) { vm.syncDecks(); delay(5 * 60_000L) }
@@ -897,11 +1014,34 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         if (activeGame) { matchmaker.finish(); rankedConnectJob?.cancel() }
         if (activeGame) io.magicmobile.android.ui.GamePerformanceRecorder.begin(activeMatch?.mode?.raw ?: if (setup.usingMultiplayer) "online" else "custom", activeMatch?.aiSkill)
         else io.magicmobile.android.ui.GamePerformanceRecorder.end()
+        if (activeGame) {
+            FreezeLog.mode = activeMatch?.mode?.raw ?: if (setup.usingMultiplayer) "table" else "custom"
+            FreezeLog.crumb("Game started (${FreezeLog.mode}${if (setup.resume.resumedGame) ", resumed" else ""})")
+        } else FreezeLog.mode = "none"
         GameAudio.setScene(if (activeGame) GameMusic.GAME else GameMusic.MENU)
         // A resumed game is not a new matchup: no versus intro.
         if (!activeGame || setup.resume.resumedGame) { versusIntro = null; return@LaunchedEffect }
         if (reduceMotion) GameAudio.play(GameSound.VERSUS, after = 0.2)
         else { versusIntro = makeVersusIntro(); GameAudio.play(GameSound.VERSUS, after = 0.05) }
+    }
+    LaunchedEffect(matchPhase) {
+        when (val phase = matchPhase) {
+            io.magicmobile.android.game.RankedMatchmaker.Phase.Idle -> {}
+            is io.magicmobile.android.game.RankedMatchmaker.Phase.Searching -> FreezeLog.crumb("Ranked: searching")
+            is io.magicmobile.android.game.RankedMatchmaker.Phase.Matched ->
+                FreezeLog.crumb("Ranked: matched (${if (phase.ticket.matchId == null) "AI" else if (phase.ticket.isHost) "host" else "guest"})")
+        }
+    }
+    // Session errors log themselves; these are the setup's and the menus' own.
+    LaunchedEffect(bannerError) { bannerError?.takeIf { it != session.errorMessage }?.let { FreezeLog.crumb("Notice: $it") } }
+    fun sendFreezeReport(incident: io.magicmobile.android.game.FreezeIncident) {
+        scope.launch {
+            val sent = FreezeLog.send(incident) { kind, report -> vm.account.sendDiagnostic(kind, report) }
+            val notice = if (sent) "Freeze report sent. Thank you." else "The freeze report couldn't be sent. It's still saved on this phone."
+            bannerError = notice
+            delay(5_000)
+            if (bannerError == notice) bannerError = null
+        }
     }
     val errorKey = setup.errorMessage ?: session.errorMessage
     LaunchedEffect(errorKey) {
@@ -938,7 +1078,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         val room = table?.room ?: return@LaunchedEffect
         if (activeMatch?.isPersonTable == true && !room.localReady) selectedDeck?.let { setup.readyForMatch(playerDisplayName, it) }
     }
-    LaunchedEffect(table?.endpoint?.matchID) { if (table?.endpoint != null) setup.attachTable(table, selectedDeckID, selectedDeck) }
+    LaunchedEffect(table?.endpoint?.matchID) {
+        vm.syncVoiceRoom(table)
+        if (table?.endpoint != null) setup.attachTable(table, selectedDeckID, selectedDeck)
+    }
     LaunchedEffect(table?.isConnected, table?.isSuspended) { setup.updateSessionForeground() }
     // Relay tables carry quick chat between phones; solo games only answer from the AI.
     LaunchedEffect(session.snapshot?.id, table) {
@@ -1112,7 +1255,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         mode = io.magicmobile.android.game.ArenaPlayMode.of(playModeRaw), setMode = { playModeRaw = it.raw },
         tab = playTab, setTab = { playTabRaw = it.raw },
         quickBracket = quickBracket, setQuickBracket = { quickBracket = it }, quickDeckID = quickDeckID, setQuickDeckID = { quickDeckID = it },
-        quickSkill = quickSkill, setQuickSkill = { quickSkill = it }, startingPlayer = aiStartingPlayerMode, setStartingPlayer = { aiStartingPlayerMode = it },
+        quickSkill = quickSkill, setQuickSkill = { quickSkill = it }, quickLevel = quickLevel, setQuickLevel = { quickLevel = it }, startingPlayer = aiStartingPlayerMode, setStartingPlayer = { aiStartingPlayerMode = it },
         aiPool = aiPool, rank = record.file.rank, canSearchPeople = vm.account.rankedQueue != null,
         search = matchPhase.takeIf { it != io.magicmobile.android.game.RankedMatchmaker.Phase.Idle }
             ?: if (io.magicmobile.android.ranked.SocialFixtures.openScreen == "queue") io.magicmobile.android.game.RankedMatchmaker.Phase.Searching(fixtureLaunch) else null,
@@ -1187,20 +1330,39 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     MaterialTheme(colorScheme = darkColorScheme()) {
         CompositionLocalProvider(LocalBrandAmbientMotion provides !(showDecks || showAppearance || showUpdates || showDownloads || showHowToPlay || showGuidedWelcome
                 || showFriends || showBracketSheet || showOfflineArtPrompt),
-            LocalNativeTurnControl provides turnControl, LocalPlayerAccount provides vm.account) {
+            LocalNativeTurnControl provides turnControl, LocalPlayerAccount provides vm.account,
+            // A friend's profile can join their open table: every page over the menu closes first, then the table setup opens.
+            io.magicmobile.android.ranked.LocalJoinFriendTable provides { code: String ->
+                showFriends = false; lobby = null; chatProfile = null
+                scope.launch { delay(450); openJoinLink(code) }
+            }) {
             Box(Modifier.fillMaxSize().background(BrandTheme.canvas)) {
                 if (activeGame) {
+                    val gameBoardMode by io.magicmobile.android.ui.AppPreferences.string(io.magicmobile.android.game.BoardMode.key, io.magicmobile.android.game.BoardMode.defaultValue)
                     CompositionLocalProvider(
+                        // On the Arena board the root's overlays over the game (Maren's and the guided game's notes, the recovery
+                        // banner) draw the Arena way too, as the board's own panels do (iOS: the board's environment).
+                        io.magicmobile.android.menus.LocalArenaBoard provides
+                            (io.magicmobile.android.game.BoardMode.resolved(gameBoardMode) == io.magicmobile.android.game.BoardMode.ARENA),
                         LocalInspectorBattlefield provides (session.snapshot?.players?.flatMap { it.zones.battlefield } ?: emptyList()),
+                        io.magicmobile.android.board.LocalLessonFocus provides (lessonRun?.focus ?: io.magicmobile.android.game.LessonSpot.Focus()),
+                        io.magicmobile.android.board.LocalLessonFocusReport provides lessonRun?.let { run -> { id: String -> run.boardFocused(id) } },
+                        io.magicmobile.android.board.LocalLessonCoverReport provides lessonRun?.let { run -> { cover: io.magicmobile.android.game.LessonBoardCover -> run.boardCovered(cover) } },
                         LocalGameRematchTitle provides when {
+                            lessonRun != null -> if (io.magicmobile.android.game.LessonCatalog.next(lessonRun!!.lesson.id,
+                                io.magicmobile.android.ui.LessonAssets.all(context)) == null) io.magicmobile.android.game.LessonText.GUIDED
+                                else io.magicmobile.android.game.LessonText.NEXT
                             setup.usingMultiplayer -> null
                             activeMatch?.mode == io.magicmobile.android.game.PlayMode.QUICK -> "Play Again"
                             activeMatch?.mode == io.magicmobile.android.game.PlayMode.RANKED -> "Next Match"
                             else -> "Rematch"
                         },
                         io.magicmobile.android.board.LocalGameRankChange provides rankChange,
+                        io.magicmobile.android.board.LocalGameRankNote provides rankNote,
                         LocalGameConcede provides GameConcedeHandler { concede() },
+                        LocalFreezeReport provides { confirmFreezeReport = true },
                         LocalEmoteCenter provides vm.emotes,
+                        LocalVoiceRoom provides vm.voiceRoom,
                         // Messages from friends inside a game too: the game menu's Messages button.
                         io.magicmobile.android.social.LocalFriendMessages provides
                             if (vm.account.phase == io.magicmobile.android.social.PlayerAccount.Phase.READY && vm.account.username != null && vm.account.messagesAvailable)
@@ -1269,6 +1431,15 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                             androidx.compose.animation.AnimatedVisibility(guidedGame && tip != null && !boardQuiet,
                                 Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 6.dp)) {
                                 if (tip != null) GuidedGameCoachCard(tip, dismiss = { guidedTipID = null }, turnOff = ::endGuidedTips)
+                            }
+                            // A lesson that ends in a win hands over to the result screen, whose button goes on to the next lesson.
+                            lessonRun?.let { run ->
+                                // Below the top opponent's portrait and life, as on iPhone.
+                                if (session.snapshot?.isCompleted != true) Box(Modifier.align(Alignment.TopCenter).fillMaxSize().statusBarsPadding().padding(top = 56.dp)) {
+                                    io.magicmobile.android.ui.LessonCoachCard(run, nextTitle = if (io.magicmobile.android.game.LessonCatalog.next(run.lesson.id,
+                                        io.magicmobile.android.ui.LessonAssets.all(context)) == null) io.magicmobile.android.game.LessonText.GUIDED
+                                        else io.magicmobile.android.game.LessonText.NEXT, next = ::nextLesson, done = ::finishLesson)
+                                }
                             }
                         }
                     }
@@ -1388,6 +1559,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                             }
                         } else if (activeGame && !setup.canUseSession) {
                             Text(setup.liveStatus, color = TavernPalette.parchment, style = bannerText)
+                            // Everyone still at the table may vote to go on without a player who is away (TableLeaveRules).
+                            val table = setup.multiplayer as? RelayTable
+                            table?.continueVote?.let { vote ->
+                                BannerButton(if (vote.voted) "Waiting for the others (${vote.voters.size}/${vote.needed})"
+                                    else io.magicmobile.android.game.TableLeaveRules.buttonTitle(vote),
+                                    io.magicmobile.android.ui.TavernButtonKind.PRIMARY, !vote.voted) { table.voteToContinue() }
+                            }
                         } else if (activeGame && session.snapshot == null) {
                             Text("Waiting for the first game update.", color = TavernPalette.parchment, style = bannerText)
                         }
@@ -1427,6 +1605,18 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 setup.resume.notice?.let { notice ->
                     ResumeNoticeBanner(notice, Modifier.align(Alignment.TopCenter)) { setup.resume.notice = null }
                 }
+                // The server's notice on the main menu (AppConfig): it stays until closed, then never comes back.
+                val appNotice = io.magicmobile.android.ui.AppConfigStore.shownNotice
+                if (appNotice != null && menuIsFree && setup.resume.notice == null) {
+                    ResumeNoticeBanner(appNotice.text, Modifier.align(Alignment.TopCenter).testTag("menu.notice"), autoDismiss = false) {
+                        io.magicmobile.android.ui.AppConfigStore.dismissNotice(appNotice)
+                    }
+                }
+                // A player left the table and the others play on (TableLeaveRules).
+                (setup.multiplayer as? RelayTable)?.let { table ->
+                    val notice = table.tableNotice
+                    if (activeGame && notice != null) ResumeNoticeBanner(notice, Modifier.align(Alignment.TopCenter)) { table.tableNotice = null }
+                }
             }
 
             // Panels, not sheets: the menu's pages open as Arena's glass over the dimmed menu (ArenaPanels.kt).
@@ -1439,10 +1629,15 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             io.magicmobile.android.menus.ArenaPanel(showHowToPlay, ::closeHowToPlay, fitsContent = true) {
                 // The first visit opens straight into the table's tutorial; the menu offers both.
                 HowToPlayView(::closeHowToPlay, Modifier.fillMaxWidth().fillMaxHeight(), tutorialID = if (howToPlayOpensTable) HowToPlayText.tutorials[0].id else null,
-                    playGuided = if (howToPlayOpensTable) null else ::startGuidedGame)
+                    playGuided = if (howToPlayOpensTable) null else ::startGuidedGame,
+                    playLesson = if (howToPlayOpensTable) null else ::startLesson)
             }
             io.magicmobile.android.menus.ArenaPanel(showGuidedWelcome, ::answerGuidedWelcome, maxWidth = 560.dp, dismissable = false, fitsContent = true) {
-                GuidedGameWelcomeView(playGuided = { answerGuidedWelcome(); startGuidedGame() },
+                GuidedGameWelcomeView(playGuided = {
+                    // The welcome's main button: the first lesson (the guided game follows the last one).
+                    answerGuidedWelcome()
+                    io.magicmobile.android.ui.LessonAssets.all(context).firstOrNull()?.let { startLesson(it.id) } ?: startGuidedGame()
+                },
                     readHowToPlay = {
                         answerGuidedWelcome()
                         scope.launch { delay(450); howToPlayOpensTable = true; showHowToPlay = true }
@@ -1464,6 +1659,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 // A player opened from the table chat: their public profile covers the chat.
                 chatProfile?.let { name ->
                     androidx.compose.ui.window.Dialog({ chatProfile = null }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+                        io.magicmobile.android.ui.EdgeToEdgeDialogWindow()
                         io.magicmobile.android.ranked.PublicProfileScreen(vm.account, name, null, null) { chatProfile = null }
                     }
                 }
@@ -1480,6 +1676,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             messagesHub?.let { initial ->
                 androidx.compose.ui.window.Dialog({ messagesHub = null }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false,
                     decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+                    io.magicmobile.android.ui.EdgeToEdgeDialogWindow()
                     BackHandler { messagesHub = null }
                     io.magicmobile.android.social.FriendMessagesHub(vm.account, initial.ifEmpty { null }) { messagesHub = null }
                 }
@@ -1498,9 +1695,33 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                     scope.launch { delay(350); showDownloads = true }
                 }
             }
+            // An Arena question on the main menu after a freeze in an earlier run; nothing is sent without Send.
+            val freezeOffer = FreezeLog.launchOffer?.takeIf { offer ->
+                offer.id != freezeOfferClosed && (offer.id == freezeOfferAsked ||
+                    io.magicmobile.android.game.FreezeRules.mayAsk(freezeAskedAt.takeIf { it >= 0 }?.let { System.currentTimeMillis() / 1000.0 - it }))
+            }
+            LaunchedEffect(freezeOffer?.id, menuIsFree, showOfflineArtPrompt) {
+                if (freezeOffer != null && menuIsFree && !showOfflineArtPrompt && freezeOfferAsked != freezeOffer.id) {
+                    freezeOfferAsked = freezeOffer.id; freezeAskedAt = System.currentTimeMillis() / 1000.0
+                }
+            }
+            io.magicmobile.android.menus.ArenaPanel(freezeOffer != null && menuIsFree && !showOfflineArtPrompt,
+                { freezeOffer?.let { freezeOfferClosed = it.id; FreezeLog.decline(it) } }, maxWidth = 460.dp, fitsContent = true) {
+                io.magicmobile.android.menus.ArenaPromptPanel("The last game froze. Send the report?",
+                    "It holds the game's state and your recent actions, not your account or decks.", "Send", "Not now", "freezeReport") {
+                    freezeOffer?.let { freezeOfferClosed = it.id; sendFreezeReport(it) }
+                }
+            }
+            if (confirmFreezeReport) {
+                io.magicmobile.android.ranked.ArenaConfirmation("Send a freeze report with this game's state?", null, "Send", destructive = false,
+                    confirm = { sendFreezeReport(FreezeLog.record(io.magicmobile.android.game.FreezeRules.REPORTED, game = session.freezeContext())) }) {
+                    confirmFreezeReport = false
+                }
+            }
             if (confirmLeave) {
                 val message = when {
                     setup.multiplayer?.endpoint?.isHost == true -> "You are hosting. Leaving ends this match for everyone; it cannot be resumed."
+                    setup.multiplayer?.endpoint != null -> "You leave the table and the others play on without you. You can't come back to this game."
                     else -> "This closes the current match. It cannot be resumed after leaving."
                 }
                 ConfirmationDialog("Leave this game?", message, listOf(ConfirmationAction("Leave game", destructive = true) { closeGame() })) { confirmLeave = false }

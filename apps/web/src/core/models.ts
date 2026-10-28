@@ -52,6 +52,8 @@ export interface TokenArtworkIdentity { name: string; typeLine: string; oracleTe
 export interface CardIdentity {
   name: string; typeLine: string; oracleText?: string; manaCost?: string; isToken?: boolean; tokenColors?: string[];
   copySourceArtworkName?: string; tokenArtwork?: TokenArtworkIdentity;
+  /** Your own face-down card: the real card shown, dimmed and marked face down. Absent for anyone else's. */
+  faceDown?: boolean;
 }
 
 export interface XmageCardIcon { iconType: string; resourceName?: string; category?: string; text?: string; hint?: string }
@@ -116,6 +118,13 @@ export interface PromptEnvelopeV2 {
   multiAmounts?: XmagePromptMultiAmount[]; manaChoices?: XmagePromptManaChoice[]; orderedItems?: ChoicePromptOption[];
   confirmation?: XmagePromptConfirmation; options?: JObject;
 }
+
+/**
+ * XMage's attacker or blocker selection (a SELECT the on-device adapter answers with a target). Other target questions asked
+ * during combat, such as Gogo copying an attack trigger or a targeted trick, are ordinary targets.
+ */
+export const isCombatSelection = (prompt: PromptEnvelopeV2) => prompt.method === "GAME_SELECT" &&
+  (prompt.responseKind.toLowerCase() === "target" || prompt.responseCommand?.type?.toLowerCase() === "choose_target");
 
 export interface ManaPayment { active: boolean; spellName?: string; manaCostText?: string; remainingText?: string }
 
@@ -192,6 +201,7 @@ export const decodeZoneCard = (value: J): ZoneCard => {
       name: rStr(get(card, "name"), "name"), typeLine: rStr(get(card, "typeLine"), "typeLine"), oracleText: oStr(get(card, "oracleText")),
       manaCost: oStr(get(card, "manaCost")), isToken: oBool(get(card, "isToken")), tokenColors: strings(get(card, "tokenColors")),
       copySourceArtworkName: oStr(get(card, "copySourceArtworkName")), tokenArtwork: opt(get(card, "tokenArtwork"), decodeTokenArtwork),
+      faceDown: oBool(get(card, "faceDown")),
     },
     tapped: oBool(get(value, "tapped")), summoningSickness: oBool(get(value, "summoningSickness")),
     cardIcons: list(get(value, "cardIcons"), decodeCardIcon), counters: intMap(get(value, "counters")),

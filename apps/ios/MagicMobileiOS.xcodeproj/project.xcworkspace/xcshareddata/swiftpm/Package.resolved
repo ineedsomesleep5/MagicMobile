@@ -1,0 +1,24 @@
+{
+  "originHash" : "06c3d915eb8755055ff4e6e7bd864884bbf7cb298151e34e0af7a56d9a218019",
+  "pins" : [
+    {
+      "identity" : "agoraaudio_ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/AgoraIO/AgoraAudio_iOS",
+      "state" : {
+        "revision" : "a6bf2f2c1b27287aee5ac5c18c65946c95940496",
+        "version" : "4.6.4"
+      }
+    },
+    {
+      "identity" : "agorainfra_ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/AgoraIO/AgoraInfra_iOS.git",
+      "state" : {
+        "revision" : "0c21b485af8e64b2716632f2f7badab8705343b1",
+        "version" : "1.3.5"
+      }
+    }
+  ],
+  "version" : 3
+}

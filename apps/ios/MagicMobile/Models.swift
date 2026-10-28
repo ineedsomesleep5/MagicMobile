@@ -165,6 +165,13 @@ struct GameSnapshot: Decodable {
         return id
     }
 
+    /// Another person at the table holds the decision or priority: the game waits on them, not on the engine.
+    var waitingOnPersonID: String? {
+        guard !isCompleted, let id = waitingOnPlayerId ?? priorityPlayerId, !isViewer(id),
+              let player = players.first(where: { $0.playerId == id }), player.isHuman == true, !player.isOut else { return nil }
+        return id
+    }
+
     /// Opponents still in the game.
     var remainingOpponents: [PlayerGameState] {
         players.filter { !isViewer($0.playerId) && !$0.isOut }
@@ -303,7 +310,8 @@ struct MobilePromptPresentation: Equatable {
     private static func isCombatSelection(_ snapshot: GameSnapshot, legalActions: [LegalAction]) -> Bool {
         legalActions.contains { $0.type == "declare_attackers" || $0.type == "declare_blockers" } ||
             ((snapshot.isViewer(snapshot.waitingOnPlayerId) || snapshot.isViewer(snapshot.priorityPlayerId)) &&
-             (normalizedStep(snapshot).contains("declare-attack") || normalizedStep(snapshot).contains("declare-block")))
+             (normalizedStep(snapshot).contains("declare-attack") || normalizedStep(snapshot).contains("declare-block")) &&
+             snapshot.promptEnvelopeV2?.isCombatSelection != false)
     }
 
     private static func normalizedStep(_ snapshot: GameSnapshot) -> String {
@@ -723,6 +731,8 @@ struct CardIdentity: Decodable, Hashable {
     var copySourceArtworkName: String? = nil
     /// Public token template for image lookup; never replaces live CardView state.
     var tokenArtwork: TokenArtworkIdentity? = nil
+    /// Your own face-down card: the real card shown, dimmed and marked face down. Nil for anyone else's.
+    var faceDown: Bool? = nil
 }
 
 struct TokenArtworkIdentity: Decodable, Hashable {
@@ -907,6 +917,11 @@ extension PromptEnvelopeV2 {
     }
     /// XMage's "which triggered ability goes on the stack first" question.
     var isTriggerOrder: Bool { method == "GAME_PICK_ABILITY" }
+    /// XMage's attacker or blocker selection (a SELECT the on-device adapter answers with a target). Other target
+    /// questions asked during combat, such as Gogo copying an attack trigger or a targeted trick, are ordinary targets.
+    var isCombatSelection: Bool {
+        method == "GAME_SELECT" && (responseKind.lowercased() == "target" || responseCommand?.type?.lowercased() == "choose_target")
+    }
 }
 
 struct XmageResponseCommand: Decodable {

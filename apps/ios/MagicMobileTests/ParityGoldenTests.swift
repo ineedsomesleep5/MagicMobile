@@ -381,7 +381,8 @@ final class ParityGoldenTests: XCTestCase {
         let floating = (owner["manaPool"]?.object ?? [:]).values.contains { ($0.integer ?? 0) > 0 }
         return .init(context: context, step: view["step"]?.string, hasPlay: OnDeviceSmartPass.hasPlay(view), manaFloating: floating,
                      topStackIsMine: OnDeviceSmartPass.topStackIsMine(root, viewer: viewer), hasResponse: OnDeviceSmartPass.hasResponse(view),
-                     threatensMe: !stack.isEmpty && (snapshot.map(OnDeviceSmartPass.threatensViewer) ?? false))
+                     threatensMe: !stack.isEmpty && (snapshot.map(OnDeviceSmartPass.threatensViewer) ?? false),
+                     hasAbilityResponse: OnDeviceSmartPass.hasAbilityResponse(view))
     }
 
     /// smart-pass-cases.json: smart pass, Stop for Removal and the skip modes. The web port
@@ -432,7 +433,8 @@ final class ParityGoldenTests: XCTestCase {
             let value = OnDeviceSmartPass.Situation(context: context(item["context"] as? [String: Any]), step: s["step"] as? String,
                                                     hasPlay: s["hasPlay"] as? Bool ?? false, manaFloating: s["manaFloating"] as? Bool ?? false,
                                                     topStackIsMine: s["topStackIsMine"] as? Bool, hasResponse: s["hasResponse"] as? Bool ?? true,
-                                                    threatensMe: s["threatensMe"] as? Bool ?? false)
+                                                    threatensMe: s["threatensMe"] as? Bool ?? false,
+                                                    hasAbilityResponse: s["hasAbilityResponse"] as? Bool ?? false)
             XCTAssertEqual(OnDeviceSmartPass.passPrompt(value, settings: settings(item["settings"] as? [String: Any])) != nil,
                            item["pass"] as? Bool, "passPrompt · \(item["name"] ?? "")")
         }

@@ -53,7 +53,8 @@ no footage, design it in the same language (below) and say so in the PR.
 - **The glow border** (`ArenaOutlineGlow`, Caleb's pick from the web board, memory `frame-outline-glow`): light that
   follows the card's own outline, never a box or a coloured line. With Card Frames on it traces the tavern frame, crest
   and corners included; with them off it traces the reference's card or a token's arch; in the hand it traces the
-  printed card. Colours: playable cyan `#7ff0ff` (it breathes in the hand; lands you could tap glow softer), target
+  printed card. Colours: playable cyan `#7ff0ff` (it breathes in the hand; lands you could tap glow softer), a permanent with a
+  usable non-mana ability yellow `#ffe03a` (XMage's canPlayObjects; Caleb, 2026-10-26), target
   `#c6f8ff`, selected `#ffe08f`, attacking `#ff5a2e`, blocking `#ffd38a`, and orange while a payment is open. No badges
   or arrows on playable cards.
 - **Tapped:** the tile tilts 12° and greys by a multiply (grayscale 0.75, brightness 0.62, the prototype's), under a
@@ -79,7 +80,7 @@ sans for labels, rows, captions and body.
 | Need | Component | Where |
 |---|---|---|
 | Choose an ability, order triggers | `ArenaAbilityBrowser` | `Board/ArenaBoardViews.swift` |
-| See the whole stack | `ArenaStackBrowser` | same |
+| See the whole stack; choose a target that is on the stack (it opens by itself, `ArenaTargetReach`) | `ArenaStackBrowser` | same |
 | Scry, surveil, search, top-N picks, separate piles | `BoardCardChoiceView.arenaStage` | `BoardCardChoiceView.swift` |
 | Modes of a modal spell | `ArenaModeBrowser` | `Board/ArenaBoardViews.swift` |
 | Yes/no, "you may", two or three answers | `ArenaQuestionStage` + `CompactPromptPopup(stage:)` | same, `Board/CompactPromptPopup.swift` |

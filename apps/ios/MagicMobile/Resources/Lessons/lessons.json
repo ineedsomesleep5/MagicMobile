@@ -1,0 +1,24 @@
+{
+ "lessons": [
+  {
+   "id": "first-spells",
+   "title": "Lands and spells"
+  },
+  {
+   "id": "combat",
+   "title": "Combat"
+  },
+  {
+   "id": "stack",
+   "title": "Instants and the stack"
+  },
+  {
+   "id": "commander",
+   "title": "Your commander"
+  },
+  {
+   "id": "table",
+   "title": "Around the table"
+  }
+ ]
+}

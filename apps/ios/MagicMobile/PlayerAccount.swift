@@ -329,10 +329,20 @@ final class PlayerAccount: ObservableObject {
         return try? await api.userID()
     }
 
-    /// The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2).
+    /// The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2). `ai` is the
+    /// AI the server tuned for this game (ranked_ai_tuning); nil from servers before that tuning, when the tier's bundled
+    /// values apply.
     struct RankedAITicket: Equatable {
         let id: UUID
         let seed: Int64
+        var ai: RankedAITuning?
+    }
+
+    /// One ranked game's AI as the server tuned it: skill, deliberate-mistake chance and the AI deck's Power target.
+    struct RankedAITuning: Equatable {
+        let skill: Int
+        let mistakePercent: Int
+        let power: Double
     }
 
     /// Starts a ranked game against the AI on the server, so its result counts there. Nil offline or without a
@@ -352,12 +362,19 @@ final class PlayerAccount: ObservableObject {
         }
     }
 
-    /// `{"id": uuid, "seed": "<64-bit decimal>"}` (the seed is text: JSON numbers lose precision past 2^53).
+    /// `{"id": uuid, "seed": "<64-bit decimal>", "aiSkill": 3, "aiMistakePercent": 8, "aiPower": 5.63}` (the seed is
+    /// text: JSON numbers lose precision past 2^53). The AI fields count only together and in the engine's ranges.
     nonisolated static func rankedAITicket(_ data: Data) -> RankedAITicket? {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let id = (object["id"] as? String).flatMap(UUID.init(uuidString:)),
               let seed = (object["seed"] as? String).flatMap(Int64.init) else { return nil }
-        return RankedAITicket(id: id, seed: seed)
+        var ticket = RankedAITicket(id: id, seed: seed)
+        if let skill = object["aiSkill"] as? Int, (1...10).contains(skill),
+           let mistakes = object["aiMistakePercent"] as? Int, (0...100).contains(mistakes),
+           let power = object["aiPower"] as? Double, power.isFinite {
+            ticket.ai = RankedAITuning(skill: skill, mistakePercent: mistakes, power: power)
+        }
+        return ticket
     }
 
     /// Sends finished ranked AI games, then takes the server's standing (seeding it once from this phone when the
@@ -368,7 +385,9 @@ final class PlayerAccount: ObservableObject {
             do {
                 let data: Data
                 if pending.seeded == true {
-                    // The game record backs the result; without one a win settles as unverified.
+                    // The game record backs the result; without one a win settles as unverified. A record kept on this phone
+                    // but unreadable for now (the phone is locked) waits for the next sync rather than going without it.
+                    if let file = pending.recordFile, record.gameRecordIsKept(named: file), record.gameRecord(named: file) == nil { continue }
                     let record = pending.recordFile.flatMap(record.gameRecord(named:)).flatMap { try? JSONSerialization.jsonObject(with: $0) }
                     data = try await api.rpc("mm_ranked_ai_result2", ["p_game": pending.ticket.uuidString, "p_result": pending.outcome.rawValue,
                                                                      "p_record": record ?? NSNull()])
@@ -376,7 +395,11 @@ final class PlayerAccount: ObservableObject {
                     data = try await api.rpc("mm_ranked_ai_result", ["p_game": pending.ticket.uuidString, "p_result": pending.outcome.rawValue])
                 }
                 record.resolvePendingRankedResult(pending.ticket)
-                if let standing = try? RankedStanding.parse(data) { record.adopt(standing) }
+                if let standing = try? RankedStanding.parse(data) {
+                    record.settleRanked(ticket: pending.ticket, settlement: standing.settlement, check: standing.check, change: standing.change,
+                                        points: standing.points)
+                    record.adopt(standing)
+                }
             } catch {
                 // A ticket the server doesn't know never will be; anything else waits for the next sync.
                 if SupabaseLite.code(of: error) == "not_found" { record.resolvePendingRankedResult(pending.ticket) }
@@ -552,6 +575,33 @@ final class PlayerAccount: ObservableObject {
     }
 
     /// Sends one finished game. Never throws: the caller keeps what could not be sent and tries again later.
+    /// Sends a freeze report the player chose to send (docs/FREEZE_LOG.md); false when it couldn't go now. Never throws.
+    func sendDiagnostic(kind: String, report: String) async -> Bool {
+        guard phase == .ready else { return false }
+        let info = Bundle.main.infoDictionary
+        let params: [String: Any] = [
+            "p_platform": "ios", "p_app_version": String((info?["CFBundleShortVersionString"] as? String ?? "").prefix(40)),
+            "p_build": String((info?["CFBundleVersion"] as? String ?? "").prefix(40)), "p_kind": kind,
+            "p_report": String(report.prefix(65_000))]
+        do {
+            _ = try await api.rpc("mm_send_diagnostic", params)
+            return true
+        } catch { return false }
+    }
+
+    /// The server's settings for this build (mm_app_config): the menu's notice, card-name fixes and feature switches. Best
+    /// effort: the last copy stays when this fails.
+    /// A voice chat token for one seat of one game (the agora-token edge function; VoiceRoom).
+    func voiceToken(channel: String, account seat: String) async throws -> (appId: String, token: String) {
+        try await api.voiceToken(channel: channel, account: seat)
+    }
+
+    func refreshAppConfig() async {
+        guard phase == .ready else { return }
+        let build = Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") ?? 0
+        if let data = try? await api.rpc("mm_app_config", ["p_platform": "ios", "p_build": build]) { AppConfigStore.shared.store(data) }
+    }
+
     func recordGame(_ match: MatchRecord) async -> GameUploadResult {
         guard phase == .ready, username != nil else { return .unavailable }
         #if DEBUG
@@ -567,6 +617,7 @@ final class PlayerAccount: ObservableObject {
                 ["name": String(opponent.name.prefix(60)), "commander": opponent.commander.map { String($0.prefix(160)) } ?? NSNull(), "ai": opponent.isAI]
             }]
         if match.turns > 0 { params["p_turns"] = min(1000, match.turns) }
+        if let seconds = match.durationSeconds, seconds > 0 { params["p_duration_seconds"] = min(86_400, seconds) }
         if let change = match.rankChange { params["p_rank_points"] = change.after.points }
         do {
             _ = try await api.rpc("mm_record_game", params)
@@ -713,8 +764,20 @@ final class SupabaseLite: @unchecked Sendable {
     }
 
     func rpc(_ function: String, _ params: [String: Any] = [:]) async throws -> Data {
+        try await post("rest/v1/rpc/\(function)", params)
+    }
+
+    /// A voice chat token for one seat of one game (the agora-token edge function; VoiceRoom).
+    func voiceToken(channel: String, account: String) async throws -> (appId: String, token: String) {
+        let data = try await post("functions/v1/agora-token", ["channel": channel, "account": account])
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let appId = json["appId"] as? String, let token = json["token"] as? String else { throw Failure(code: "error") }
+        return (appId, token)
+    }
+
+    private func post(_ path: String, _ params: [String: Any]) async throws -> Data {
         let token = try await accessToken()
-        var request = URLRequest(url: Self.baseURL.appendingPathComponent("rest/v1/rpc/\(function)"))
+        var request = URLRequest(url: Self.baseURL.appendingPathComponent(path))
         request.httpMethod = "POST"
         request.timeoutInterval = 15
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

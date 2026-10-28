@@ -127,10 +127,23 @@ class CardChoicePlanTest {
         val p = plan(first, order)
         for (count in 0 until 14) {
             val current = snapshot("Select a card to discard (selected $count of 14, min 14)", count + 1, hand, order.take(count))
+            assertTrue("a quiet engine between prompts is not the end of the choice", p.expectsMorePrompts)
             assertEquals("card ${count + 1} in the chosen order", listOf(order[count]), p.next(current, false)?.targetIds)
             assertNull("never answers the same prompt twice", p.next(current, false))
             assertFalse(p.stopped)
         }
+        assertFalse("the fourteenth card ends it (min == max: no Done)", p.expectsMorePrompts)
+    }
+
+    /** A choice below its maximum owes a Done after its last card (CardChoicePlanTests.swift). */
+    @Test fun fewerThanMaximumStillOwesDone() {
+        val first = snapshot("Choose (selected 0 of 6, min 2)", 1, ids, emptyList())
+        val p = plan(first, listOf(ids[0], ids[1]))
+        assertEquals(listOf(ids[0]), p.next(first, false)?.targetIds)
+        assertEquals(listOf(ids[1]), p.next(snapshot("Choose (selected 1 of 6, min 2)", 2, ids, listOf(ids[0])), false)?.targetIds)
+        assertTrue(p.expectsMorePrompts)
+        assertEquals(false, p.next(snapshot("Choose (selected 2 of 6, min 2)", 3, ids, listOf(ids[0], ids[1]), done = true), false)?.confirmed)
+        assertFalse(p.expectsMorePrompts)
     }
 
     @Test fun pendingClearWithUnchangedPromptRequiresManualReview() {

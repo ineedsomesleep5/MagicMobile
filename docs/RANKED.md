@@ -1,7 +1,7 @@
 # Brackets, Quick Match, Ranked and profiles
 
 Caleb asked for this on 2026-10-04: Commander brackets for decks, a Quick Match against an AI at your
-deck's bracket, a 1v1 ranked ladder from Bronze to Mythic with monthly seasons (wins and losses both
+deck's bracket, a 1v1 ranked ladder from Bronze to Mythic with quarterly seasons (wins and losses both
 count, AI wins count, you can rank down), a full player profile, rank-up and rank-down animations, and
 better AI decks. iOS and Android match each other; `apps/android/core/src/test/resources/parity/ranked-cases.json`
 checks the shared rules on both.
@@ -31,27 +31,29 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 
 - Bronze, Silver, Gold, Platinum, Diamond in divisions IV–I, then Mythic. Four pips win a division.
 - Ladder option B (Caleb, 2026-10-15; docs/cloud/ladder-options.md): a win earns 2 pips in Bronze, Silver and Gold
-  and 1 from Platinum; a loss costs nothing in Bronze and 1 pip elsewhere. A loss never takes you out of your tier
-  (Mythic can fall back to Diamond, never below Diamond IV).
+  and 1 from Platinum; a loss costs nothing in Bronze and 1 pip elsewhere. A crushing loss against the AI (it still
+  had 30 of its 40 life, read from the game record) costs 2 (Caleb, 2026-10-26), except in Platinum, where a win earns 1 and so does every loss cost (2026-10-28). A loss never takes you out of your
+  tier (Mythic can fall back to Diamond, never below Diamond IV).
 - Bonus: +1 for a win with a deck below the tier's opponent brackets ("underdog"). The old third-win streak bonus is
   gone (two-pip wins replace it). Draws change nothing and end the streak.
-- Seasons are calendar months (UTC). A new month records the season and drops everyone one tier, keeping
+- Seasons (UTC): October 2026 was a month; from November 2026 each season is three months, named by its first
+  ("2026-11" runs November to January; `mm_season_for`, `RankLadder.season`). A new season records the last one and drops everyone one tier, keeping
   the division (Mythic restarts at Diamond IV).
 
-| Tier | Opponent decks | Your deck up to | AI skill |
+| Tier | AI deck Power (by division IV → I) | AI deck and your deck up to | AI skill |
 |---|---|---|---|
-| Bronze | The three gentlest official precons (Core): Chaos Incarnate, Grave Danger, Token Triumph | 2 | 1 |
-| Silver | 2 | 2 | 2 |
-| Gold | 2–3 | 3 | 3 |
-| Platinum | 3 | 3 | 4 |
-| Diamond | 3–4 | 4 | 5 |
-| Mythic | 4 | 4 | 6 |
+| Bronze | 3–4 | 2 | 1 |
+| Silver | 4–5 | 2 | 2 |
+| Gold | 6–7 | 3 | 3 |
+| Platinum | 6.75–7.75 | 3 | 4 |
+| Diamond | 7.5–8.5 | 4 | 5 |
+| Mythic | 8.5 | 4 | 6 |
 
-In tiers with two opponent brackets, divisions IV–III face the lower one and II–I the upper.
-
-Bronze's three precons come from C3's equal-skill round-robin of all five (2026-10-15, 200 games, docs/cloud/reports/c3.md):
-Chaos Incarnate 36%, Grave Danger 45%, Token Triumph 50%, First Flight 56%, Draconic Destruction 62%. Going first won 65%
-of those games, a bigger effect than any deck.
+Since 2026-10-25 (docs/DECK_POWER.md) the AI brings the deck whose hidden Power is nearest the division's target, at
+random among the three nearest, from the tier's bracket or lower, never your commander and not one you faced recently.
+Each deck's Power comes from its own AI-vs-AI games (`scripts/ranked/deck_power.py rate`), shipped as the `power` block
+of `ai-decks.json`. A deck without a Power falls back to the old rule: the tier's opponent bracket (Bronze the three
+gentlest precons).
 
 Why this curve (2026-10-11): the XMage AI searches `max(4, skill)` moves deep and thinks `skill × 3` s,
 so skills 1–4 differ only in thinking time and depth grows from Diamond. Ranked never asks for Bracket 1:
@@ -77,9 +79,9 @@ against 4 is 53% (45–60%), not yet a measurable step (docs/cloud/reports/c4.md
 
 ## Play modes
 
-- **Quick Match**: one AI. Defaults to an AI deck at your deck's bracket (a precon when that is Core or
-  below) and skill 3; the player can set the
-  opponent's bracket, pick the exact deck and set the skill (1–10). No rank change.
+- **Quick Match**: one AI. Easy (an AI deck near Power 3.5, skill 2), Medium (5.5, skill 3, the default) or Hard
+  (7.5, skill 5). Advanced keeps the old controls: the opponent's bracket (by default your deck's, a precon at Core
+  or below), the exact deck and the skill (1–10). No rank change.
 - **Ranked**: searches the queue for a person within one tier and one bracket for 40 s, then an AI from your
   tier's pool takes the seat ("Play the AI now" skips the wait). Leaving a ranked game early is a loss.
 - **Custom Table**: the existing setup (up to three AIs, or an online table). Recorded in the profile only.
@@ -89,11 +91,13 @@ against 4 is 53% (45–60%), not yet a measurable step (docs/cloud/reports/c4.md
 `apps/ios/MagicMobile/Resources/ai-decks.json`, built by `scripts/ranked/build_ai_decks.py` from EDHREC's
 average decks per bracket (fetched 2026-10-04), limited to this XMage catalogue and swapped down so each
 deck's list check is at most its bracket. Six commanders the XMage AI plays well (proactive creature
-decks): Krenko, Gishath, Lathril (brackets 1–4), Edgar Markov, The Ur-Dragon, Wilhelt (2–4). With the five
-precons (Core) that is 26 AI decks. Players may pick the bracket decks too ("Included · Bracket N").
+decks): Krenko, Gishath, Lathril (brackets 1–4), Edgar Markov, The Ur-Dragon, Wilhelt (2–4). On 2026-10-24
+seven more widened the Power range (docs/DECK_POWER.md), one bracket each: Kaalia of the Vast, Winota, The
+First Sliver, Miirym (4), Marisi, Kynaios and Tiro (1), Tormod (2). On 2026-10-25 eight more for about five decks per rank: Tiamat, Lathliss, Old Gnawbone, Phelddagrif, Zedruu,
+Karador, Meren and Marisi (2). With the five precons (Core) that is 41 AI decks. Players may pick the bracket decks too ("Included · Bracket N").
 
-All 26 passed XMage's Commander deck validation on the desktop JVM engine, and all resolve through the
-iOS app's resolver (`AIDeckPoolTests`).
+The first 26 passed XMage's Commander deck validation on the desktop JVM engine, and all resolve through the
+iOS app's resolver (`AIDeckPoolTests`). The seven new decks are validated by their calibration games.
 
 ### Calibration (desktop JVM, AI vs AI, 2026-10-04)
 
@@ -120,6 +124,18 @@ other's badge in the friends list and can open a ranked card.
 The profile picture is the favorite commander's illustration alone (`CommanderArtMedallion`, art-only
 crop in the table's brass ring), chosen from commanders played or any of the player's decks (saved and
 included); "Most played" is the default. Friends' cards show the same picture.
+
+Since 2026-10-27 the profile also reads `ProfileInsights` from the player's own games (parity/profile-cases.json
+"insights"): the last ten results, records by mode and by the tier a ranked game was played at, the five commanders faced
+most, the fastest win, average turns in wins and losses, the average game length (games send `p_duration_seconds` from
+then on) and the best deck (three games or more). Game cards show the turn and length, and "Crushing loss" for a two-pip loss.
+
+## Leaderboard
+
+`mm_ranked_leaderboard` (everyone or friends) gives each row the player's commander, rank, record, online dot and current
+win streak, the season's end (`seasonEnds`) and last season's top three (`champions`, from `ranked_season_history` and
+standings not yet rolled over). The screens show commander portraits with the rank's emblem, tier dividers, a flame for
+three straight wins or more, "ends in N days" on the live strip, and a Champions tab.
 
 ## Friend challenges
 
@@ -181,15 +197,18 @@ test accounts were made on the live project. A live two-phone ranked match has n
 could publish any rank. Now the server is the referee, using the existing database (no new server, no game simulation):
 
 - `ranked_standings` is the source of truth (points = step × 4 + pips, Mythic past 80), with the same ladder rules
-  as `RankLadder.swift` / `Ranked.kt`: bonuses, Bronze IV floor, monthly rollover into `ranked_season_history`.
+  as `RankLadder.swift` / `Ranked.kt`: bonuses, Bronze IV floor, season rollover into `ranked_season_history`.
   `ranked_results` records every change and why. `ranked_profiles` stays the public card; the server writes its
   rank fields and `mm_ranked_publish` now only sets the title and favourite commander (older builds keep working).
 - **Person vs person:** `mm_ranked_report` settles a match when both sides agree (win/loss or draw/draw).
   Disagreements change nothing. A lone report settles after an hour (the side that never reported left: a loss). The
   same two players count at most three matches a day (win trading with spare accounts).
 - **Against the AI** (the phone runs the game, so the server can only bound it): `mm_ranked_ai_start` hands out a
-  ticket (at most ten an hour) and `mm_ranked_ai_result` takes one result for it. A win needs four minutes since the
-  ticket, at most twelve AI wins count per UTC day, and a ticket not answered within twelve hours becomes a loss.
+  ticket (at most ten an hour) and `mm_ranked_ai_result` takes one result for it. A seeded win is judged by its game
+  record's turns, not the clock (Caleb, 2026-10-26: fast decks win in a minute); only an older unseeded ticket keeps a
+  two-minute floor. There is no daily cap on AI wins (removed 2026-10-26), and a ticket not answered within twelve
+  hours becomes a loss. The ticket also carries the AI's tuning (`ranked_ai_tuning`, docs/DECK_POWER.md). The answer carries `settlement`, the server's `change` and, for an unverified win, `check`: the apps show the
+  reason on the result screen and in Recent games instead of a win quietly adding nothing.
 - `mm_ranked_standing` returns the caller's standing (settling anything stale first) plus `unsettled`, the matches
   they reported that the other side hasn't yet. `mm_ranked_seed` lets a player with no server standing bring their
   phone's earlier progress once, capped at Gold IV. Standings published before the migration carried over as they were.
@@ -197,7 +216,7 @@ could publish any rank. Now the server is the referee, using the existing databa
   ticket (queued and retried, `PlayerRecordStore.pendingRankedResults`), then adopts the server's standing
   (`RankedStanding`, `PlayerRecordStore.adopt` / `PlayerRecordFile.adopting`). While a result is still on its way
   the phone keeps its own number, so a pip never flickers away. Without a profile name, ranked stays on the phone.
-- **Limits:** a modified app can still claim AI wins within the caps, and two colluding accounts can trade wins
+- **Limits:** a modified app can still claim AI wins it forges a record for, or withhold a crushing loss's record, and two colluding accounts can trade wins
   within the pair cap. The host phone runs online games and so holds hidden information (PROTOCOL.md).
 - Tests: `supabase/tests/ranked_referee.sql` (run by `verify-ranked.mjs` after the older suites, which test the
   functions as they were before this migration), `RankedStandingTests.swift`, `RankedStandingTest.kt`.
@@ -221,7 +240,8 @@ could publish any rank. Now the server is the referee, using the existing databa
   `ranked_engine_builds`, one human and one AI seat, an AI skill no more than one tier below the ticket's with the
   engine's depth and mistake chance for that skill (`mm_ai_engine_depth` / `mm_ai_engine_mistakes`, keep them in step
   with `AIDifficulty.java`), an end where the human alone won and the AI lost, increasing turn marks, the entry
-  grammar with no concede, at least four turns and five seconds a turn since the ticket. A failed check settles the win
+  grammar with no concede, a final turn of 5 or later (3 for a bracket 5 deck: XMage counts each player's turn, so a
+  win inside the first two rounds is suspect) and four seconds a turn since the ticket. A failed check settles the win
   as `unverified` (no rank change, `ranked_ai_games.record_check` says why). Every win's record is kept in
   `ranked_ai_records` for review and can be replayed with `scripts/dev/replay_record.sh`.
 - **Release step:** every release whose engine records games registers its engine build before it goes out, or its

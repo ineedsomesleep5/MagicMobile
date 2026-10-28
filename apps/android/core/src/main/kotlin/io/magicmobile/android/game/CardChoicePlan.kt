@@ -50,6 +50,10 @@ class CardChoicePlan private constructor(
 
     fun cancel() { stopped = true }
 
+    /** True while a selection still owes the engine answers: cards not yet chosen, or a Done to send (CardChoicePlan.swift). */
+    val expectsMorePrompts: Boolean
+        get() = !stopped && kind == Kind.SELECTION && !doneSent && !(expectedChosen == selected.toSet() && selected.size == maximumSelection)
+
     /** A cleared pending submission with the same prompt has not authorized another reply. */
     fun submittedPromptIsUnchanged(snapshot: GameSnapshot): Boolean {
         val last = lastPrompt ?: return false

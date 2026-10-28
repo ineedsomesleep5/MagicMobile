@@ -40,8 +40,41 @@ enum BundledCatalogueData {
     }
 }
 
-/// Resolves only reverse faces attested by the bundled, selected-printing aliases.
+/// Resolves only reverse faces attested by the bundled, selected-printing aliases, and the names a card is looked up by.
 enum NativeDeckCanonicalNames {
+    /// The names a deck's card is looked up by, in order (parity/card-name-cases.json; Caleb, 2026-10-26: Archidekt links
+    /// dropped cards that search then found). The exact name first, then plain letters for accents ("Troll of Khazad-dûm":
+    /// XMage spells names without them), then the front of a two-part name ("Brazen Borrower // Petty Theft": adventure,
+    /// omen and prepare cards, whose full name only Archidekt sends). An exact split-card name wins by coming first.
+    static func candidates(_ raw: String) -> [String] {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        var found: [String] = []
+        func add(_ value: String) { if !value.isEmpty, !found.contains(value) { found.append(value) } }
+        add(name)
+        add(plainLetters(name))
+        if let split = name.range(of: " // ") {
+            let front = name[..<split.lowerBound].trimmingCharacters(in: .whitespaces)
+            add(front)
+            add(plainLetters(front))
+        }
+        return found
+    }
+
+    /// Whether `candidate` is the front of the two-part `name` (as written or in plain letters). A double-faced card's
+    /// front never stands in for a different back: its aliases name the real one ("Front // Wrong" stays unknown).
+    static func isFront(_ candidate: String, of name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let split = trimmed.range(of: " // ") else { return false }
+        let front = trimmed[..<split.lowerBound].trimmingCharacters(in: .whitespaces)
+        return candidate == front || candidate == plainLetters(front)
+    }
+
+    /// Accents off, Æ as Ae, a curly apostrophe straight.
+    static func plainLetters(_ name: String) -> String {
+        let swapped = name.replacingOccurrences(of: "\u{2019}", with: "'").replacingOccurrences(of: "Æ", with: "Ae").replacingOccurrences(of: "æ", with: "ae")
+        return String(String.UnicodeScalarView(swapped.decomposedStringWithCompatibilityMapping.unicodeScalars
+            .filter { $0.properties.generalCategory != .nonspacingMark }))
+    }
 
     static func reverseFaces(_ aliases: [String: String], exactNames: Set<String>) -> [String: String] {
         var candidates: [String: Set<String>] = [:]
@@ -228,8 +261,18 @@ struct NativeDeckMetadataCatalogue {
     }
 
     func card(named name: String) -> Card? {
-        index[name] ?? aliases[name].flatMap { index[$0] } ?? reverseFaces[name].flatMap { index[$0] }
+        for candidate in NativeDeckCanonicalNames.candidates(name) {
+            guard let card = index[candidate] ?? aliases[candidate].flatMap({ index[$0] }) ?? reverseFaces[candidate].flatMap({ index[$0] }) else { continue }
+            if NativeDeckCanonicalNames.isFront(candidate, of: name), aliasedFronts.contains(card.name) { continue }
+            return card
+        }
+        // A fix the server sent for a name a deck site spells its own way (AppConfig).
+        let fixes = AppConfigStore.shared.current.nameFixes
+        return NativeDeckCanonicalNames.candidates(name).lazy.compactMap { fixes[$0].flatMap { self.index[$0] } }.first
     }
+
+    /// Front faces with an attested back (double-faced cards).
+    private var aliasedFronts: Set<String> { Set(aliases.values) }
 
     /// The front face of a double-faced card, named by its reverse face; nil for any other name.
     func frontFace(ofReverse name: String) -> String? { reverseFaces[name] }

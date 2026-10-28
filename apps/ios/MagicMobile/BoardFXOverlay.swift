@@ -1079,6 +1079,7 @@ struct GameAudioSettings: View {
     @AppStorage(GameAudio.musicKey, store: MagicMobilePreferences.current) private var music = true
     @AppStorage(GameAudio.effectsVolumeKey, store: MagicMobilePreferences.current) private var effectsVolume = 0.9
     @AppStorage(GameAudio.musicVolumeKey, store: MagicMobilePreferences.current) private var musicVolume = GameAudio.defaultMusicVolume
+    @AppStorage(VoiceChatRules.pushToTalkKey, store: MagicMobilePreferences.current) private var pushToTalk = false
     @State private var soundLabOpen = false
 
     /// A level of zero reads as off, and switching music back on brings back a level you can hear.
@@ -1099,6 +1100,7 @@ struct GameAudioSettings: View {
             if musicOn.wrappedValue {
                 TavernSlider(value: $musicVolume, label: "Music volume", identifier: "settings.musicVolume")
             }
+            TavernToggle(title: "Push to Talk", isOn: $pushToTalk, identifier: "settings.pushToTalk")
             HStack(spacing: 8) {
                 Spacer(minLength: 4)
                 Button {

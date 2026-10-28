@@ -1,0 +1,815 @@
+{
+  "activePlayerId" : "92d8e36a-c433-4881-949d-18950c930d84",
+  "answers" : [
+    {
+      "answer" : {
+        "kind" : "boolean",
+        "value" : false
+      },
+      "type" : "answer_yes_no"
+    }
+  ],
+  "bridgeRevision" : 60,
+  "gameStatus" : "in_progress",
+  "id" : "62b1a731-f4da-4905-9eab-9f7c621da06a",
+  "isSpectating" : false,
+  "legalActions" : [
+    {
+      "abilityId" : null,
+      "cardInstanceId" : null,
+      "cardName" : null,
+      "choiceIds" : null,
+      "compactPromptTitle" : "Cancel",
+      "confirmed" : false,
+      "id" : "f236420c-99de-4540-9322-70bbf3ee25ba:answer_yes_no",
+      "label" : "Cancel",
+      "messageId" : 60,
+      "playerId" : "92d8e36a-c433-4881-949d-18950c930d84",
+      "promptId" : "f236420c-99de-4540-9322-70bbf3ee25ba",
+      "sourceInstanceId" : null,
+      "sourceZone" : null,
+      "type" : "answer_yes_no"
+    }
+  ],
+  "log" : [
+    {
+      "id" : "xmage:62b1a731-f4da-4905-9eab-9f7c621da06a:you:1",
+      "message" : "Game has started"
+    },
+    {
+      "id" : "xmage:62b1a731-f4da-4905-9eab-9f7c621da06a:you:3",
+      "message" : "<font color='#20B2AA'>You</font>'s library is shuffled"
+    },
+    {
+      "id" : "xmage:62b1a731-f4da-4905-9eab-9f7c621da06a:you:5",
+      "message" : "<font color='#20B2AA'>Rook</font>'s library is shuffled"
+    },
+    {
+      "id" : "xmage:62b1a731-f4da-4905-9eab-9f7c621da06a:you:10",
+      "message" : "<font color='#20B2AA'>You</font> chooses that they take the first turn"
+    },
+    {
+      "id" : "xmage:62b1a731-f4da-4905-9eab-9f7c621da06a:you:12",
+      "message" : "<font color='#20B2AA'>You</font> draws seven cards"
+    },
+    {
+      "id" : "xmage:62b1a731-f4da-4905-9eab-9f7c621da06a:you:14",
+      "message" : "<font color='#20B2AA'>Rook</font> draws seven cards"
+    },
+    {
+      "id" : "xmage:62b1a731-f4da-4905-9eab-9f7c621da06a:you:19",
+      "message" : "<font color='#20B2AA'>You</font> keeps hand"
+    },
+    {
+      "id" : "xmage:62b1a731-f4da-4905-9eab-9f7c621da06a:you:24",
+      "message" : "<font color='#20B2AA'>Rook</font> keeps hand"
+    },
+    {
+      "id" : "xmage:62b1a731-f4da-4905-9eab-9f7c621da06a:you:26",
+      "message" : "TURN 1 for <font color='#20B2AA'>You</font> (40 - 40)"
+    },
+    {
+      "id" : "xmage:62b1a731-f4da-4905-9eab-9f7c621da06a:you:28",
+      "message" : "<font color='#20B2AA'>You</font> draws a card"
+    },
+    {
+      "id" : "xmage:62b1a731-f4da-4905-9eab-9f7c621da06a:you:40",
+      "message" : "<font color='#20B2AA'>You</font> casts <font color='#FF6347' object_id='ce306fb8-7d95-468b-90a8-b5d9279a5581'>Lightning Bolt</font> [ce3] targeting <font color='#20B2AA'>Rook</font> from hand"
+    },
+    {
+      "id" : "xmage:62b1a731-f4da-4905-9eab-9f7c621da06a:you:54",
+      "message" : "<font color='#20B2AA'>You</font> casts <font color='#FF6347' object_id='8eac82b9-d7cc-4b24-8e6d-ed7036463050'>Shock</font> [8ea] targeting <font color='#20B2AA'>Rook</font> from hand"
+    }
+  ],
+  "manaPayment" : null,
+  "pendingStatus" : null,
+  "phase" : "PRECOMBAT_MAIN",
+  "players" : [
+    {
+      "battlefield" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "29fbd89c-486a-4b8b-83e6-d9db98daa8eb",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Mountain",
+          "oracleText" : "{T}: Add {R}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : true,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Mountain",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "7a725b5f-35a8-419f-8b0e-f5bcb52b3550",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Island",
+          "oracleText" : "{T}: Add {U}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : true,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Island",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "bbf7ea3d-8d90-4df5-8eaa-e16273357fde",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Mountain",
+          "oracleText" : "{T}: Add {R}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : true,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Mountain",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "e5af5128-0018-4c2c-b458-e56ac3a3c407",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Island",
+          "oracleText" : "{T}: Add {U}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Island",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "ef620271-e289-44ac-ae72-41e2530dacc3",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Mountain",
+          "oracleText" : "{T}: Add {R}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Mountain",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "command" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "1",
+          "displayToughness" : "4",
+          "icons" : [
+
+          ],
+          "instanceId" : "fc16be86-4b4a-4c7a-a105-08221160c697",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : "{1}{W}{U}{B}",
+          "name" : "Zur the Enchanter",
+          "oracleText" : "Flying\nWhenever {this} attacks, you may search your library for an enchantment card with mana value 3 or less, put it onto the battlefield, then shuffle.\n<b>Commander</b>",
+          "phasedIn" : null,
+          "reportedPower" : "1",
+          "reportedToughness" : "4",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Legendary Creature — Human Wizard",
+          "visibleIcons" : [
+            "ABILITY_FLYING"
+          ]
+        }
+      ],
+      "commanderDamage" : {
+
+      },
+      "commanders" : [
+        {
+          "castsFromCommandZone" : 0,
+          "commanderTax" : 0,
+          "damageToPlayers" : {
+
+          },
+          "id" : "fc16be86-4b4a-4c7a-a105-08221160c697",
+          "name" : "Zur the Enchanter",
+          "ownerPlayerId" : "92d8e36a-c433-4881-949d-18950c930d84"
+        }
+      ],
+      "commanderTax" : 0,
+      "commanderTaxKnown" : true,
+      "counters" : {
+
+      },
+      "displayName" : "You",
+      "exile" : [
+
+      ],
+      "graveyard" : [
+
+      ],
+      "hand" : [
+
+      ],
+      "handCount" : 0,
+      "hasLeft" : false,
+      "initiative" : false,
+      "isHuman" : true,
+      "library" : [
+
+      ],
+      "libraryCount" : 91,
+      "life" : 40,
+      "manaPool" : {
+        "B" : 0,
+        "C" : 0,
+        "G" : 0,
+        "R" : 0,
+        "U" : 1,
+        "W" : 0
+      },
+      "monarch" : false,
+      "playerId" : "92d8e36a-c433-4881-949d-18950c930d84",
+      "poison" : 0,
+      "stack" : [
+
+      ]
+    },
+    {
+      "battlefield" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "59204127-69f1-4ec8-8cf2-79bda09c1c81",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Plains",
+          "oracleText" : "{T}: Add {W}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Plains",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "command" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "2",
+          "displayToughness" : "2",
+          "icons" : [
+
+          ],
+          "instanceId" : "0789ae99-94e2-4720-b912-7cc1d72a9b3f",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : "{W}",
+          "name" : "Isamaru, Hound of Konda",
+          "oracleText" : "<b>Commander</b>",
+          "phasedIn" : null,
+          "reportedPower" : "2",
+          "reportedToughness" : "2",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Legendary Creature — Dog",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "commanderDamage" : {
+
+      },
+      "commanders" : [
+        {
+          "castsFromCommandZone" : 0,
+          "commanderTax" : 0,
+          "damageToPlayers" : {
+
+          },
+          "id" : "0789ae99-94e2-4720-b912-7cc1d72a9b3f",
+          "name" : "Isamaru, Hound of Konda",
+          "ownerPlayerId" : "d0875736-b097-4d15-8f3d-09dbb28ed699"
+        }
+      ],
+      "commanderTax" : 0,
+      "commanderTaxKnown" : true,
+      "counters" : {
+
+      },
+      "displayName" : "Rook",
+      "exile" : [
+
+      ],
+      "graveyard" : [
+
+      ],
+      "hand" : [
+
+      ],
+      "handCount" : 0,
+      "hasLeft" : false,
+      "initiative" : false,
+      "isHuman" : true,
+      "library" : [
+
+      ],
+      "libraryCount" : 98,
+      "life" : 40,
+      "manaPool" : {
+        "B" : 0,
+        "C" : 0,
+        "G" : 0,
+        "R" : 0,
+        "U" : 0,
+        "W" : 0
+      },
+      "monarch" : false,
+      "playerId" : "d0875736-b097-4d15-8f3d-09dbb28ed699",
+      "poison" : 0,
+      "stack" : [
+
+      ]
+    }
+  ],
+  "priorityPlayerId" : "92d8e36a-c433-4881-949d-18950c930d84",
+  "promptEnvelopeV2" : {
+    "abilities" : null,
+    "amounts" : null,
+    "cards" : [
+      {
+        "attachedToInstanceId" : null,
+        "blocking" : null,
+        "copySourceArtworkName" : null,
+        "counters" : null,
+        "damage" : null,
+        "disabledReason" : null,
+        "displayPower" : null,
+        "displayToughness" : null,
+        "icons" : [
+
+        ],
+        "instanceId" : "eadf79c9-997d-4fa5-9415-92bdc775a162",
+        "isAttacking" : null,
+        "isToken" : null,
+        "manaCost" : "{R}",
+        "name" : "Shock",
+        "oracleText" : "{this} deals 2 damage to any target.",
+        "phasedIn" : null,
+        "reportedPower" : null,
+        "reportedToughness" : null,
+        "selectable" : true,
+        "summoningSickness" : null,
+        "tapped" : null,
+        "tokenArtwork" : null,
+        "tokenColors" : null,
+        "typeLine" : "Instant",
+        "visibleIcons" : [
+
+        ]
+      },
+      {
+        "attachedToInstanceId" : null,
+        "blocking" : null,
+        "copySourceArtworkName" : null,
+        "counters" : null,
+        "damage" : null,
+        "disabledReason" : null,
+        "displayPower" : null,
+        "displayToughness" : null,
+        "icons" : [
+
+        ],
+        "instanceId" : "1e1aaf9a-97fe-4f10-b16b-f3603ac84aa0",
+        "isAttacking" : null,
+        "isToken" : null,
+        "manaCost" : "{R}",
+        "name" : "Lightning Bolt",
+        "oracleText" : "{this} deals 3 damage to any target.",
+        "phasedIn" : null,
+        "reportedPower" : null,
+        "reportedToughness" : null,
+        "selectable" : true,
+        "summoningSickness" : null,
+        "tapped" : null,
+        "tokenArtwork" : null,
+        "tokenColors" : null,
+        "typeLine" : "Instant",
+        "visibleIcons" : [
+
+        ]
+      }
+    ],
+    "choices" : null,
+    "chosenTargets" : [
+
+    ],
+    "confirmation" : null,
+    "id" : "f236420c-99de-4540-9322-70bbf3ee25ba",
+    "kind" : "target",
+    "manaChoices" : null,
+    "maxChoices" : 1,
+    "message" : "Select a spell",
+    "messageId" : 60,
+    "method" : "GAME_PICK_TARGET",
+    "minChoices" : 1,
+    "modes" : null,
+    "multiAmounts" : null,
+    "optionKeys" : [
+      "chosenTargets",
+      "queryType",
+      "secondMessage",
+      "targetZone"
+    ],
+    "orderedItems" : null,
+    "piles" : null,
+    "playerId" : "92d8e36a-c433-4881-949d-18950c930d84",
+    "players" : null,
+    "required" : false,
+    "responseCommand" : {
+      "confirmed" : null,
+      "messageId" : 60,
+      "pay" : null,
+      "promptId" : "f236420c-99de-4540-9322-70bbf3ee25ba",
+      "type" : "choose_target"
+    },
+    "responseKind" : "target",
+    "targetIds" : [
+      "eadf79c9-997d-4fa5-9415-92bdc775a162",
+      "1e1aaf9a-97fe-4f10-b16b-f3603ac84aa0"
+    ],
+    "targets" : [
+
+    ],
+    "totalMax" : null,
+    "totalMin" : null
+  },
+  "promptText" : "Select a spell",
+  "source" : "xmage-ondevice",
+  "step" : "PRECOMBAT_MAIN",
+  "thinkingPlayerID" : null,
+  "turn" : 1,
+  "viewerPlayerId" : "92d8e36a-c433-4881-949d-18950c930d84",
+  "waitingOnPlayerId" : "92d8e36a-c433-4881-949d-18950c930d84",
+  "winnerPlayerIds" : [
+
+  ],
+  "xmage" : {
+    "bridgeRevision" : 60,
+    "combat" : [
+
+    ],
+    "gameId" : "62b1a731-f4da-4905-9eab-9f7c621da06a",
+    "panels" : {
+      "command" : true,
+      "exile" : true,
+      "graveyard" : true,
+      "lookedAt" : false,
+      "revealed" : false,
+      "search" : false,
+      "stack" : true
+    },
+    "playableObjects" : [
+      {
+        "abilities" : [
+          {
+            "category" : "basicManaAbilities",
+            "id" : "06dd9a31-25e8-4abc-ba52-e467f4f97b16",
+            "label" : "{T}: Add {U}."
+          }
+        ],
+        "cardName" : "Island",
+        "categories" : [
+          "basicManaAbilities"
+        ],
+        "sourceInstanceId" : "e5af5128-0018-4c2c-b458-e56ac3a3c407",
+        "sourceZone" : "battlefield"
+      },
+      {
+        "abilities" : [
+          {
+            "category" : "basicManaAbilities",
+            "id" : "614d6e81-e1ab-46cc-b696-685a22aef614",
+            "label" : "{T}: Add {R}."
+          }
+        ],
+        "cardName" : "Mountain",
+        "categories" : [
+          "basicManaAbilities"
+        ],
+        "sourceInstanceId" : "ef620271-e289-44ac-ae72-41e2530dacc3",
+        "sourceZone" : "battlefield"
+      }
+    ],
+    "players" : [
+      {
+        "active" : true,
+        "hasPriority" : true,
+        "name" : "You",
+        "passedAllTurns" : false,
+        "passedTurn" : false,
+        "playerId" : "92d8e36a-c433-4881-949d-18950c930d84",
+        "sideboard" : [
+
+        ],
+        "timerActive" : true
+      },
+      {
+        "active" : false,
+        "hasPriority" : false,
+        "name" : "Rook",
+        "passedAllTurns" : false,
+        "passedTurn" : false,
+        "playerId" : "d0875736-b097-4d15-8f3d-09dbb28ed699",
+        "sideboard" : [
+
+        ],
+        "timerActive" : false
+      }
+    ],
+    "stack" : [
+      {
+        "id" : "a280bcd8-0192-4906-8475-1504cc10d46f",
+        "name" : "Counterspell",
+        "objectType" : "SPELL",
+        "paid" : false,
+        "rulesText" : "Counter target spell.",
+        "sourceCard" : {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "a280bcd8-0192-4906-8475-1504cc10d46f",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : "{U}{U}",
+          "name" : "Counterspell",
+          "oracleText" : "Counter target spell.",
+          "phasedIn" : null,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Instant",
+          "visibleIcons" : [
+
+          ]
+        },
+        "sourceInstanceId" : null,
+        "sourceName" : "Counterspell",
+        "targetIds" : [
+
+        ]
+      },
+      {
+        "id" : "eadf79c9-997d-4fa5-9415-92bdc775a162",
+        "name" : "Shock",
+        "objectType" : "SPELL",
+        "paid" : true,
+        "rulesText" : "{this} deals 2 damage to any target.",
+        "sourceCard" : {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+            {
+              "category" : "COMMANDER",
+              "hint" : "Has 1 target(s). Move mouse over card to see target arrows:<br><br>Rook",
+              "iconType" : "OTHER_HAS_TARGETS",
+              "text" : "T-1"
+            }
+          ],
+          "instanceId" : "eadf79c9-997d-4fa5-9415-92bdc775a162",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : "{R}",
+          "name" : "Shock",
+          "oracleText" : "{this} deals 2 damage to any target.",
+          "phasedIn" : null,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Instant",
+          "visibleIcons" : [
+            "OTHER_HAS_TARGETS"
+          ]
+        },
+        "sourceInstanceId" : null,
+        "sourceName" : "Shock",
+        "targetIds" : [
+          "d0875736-b097-4d15-8f3d-09dbb28ed699"
+        ]
+      },
+      {
+        "id" : "1e1aaf9a-97fe-4f10-b16b-f3603ac84aa0",
+        "name" : "Lightning Bolt",
+        "objectType" : "SPELL",
+        "paid" : true,
+        "rulesText" : "{this} deals 3 damage to any target.",
+        "sourceCard" : {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+            {
+              "category" : "COMMANDER",
+              "hint" : "Has 1 target(s). Move mouse over card to see target arrows:<br><br>Rook",
+              "iconType" : "OTHER_HAS_TARGETS",
+              "text" : "T-1"
+            }
+          ],
+          "instanceId" : "1e1aaf9a-97fe-4f10-b16b-f3603ac84aa0",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : "{R}",
+          "name" : "Lightning Bolt",
+          "oracleText" : "{this} deals 3 damage to any target.",
+          "phasedIn" : null,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Instant",
+          "visibleIcons" : [
+            "OTHER_HAS_TARGETS"
+          ]
+        },
+        "sourceInstanceId" : null,
+        "sourceName" : "Lightning Bolt",
+        "targetIds" : [
+          "d0875736-b097-4d15-8f3d-09dbb28ed699"
+        ]
+      }
+    ],
+    "xmageCycle" : 27,
+    "zones" : [
+      {
+        "cards" : [
+
+        ],
+        "id" : "c276a832-6671-479c-af2d-841c8d22a391",
+        "name" : "Permanent - Exile"
+      }
+    ]
+  },
+  "xmageCycle" : 27
+}

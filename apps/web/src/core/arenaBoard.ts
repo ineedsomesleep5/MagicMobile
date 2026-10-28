@@ -4,7 +4,7 @@
  * and which combat declaration is being asked. Checked by test/arenaBoard.test.ts against parity/arena-board-cases.json.
  */
 import type { GameSnapshot, LegalAction, PlayerGameState, ZoneCard } from "./models";
-import { displayPower, displayToughness, isCreatureCard, playerLabel, viewerID } from "./models";
+import { displayPower, displayToughness, isCombatSelection, isCreatureCard, playerLabel, viewerID } from "./models";
 
 /** ArenaKeywordGlossary: what each keyword on a card means, in a sentence. */
 export const GLOSSARY: [string, string][] = [
@@ -123,6 +123,7 @@ export function extraHandCards(player: PlayerGameState, actions: LegalAction[]):
 /** The inspector's live-state notes for a card (CardInspector.liveState): its type, then what is true of it now. */
 export function liveState(card: ZoneCard, battlefield: ZoneCard[]): string[] {
   const details: string[] = [];
+  if (card.card.faceDown === true) details.push("Face down");
   if (card.card.isToken === true) details.push(card.card.copySourceArtworkName === undefined ? "Token" : "Token copy");
   if (card.card.typeLine) details.push(card.card.typeLine);
   if ((card.cardIcons ?? []).some((i) => i.iconType === "COMMANDER")) details.push("Commander");
@@ -146,11 +147,23 @@ export function liveState(card: ZoneCard, battlefield: ZoneCard[]): string[] {
   return details.filter((d) => { const key = d.toLowerCase(); if (seen.has(key)) return false; seen.add(key); return true; });
 }
 
-/** ArenaHandPosture.resolve: the hand rests for any decision on the board, while dragging and while spectating. */
+/** CardRulesReminder.text: a short note for a rule players often read differently than the engine applies it. */
+export function rulesReminder(card: ZoneCard): string | undefined {
+  if (card.card.faceDown === true) {
+    return "Face down: only you can see it. A card exiled face down is played through the card that exiled it: for Hideaway, use that card's own ability once its condition is met.";
+  }
+  return undefined;
+}
+
+/**
+ * ArenaHandPosture.resolve: the hand rests for any decision on the board and while spectating; a raised hand rests while
+ * its card is dragged, a spread one stays spread so the row stays under the finger.
+ */
 export type HandPosture = "raised" | "resting" | "spread";
 export function handPosture(s: { opened?: boolean; spread?: boolean; boardDecision?: boolean; dragging?: boolean; spectating?: boolean }): HandPosture {
-  if (s.spectating || s.dragging || s.boardDecision) return "resting";
+  if (s.spectating || s.boardDecision) return "resting";
   if (s.spread) return "spread";
+  if (s.dragging) return "resting";
   return s.opened ? "raised" : "resting";
 }
 
@@ -160,10 +173,28 @@ export function combatPhase(snapshot: GameSnapshot): "attackers" | "blockers" | 
   if (actions.some((a) => a.type === "declare_attackers")) return "attackers";
   if (actions.some((a) => a.type === "declare_blockers")) return "blockers";
   const prompt = snapshot.promptEnvelopeV2;
-  if (!prompt || prompt.playerId !== viewerID(snapshot) ||
-    !(prompt.responseKind.toLowerCase() === "target" || prompt.responseCommand?.type?.toLowerCase() === "choose_target")) return undefined;
+  if (!prompt || prompt.playerId !== viewerID(snapshot) || !isCombatSelection(prompt)) return undefined;
   const step = (snapshot.step ?? snapshot.phase).toLowerCase().replaceAll("_", "-");
   if (step.includes("declare-attack")) return "attackers";
   if (step.includes("declare-block")) return "blockers";
   return undefined;
+}
+
+/**
+ * The stack card can step aside (ArenaStackTuck.swift / .kt; Danny, 2026-10-26: sideways, the stack card covered what he
+ * wanted to tap). The eye under its tab tucks it to the table's edge, a slim tab there brings it back, and it tucks itself
+ * while you pick something on the table. A tuck lasts for the object on top: the next one shows. `tuckedTop` is the top
+ * object the player tucked; `peekTop` the one they brought back while picking.
+ */
+export function arenaStackTucked(top: string, tuckedTop: string | undefined, peekTop: string | undefined, picking: boolean): boolean {
+  return peekTop !== top && (tuckedTop === top || picking);
+}
+
+/**
+ * A target question's choices on the stack (iOS ArenaTargetReach; Caleb, 2026-10-28: Gogo copying Zur's attack trigger
+ * offered only abilities on the stack, so nothing could be clicked): the stack browser opens to choose them, the one that
+ * resolves next first. The web board shows every opponent, so it never needs to turn to one.
+ */
+export function stackChoices(snapshot: GameSnapshot | undefined, targetable: Set<string>): string[] {
+  return targetable.size === 0 ? [] : (snapshot?.xmage?.stack ?? []).map((s) => s.id).filter((id) => targetable.has(id));
 }

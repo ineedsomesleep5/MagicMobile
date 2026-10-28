@@ -292,8 +292,10 @@ enum class ArenaHandPosture {
 
     companion object {
         fun resolve(situation: Situation): ArenaHandPosture = when {
-            situation.spectating || situation.dragging || situation.boardDecision -> RESTING
+            situation.spectating || situation.boardDecision -> RESTING
+            // A card carried out of the spread hand keeps the row under the finger (ArenaBoardModel.swift).
             situation.spread -> SPREAD
+            situation.dragging -> RESTING
             situation.opened -> RAISED
             else -> RESTING
         }
@@ -349,7 +351,15 @@ object ArenaHandFanLayout {
             val rise = max(0f, hand.upY + reach - hand.upFloor)
             return ArenaHandSlot(BoardPoint(x, hand.upY - rise + drop * offset * offset), tilt, 1f)
         }
-        return ArenaHandSlot(BoardPoint(x, hand.downY + offset * offset * hand.downDrop), offset * 1.8f, hand.downScale)
+        // A big hand keeps a seven-card hand's gentle edge (ArenaBoardModel.swift restingCurve).
+        val curve = restingCurve(count)
+        return ArenaHandSlot(BoardPoint(x, hand.downY + offset * offset * hand.downDrop * curve * curve), offset * curve * 1.8f, hand.downScale)
+    }
+
+    /** 1 up to seven cards; past that, what keeps the outermost card where a seven-card hand's would be. */
+    fun restingCurve(count: Int): Float {
+        val edge = (count - 1) / 2f
+        return if (edge > 3) 3 / edge else 1f
     }
 }
 
@@ -678,7 +688,7 @@ enum class ArenaCombatPhase {
             if (actions.any { it.type == "declare_blockers" }) return BLOCKERS
             val prompt = snapshot.promptEnvelopeV2 ?: return null
             if (!snapshot.isViewer(prompt.playerId)) return null
-            if (prompt.responseKind.lowercase() != "target" && prompt.responseCommand?.type?.lowercase() != "choose_target") return null
+            if (!prompt.isCombatSelection) return null
             val step = (snapshot.step ?: snapshot.phase).lowercase().replace("_", "-")
             if (step.contains("declare-attack")) return ATTACKERS
             if (step.contains("declare-block")) return BLOCKERS

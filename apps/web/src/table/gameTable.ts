@@ -23,4 +23,10 @@ export interface GameTable {
   rematch?(): void;
   sendChat(message: string): void;
   sendEmote(emote: GameEmote): void;
+  /** A table with people: vote to go on without the player who is away (TableLeaveRules). */
+  voteToContinue?(): void;
+  /** Clears the "Jed left. The game goes on." notice once shown. */
+  clearTableNotice?(): void;
+  /** A table with people, once the game has its epoch: the voice channel (VoiceChat.channel). */
+  readonly voiceChannel?: string;
 }

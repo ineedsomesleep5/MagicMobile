@@ -1,0 +1,41 @@
+{
+  "description": "Voice chat at online tables (docs/VOICE_CHAT.md): VoiceChatRules on iOS, Android and the web. The channel is mm- plus the game's epoch in lower case (iOS sends it upper case); the Agora account is the seat id; a level is 0 to 1; a speaker stays lit holdSeconds after the last loud report.",
+  "speakingLevel": 0.08,
+  "holdSeconds": 0.6,
+  "channel": [
+    { "epoch": "1B9D6BCD-BBFD-4B2D-9B5D-AB8DFBBD4BED", "channel": "mm-1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed" },
+    { "epoch": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed", "channel": "mm-1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed" },
+    { "epoch": "1b9d6bcd-bbfd-4b2d-9b5d", "channel": null },
+    { "epoch": "zz9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed", "channel": null },
+    { "epoch": "", "channel": null },
+    { "epoch": null, "channel": null }
+  ],
+  "account": [
+    { "seat": "player1", "account": "player1" },
+    { "seat": "player4", "account": "player4" },
+    { "seat": "player0", "account": null },
+    { "seat": "player10", "account": null },
+    { "seat": "host", "account": null },
+    { "seat": null, "account": null }
+  ],
+  "level": [
+    { "level": 0, "speaking": false },
+    { "level": 0.07, "speaking": false },
+    { "level": 0.08, "speaking": true },
+    { "level": 0.6, "speaking": true }
+  ],
+  "hold": [
+    { "heardAt": 10, "now": 10, "speaking": true },
+    { "heardAt": 10, "now": 10.6, "speaking": true },
+    { "heardAt": 10, "now": 10.61, "speaking": false },
+    { "heardAt": null, "now": 10, "speaking": false }
+  ],
+  "shown": [
+    { "switchOn": true, "solo": false, "channel": true, "account": true, "unavailable": false, "shown": true },
+    { "switchOn": false, "solo": false, "channel": true, "account": true, "unavailable": false, "shown": false },
+    { "switchOn": true, "solo": true, "channel": true, "account": true, "unavailable": false, "shown": false },
+    { "switchOn": true, "solo": false, "channel": false, "account": true, "unavailable": false, "shown": false },
+    { "switchOn": true, "solo": false, "channel": true, "account": false, "unavailable": false, "shown": false },
+    { "switchOn": true, "solo": false, "channel": true, "account": true, "unavailable": true, "shown": false }
+  ]
+}

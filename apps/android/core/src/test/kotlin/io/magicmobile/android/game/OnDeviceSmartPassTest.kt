@@ -106,4 +106,17 @@ class OnDeviceSmartPassTest {
         assertTrue("a missing flag counts as a response", OnDeviceSmartPass.hasResponse(view("[{}]")))
         assertFalse("mana abilities never count", OnDeviceSmartPass.hasResponse(view("""[{"manaAbility":true}]""")))
     }
+
+    /** Caleb, 2026-10-27: Zur's attack trigger resolved before Gogo could copy it. Your own trigger stops when an ability
+     *  of yours could answer it, and still resolves with only a counterspell in hand. */
+    @Test fun ownTriggerStopsForAnAbilityThatCanUseIt() {
+        val own = situation(true, "DECLARE_ATTACKERS", true, false).copy(topStackIsMine = true, hasResponse = true)
+        assertNotNull("a counterspell alone doesn't stop your trigger", OnDeviceSmartPass.passPrompt(own, settings))
+        assertNull("Gogo gets the chance to copy it", OnDeviceSmartPass.passPrompt(own.copy(hasAbilityResponse = true), settings))
+        fun view(rows: String) = Json.parseToJsonElement("""{"canPlayObjects":{"objects":{"c1":{"other":$rows}}}}""")
+        val counterspell = """{"spellAbility":true,"respondsToStack":true}"""
+        assertTrue(OnDeviceSmartPass.hasAbilityResponse(view("""[$counterspell,{"spellAbility":false,"respondsToStack":true}]""")))
+        assertFalse("spells don't count", OnDeviceSmartPass.hasAbilityResponse(view("[$counterspell]")))
+        assertFalse("only an explicit flag counts", OnDeviceSmartPass.hasAbilityResponse(view("""[{"spellAbility":false}]""")))
+    }
 }

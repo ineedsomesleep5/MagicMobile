@@ -17,6 +17,7 @@ export const GLYPHS: Record<string, ReactNode> = {
   settings: <svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm8.6 5.1-1.9-.3a7 7 0 0 1-.6 1.5l1.1 1.6-1.9 1.9-1.6-1.1c-.5.3-1 .5-1.5.6l-.3 1.9h-2.7l-.3-1.9a7 7 0 0 1-1.5-.6l-1.6 1.1-1.9-1.9 1.1-1.6c-.3-.5-.5-1-.6-1.5l-1.9-.3v-2.7l1.9-.3c.1-.5.3-1 .6-1.5L4.1 6.9 6 5l1.6 1.1c.5-.3 1-.5 1.5-.6l.3-1.9h2.7l.3 1.9c.5.1 1 .3 1.5.6L15.5 5l1.9 1.9-1.1 1.6c.3.5.5 1 .6 1.5l1.9.3z" /></svg>,
   chat: <svg viewBox="0 0 20 20"><path d="M3 4h14v9H8l-4 3v-3H3z" /></svg>,
   more: <svg viewBox="0 0 20 20"><circle cx="4" cy="10" r="2" /><circle cx="10" cy="10" r="2" /><circle cx="16" cy="10" r="2" /></svg>,
+  mic: <svg viewBox="0 0 20 20"><rect x="7" y="2" width="6" height="10" rx="3" /><path d="M4.5 9a5.5 5.5 0 0 0 11 0" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M9.2 14.4h1.6V18H9.2z" /></svg>,
 };
 
 export interface MenuItem { id: string; title: string; subtitle?: string; glyph?: string; lit?: boolean; enabled?: boolean; action: () => void }

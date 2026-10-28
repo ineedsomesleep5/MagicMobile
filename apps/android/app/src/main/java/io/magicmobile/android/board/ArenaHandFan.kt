@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DontMemoize
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -109,6 +110,10 @@ fun ArenaHandFan(
     var spreadScroll by remember { mutableStateOf(0f) }
     /** A touch on the spread row: where it began, the swipe then, and whether it is swiping. */
     var spreadTouch by remember { mutableStateOf<Triple<BoardPoint, Float, Boolean>?>(null) }
+    /** Where a hold began: pulled up off the hand, the held card is carried like a drag (ArenaHandFan.swift). */
+    var holdStart by remember { mutableStateOf<BoardPoint?>(null) }
+    /** A slide over the resting or popped hand: where it began, and whether it turned out to be a sideways scrub. */
+    var restTouch by remember { mutableStateOf<Pair<BoardPoint, Boolean>?>(null) }
     var known by remember { mutableStateOf<Set<String>?>(null) }
     /** Cards on their way in from the deck: 0 at the deck, 1 on show, 2 home in the fan. */
     val arrivals = remember { mutableStateMapOf<String, Int>() }
@@ -117,7 +122,9 @@ fun ArenaHandFan(
         val design = ArenaHandFanLayout.slot(index, all.size, posture, layout.hand, spreadScroll)
         return ArenaHandSlot(canvas.point(design.center), design.rotation, design.scale)
     }
-    val liftedScale = when (posture) { ArenaHandPosture.SPREAD -> slot(0).scale * 1.1f; ArenaHandPosture.RAISED -> 1.24f; else -> 1.18f }
+    /** Past eight cards the fan is crowded: costs show only on the popped card, which pops larger (ArenaHandFan.swift). */
+    val crowded = cards.size + extraCards.size > 8
+    val liftedScale = when (posture) { ArenaHandPosture.SPREAD -> slot(0).scale * 1.1f; ArenaHandPosture.RAISED -> 1.24f; else -> if (crowded) 1.3f else 1.18f }
     fun liftedPoint(home: ArenaHandSlot, lifted: Boolean): BoardPoint {
         if (!lifted) return home.center
         // A spread card is already whole: it only rises a little.
@@ -143,7 +150,10 @@ fun ArenaHandFan(
         if (all.isEmpty()) return@run BoardRect.zero
         val union = all.indices.map(::homeFrame).reduce { a, b -> a.union(b) }
         val bottom = min(canvas.screen.height, layout.hand.touchBottom?.let(canvas::y) ?: canvas.screen.height)
-        BoardRect(union.minX, union.minY, union.width, max(0f, bottom - union.minY))
+        // Kept on screen: a spread row runs past both edges, and a surface wider than the screen is centred by Compose,
+        // which moved every touch sideways (a drag carried the card two places right of the finger).
+        val left = max(0f, union.minX); val right = min(canvas.screen.width, union.maxX)
+        BoardRect(left, union.minY, max(0f, right - left), max(0f, bottom - union.minY))
     }
 
     /** The card under a point: of the cards whose home slot spans its x, the top one; the popped card first. */
@@ -205,15 +215,6 @@ fun ArenaHandFan(
             else -> { setLiftedCardID(card.id); GameAudio.play(GameSound.CARD_PICKUP); GameHaptics.selection(view) }
         }
     }
-    /** A hold magnifies the card under the finger; sliding while holding moves the magnifier along the hand. */
-    fun held(point: BoardPoint) {
-        val card = card(point) ?: return
-        if (selection.inspectedCard?.id == card.id) return
-        if (selection.inspectedCard == null) inspection?.begin { selection.inspectedCard = null }
-        selection.inspectedCard = card
-        GameHaptics.selection(view)
-    }
-    fun endHold() { if (inspection != null) inspection.end() else selection.inspectedCard = null }
     fun startCarry(card: ZoneCard, start: BoardPoint, offset: BoardPoint, finger: BoardPoint) {
         GameAudio.play(GameSound.CARD_PICKUP)
         carrySurface = liftedRect
@@ -234,6 +235,8 @@ fun ArenaHandFan(
         val touch = spreadTouch
         if (posture == ArenaHandPosture.SPREAD && touch != null) {
             val dx = point.x - touch.first.x; val dy = point.y - touch.first.y
+            // Decide nothing until the finger has moved: 0 >= 0 would lock the drag into a swipe (ArenaHandFan.swift).
+            if (!touch.third && hypot(dx, dy) < canvas.length(6f)) return
             if (touch.third || abs(dx) >= abs(dy) || dy > 0) {
                 spreadTouch = Triple(touch.first, touch.second, true)
                 val maxScroll = ArenaHandFanLayout.spread(all.size, layout.hand)?.maxScroll ?: 0f
@@ -244,6 +247,17 @@ fun ArenaHandFan(
             spreadTouch = null
             startCarry(card, touch.first, BoardPoint(dx, dy), point)
             return
+        }
+        // A slide that sets off upward carries the card it began on (an Android tester, 2026-10-26: on a thin card the climb
+        // through the fan scrubbed onto a neighbour, which was then carried instead); one that sets off sideways scrubs.
+        restTouch?.let { (start, scrubbing) ->
+            if (scrubbing) return@let
+            val dx = point.x - start.x; val dy = point.y - start.y
+            if (hypot(dx, dy) < canvas.length(6f)) return
+            if (dy < 0 && abs(dy) > abs(dx)) {
+                restTouch = null
+                card(start)?.let { startCarry(it, start, BoardPoint(dx, dy), point); return }
+            } else restTouch = start to true
         }
         if (point.y >= band.minY - canvas.length(12f)) {
             val card = scrubCard(point) ?: return
@@ -257,11 +271,15 @@ fun ArenaHandFan(
         startCarry(card, point, BoardPoint(0f, 0f), point)
         setOverPlayerDropZone(false)
     }
-    fun panStarted(point: BoardPoint) { spreadTouch = if (posture == ArenaHandPosture.SPREAD) Triple(point, spreadScroll, false) else null }
+    fun panStarted(point: BoardPoint) {
+        spreadTouch = if (posture == ArenaHandPosture.SPREAD) Triple(point, spreadScroll, false) else null
+        restTouch = if (posture == ArenaHandPosture.SPREAD) null else point to false
+    }
     /** A slide that never left the hand leaves its card popped up; a carried card plays if it lands on the table. */
     fun panEnded(point: BoardPoint, cancelled: Boolean) {
         carrySurface = null
         spreadTouch = null
+        restTouch = null
         val current = dragging ?: return
         val card = all.firstOrNull { it.id == current.first } ?: return
         val dropped = !cancelled && canvas.drops(point, current.second)
@@ -279,6 +297,37 @@ fun ArenaHandFan(
                 lower()
             }
         }
+    }
+
+    /**
+     * A hold magnifies the card under the finger; sliding while holding moves the magnifier along the hand. Pulled up off
+     * the hand, the held card is picked up and carried (a press that paused before the drag never carried).
+     */
+    fun held(point: BoardPoint) {
+        dragging?.let { (id, start, _) ->
+            dragging = Triple(id, start, BoardPoint(point.x - start.x, point.y - start.y))
+            setOverPlayerDropZone(canvas.drops(point, start))
+            return
+        }
+        val start = holdStart ?: point.also { holdStart = it }
+        if (start.y - point.y >= canvas.length(36f)) {
+            card(start)?.let { held ->
+                if (inspection != null) inspection.end() else selection.inspectedCard = null
+                startCarry(held, start, BoardPoint(point.x - start.x, point.y - start.y), point)
+                return
+            }
+        }
+        val card = card(point) ?: return
+        if (selection.inspectedCard?.id == card.id) return
+        if (selection.inspectedCard == null) inspection?.begin { selection.inspectedCard = null }
+        selection.inspectedCard = card
+        GameHaptics.selection(view)
+    }
+    /** A hold that carried its card plays it where it lands, as a drag does; otherwise the magnifier closes. */
+    fun endHold(point: BoardPoint, cancelled: Boolean) {
+        holdStart = null
+        if (dragging != null) return panEnded(point, cancelled)
+        if (inspection != null) inspection.end() else selection.inspectedCard = null
     }
 
     // A card that joins the hand after the opening hand flies in from the deck. Several at once just slide in.
@@ -378,6 +427,8 @@ fun ArenaHandFan(
                     .requiredSize(cardSize.width.dp, cardSize.height.dp)
                     .graphicsLayer { transformOrigin = TransformOrigin(0.5f, 1f); rotationZ = rotation; alpha = if (hidden) 0f else 1f }
                     .graphicsLayer { scaleX = scale; scaleY = scale }
+                    // Where a lesson's coach can ring this card (LessonViews.kt).
+                    .cardBounds("hand:" + card.instanceId)
                     .semantics {
                         contentDescription = if (extra) "${card.card.name}, playable from your ${playable.firstOrNull()?.sourceZone ?: "zone"}" else card.card.name
                         customActions = listOf(CustomAccessibilityAction("Inspect card") { selection.inspectedCard = card; true },
@@ -385,16 +436,26 @@ fun ArenaHandFan(
                     }) {
                     CardTile(card, selected = false, pending = pendingCardInstanceId == card.instanceId, legal = playable.any { it.type == "play_land" },
                         castOffered = playable.any { it.type == "cast_spell" }, zoneName = "Hand", width = cardSize.width.dp, height = cardSize.height.dp)
-                    HandManaCost(card.card.manaCost ?: playable.firstOrNull()?.manaCost, Modifier.align(Alignment.TopCenter).offset(y = (-14).dp).clearAndSetSemantics { })
+                    if (!crowded || lifted || posture == ArenaHandPosture.SPREAD)
+                        HandManaCost(card.card.manaCost ?: playable.firstOrNull()?.manaCost, Modifier.align(Alignment.TopCenter).offset(y = (-14).dp).clearAndSetSemantics { })
                     if (extra) ArenaExtraCardShimmer(playable.firstOrNull()?.sourceZone ?: "", cardSize.width)
                 }
             }
         }
         if (all.isNotEmpty()) {
-            ArenaHandTouch(band, Modifier.zIndex(1500f), ::tapped, ::held, ::endHold, ::panned, ::panEnded, ::panStarted)
+            // New handlers every composition: Kotlin 2's strong skipping remembers `::tapped`-style references to these local
+            // functions, which then kept the first composition's posture, cards and actions (a spread hand picked its card by
+            // the resting fan's frames and carried the wrong one).
+            val tap = @DontMemoize { point: BoardPoint -> tapped(point) }
+            val hold = @DontMemoize { point: BoardPoint -> held(point) }
+            val holdEnded = @DontMemoize { point: BoardPoint, cancelled: Boolean -> endHold(point, cancelled) }
+            val pan = @DontMemoize { point: BoardPoint -> panned(point) }
+            val panEnd = @DontMemoize { point: BoardPoint, cancelled: Boolean -> panEnded(point, cancelled) }
+            val panStart = @DontMemoize { point: BoardPoint -> panStarted(point) }
+            ArenaHandTouch(band, Modifier.zIndex(1500f), tap, hold, holdEnded, pan, panEnd, panStart)
             // The popped card takes touches over its whole picture too, on a surface of its own that stays where it was while
             // the card is carried, so the drag that started on it keeps going.
-            (liftedRect ?: carrySurface)?.let { ArenaHandTouch(it, Modifier.zIndex(1501f), ::tapped, ::held, ::endHold, ::panned, ::panEnded, ::panStarted) }
+            (liftedRect ?: carrySurface)?.let { ArenaHandTouch(it, Modifier.zIndex(1501f), tap, hold, holdEnded, pan, panEnd, panStart) }
         }
         dragging?.let { (id, start, offset) ->
             val card = all.firstOrNull { it.id == id } ?: return@let
@@ -418,7 +479,7 @@ fun ArenaHandFan(
  * pan that starts once the finger moves before the hold, in any direction (ArenaHandTouch). Every report is in screen dp.
  */
 @Composable
-private fun ArenaHandTouch(rect: BoardRect, modifier: Modifier, tap: (BoardPoint) -> Unit, hold: (BoardPoint) -> Unit, holdEnded: () -> Unit,
+private fun ArenaHandTouch(rect: BoardRect, modifier: Modifier, tap: (BoardPoint) -> Unit, hold: (BoardPoint) -> Unit, holdEnded: (BoardPoint, Boolean) -> Unit,
                            pan: (BoardPoint) -> Unit, panEnded: (BoardPoint, Boolean) -> Unit, panStart: (BoardPoint) -> Unit) {
     val current by rememberUpdatedState(rect)
     val onTap by rememberUpdatedState(tap); val onHold by rememberUpdatedState(hold); val onHoldEnded by rememberUpdatedState(holdEnded)
@@ -460,14 +521,17 @@ private fun ArenaHandTouch(rect: BoardRect, modifier: Modifier, tap: (BoardPoint
                 }
                 null -> {
                     onHold(point(last))
+                    var cancelled = false
                     try {
                         while (true) {
-                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
+                            if (change == null) { cancelled = true; break }
+                            last = change.position
                             change.consume()
                             if (!change.pressed) break
                             onHold(point(change.position))
                         }
-                    } finally { onHoldEnded() }
+                    } finally { onHoldEnded(point(last), cancelled) }
                 }
                 else -> {}
             }

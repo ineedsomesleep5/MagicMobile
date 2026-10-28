@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "about": "NativeDeckCanonicalNames.candidates (Archidekt link imports, 2026-10-26): the names a deck's card is looked up by, in order. The exact name first; then plain letters for accents (XMage spells names without them); then the front of a two-part name (adventure, omen and prepare cards, whose full name only Archidekt sends). Double-faced cards keep their aliases, and an exact split-card name always wins because it comes first.",
+  "cases": [
+    { "name": "Sol Ring", "candidates": ["Sol Ring"] },
+    { "name": "Troll of Khazad-dûm", "candidates": ["Troll of Khazad-dûm", "Troll of Khazad-dum"] },
+    { "name": "Séance Board", "candidates": ["Séance Board", "Seance Board"] },
+    { "name": "Song of Eärendil", "candidates": ["Song of Eärendil", "Song of Earendil"] },
+    { "name": "Æther Vial", "candidates": ["Æther Vial", "Aether Vial"] },
+    { "name": "Lim-Dûl’s Vault", "candidates": ["Lim-Dûl’s Vault", "Lim-Dul's Vault"] },
+    { "name": "Brazen Borrower // Petty Theft", "candidates": ["Brazen Borrower // Petty Theft", "Brazen Borrower"] },
+    { "name": "Fire // Ice", "candidates": ["Fire // Ice", "Fire"] },
+    { "name": "Gríma, Saruman's Footman // Back", "candidates": ["Gríma, Saruman's Footman // Back", "Grima, Saruman's Footman // Back", "Gríma, Saruman's Footman", "Grima, Saruman's Footman"] },
+    { "name": "  Lightning Bolt  ", "candidates": ["Lightning Bolt"] },
+    { "name": " // Back", "candidates": ["// Back"] }
+  ]
+}

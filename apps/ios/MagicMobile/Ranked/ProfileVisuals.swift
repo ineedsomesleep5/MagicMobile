@@ -187,6 +187,56 @@ struct ProfileStatTile: View {
     }
 }
 
+// MARK: Insights (ProfileInsights)
+
+/// The last ten results, newest first, as small gold, red and grey coins.
+struct FormStrip: View {
+    let results: [RankOutcome]
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(Array(results.enumerated()), id: \.offset) { _, result in
+                Text(result == .win ? "W" : result == .loss ? "L" : "D")
+                    .font(.system(size: 10, weight: .black, design: .serif))
+                    .foregroundStyle(result == .win ? Color.black.opacity(0.75) : TavernPalette.parchment)
+                    .frame(width: 20, height: 20)
+                    .background(Circle().fill(result == .win ? ProfilePalette.win : result == .loss ? ProfilePalette.loss : ProfilePalette.draw))
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(localized: "Last \(results.count) games: \(results.filter { $0 == .win }.count) wins, \(results.filter { $0 == .loss }.count) losses"))
+    }
+}
+
+/// One line of a record: what (a mode, a tier, a commander), the record and the win rate's bar.
+struct ProfileRecordLine<Leading: View>: View {
+    let title: String
+    let line: ProfileInsights.Line
+    @ViewBuilder var leading: Leading
+
+    var body: some View {
+        HStack(spacing: 10) {
+            leading
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(title).font(ArenaMenuStyle.font(13.5, .bold)).lineLimit(1)
+                    Spacer(minLength: 6)
+                    Text("\(line.wins)–\(line.losses)").font(ArenaMenuStyle.font(13, .heavy)).monospacedDigit().foregroundStyle(ArenaMenuStyle.gold)
+                }
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(ProfilePalette.track)
+                        Capsule().fill(ProfilePalette.win).frame(width: max(4, proxy.size.width * line.winRate))
+                    }
+                }
+                .frame(height: 5)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(localized: "\(title): \(line.wins) wins, \(line.losses) losses"))
+    }
+}
+
 // MARK: Games over time
 
 /// The last eight weeks as bars: wins in gold at the foot, other games in oxblood above.
@@ -552,7 +602,7 @@ struct ProfileGameCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                if let onOpenDetail { onOpenDetail() } else { withAnimation(.easeOut(duration: 0.18)) { expanded.toggle() } }
+                withAnimation(.easeOut(duration: 0.18)) { expanded.toggle() }
             } label: {
                 HStack(spacing: 12) {
                     art
@@ -562,15 +612,23 @@ struct ProfileGameCard: View {
                             .font(ArenaMenuStyle.font(12, .semibold)).opacity(0.8).lineLimit(1)
                         HStack(spacing: 6) {
                             TavernTag(text: modeText.uppercased(), leather: true)
-                            Text(game.date.formatted(date: .abbreviated, time: .omitted)).font(ArenaMenuStyle.font(11, .regular)).opacity(0.65)
+                            Text(([game.date.formatted(date: .abbreviated, time: .omitted)] + facts).joined(separator: " · "))
+                                .font(ArenaMenuStyle.font(11, .regular)).opacity(0.65).lineLimit(1)
                         }
                     }
                     Spacer(minLength: 4)
                     VStack(alignment: .trailing, spacing: 4) {
                         stamp
-                        if let delta = game.rankDelta, delta != 0 {
-                            Text(delta > 0 ? "+\(delta)" : "\(delta)").font(ArenaMenuStyle.font(12, .heavy)).monospacedDigit()
-                                .foregroundStyle(delta > 0 ? Color(red: 0.6, green: 0.95, blue: 0.55) : Color(red: 1, green: 0.55, blue: 0.45))
+                        if game.rankNote != nil {
+                            Text(String(localized: "Not ranked")).font(ArenaMenuStyle.font(11, .heavy)).opacity(0.6)
+                        } else if let delta = game.rankDelta, game.mode == .ranked {
+                            Text(delta > 0 ? "+\(delta)" : delta == 0 ? "±0" : "\(delta)").font(ArenaMenuStyle.font(12, .heavy)).monospacedDigit()
+                                .foregroundStyle(delta > 0 ? Color(red: 0.6, green: 0.95, blue: 0.55)
+                                                 : delta == 0 ? TavernPalette.parchment.opacity(0.7) : Color(red: 1, green: 0.55, blue: 0.45))
+                            // A crushing loss (the AI kept 30 of its 40 life) costs two pips.
+                            if delta <= -2, game.outcome == .loss {
+                                Text(String(localized: "Crushing loss")).font(ArenaMenuStyle.font(10, .heavy)).opacity(0.6)
+                            }
                         } else if detailed {
                             Image(systemName: "chart.line.uptrend.xyaxis").font(.system(size: 12, weight: .bold)).foregroundStyle(BrandTheme.ember)
                         }
@@ -584,17 +642,23 @@ struct ProfileGameCard: View {
             .accessibilityElement(children: .ignore)
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(label)
-            .accessibilityHint(detailed ? String(localized: "Opens the match dashboard") : (expanded ? String(localized: "Hides the details") : String(localized: "Shows the details")))
+            .accessibilityHint(expanded ? String(localized: "Hides the details") : String(localized: "Shows the details"))
             .accessibilityIdentifier(identifier)
-            if expanded && !detailed { details.transition(.opacity) }
+            if expanded { details.transition(.opacity) }
         }
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.32)))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(TavernPalette.brass.opacity(0.45), lineWidth: 1))
     }
 
+    /// "turn 9", "24 min": what the record knows about the game.
+    private var facts: [String] {
+        [game.turns.map { String(localized: "turn \($0)") },
+         game.durationSeconds.flatMap { $0 > 0 ? String(localized: "\(max(1, $0 / 60)) min") : nil }].compactMap { $0 }
+    }
+
     private var label: String {
         let deck = game.deckName.isEmpty ? (game.commander ?? "") : game.deckName
-        let delta = game.rankDelta.map { $0 == 0 ? "" : ", \($0 > 0 ? "+" : "")\($0) pips" } ?? ""
+        let delta = game.rankNote.map { ", \($0)" } ?? game.rankDelta.map { $0 == 0 ? "" : ", \($0 > 0 ? "+" : "")\($0) pips" } ?? ""
         return "\(resultName) against \(opponentText), \(deck), \(modeText), \(game.date.formatted(date: .abbreviated, time: .omitted))\(delta)"
     }
 
@@ -663,6 +727,17 @@ struct ProfileGameCard: View {
             .font(ArenaMenuStyle.font(11, .regular)).opacity(0.7)
             if game.opponents.isEmpty {
                 Text(String(localized: "Opponents weren't recorded for this game.")).font(ArenaMenuStyle.font(11, .regular)).italic().opacity(0.55)
+            }
+            if let rankLine = game.rankLine {
+                Label(rankLine, systemImage: "trophy.fill").font(ArenaMenuStyle.font(12, .semibold)).foregroundStyle(ArenaMenuStyle.gold)
+            }
+            if let rankNote = game.rankNote {
+                Text(rankNote).font(ArenaMenuStyle.font(12, .semibold)).opacity(0.75)
+            }
+            if let onOpenDetail {
+                Button(String(localized: "Game review"), systemImage: "chart.line.uptrend.xyaxis", action: onOpenDetail)
+                    .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
+                    .accessibilityIdentifier(identifier.replacingOccurrences(of: ".expand", with: ".review"))
             }
         }
         .padding(.horizontal, 12).padding(.bottom, 12)

@@ -32,6 +32,41 @@ final class CardArtChoicesTests: XCTestCase {
         XCTAssertNil(choices.printing(forName: "Sol Ring"), "the playing deck holds Sol Ring with default art")
     }
 
+    /// Caleb, 2026-10-27: the opening hand showed default lands, then swapped to his choices. The playing deck's
+    /// chosen printings are handed to the prefetch whenever they change, and only then.
+    func testThePlayingDecksChoicesArePrefetchedWhenTheyChange() {
+        let fetched = PrefetchLog()
+        let choices = CardArtChoices(prefetch: { cards in fetched.append(cards.map { "\($0.name) \($0.printing.label)" }) })
+        let library: [CardArtChoices.SavedDeck] = [
+            .init(id: "a", deck: deck([("Sol Ring", c21)]), updated: Date(timeIntervalSince1970: 200)),
+            .init(id: "b", deck: deck([("Island", cmm), ("Forest", nil)], commander: ("Zur the Enchanter", isd)), updated: Date(timeIntervalSince1970: 100))]
+        choices.update(library: library, selectedDeckID: "b")
+        XCTAssertEqual(fetched.calls, [["Island \(cmm.label)", "Zur the Enchanter \(isd.label)"]], "only the playing deck's choices")
+        choices.update(library: library, selectedDeckID: "b")
+        XCTAssertEqual(fetched.calls.count, 1, "unchanged choices fetch nothing")
+        choices.select(deckID: "a")
+        XCTAssertEqual(fetched.calls.last, ["Sol Ring \(c21.label)"])
+    }
+
+    /// Your own picture fills the card's art box and leaves the rest of the card (its name, text and frame) alone.
+    func testACustomPictureFillsOnlyTheArtBox() throws {
+        func solid(_ width: Int, _ height: Int, _ red: CGFloat) -> CGImage {
+            let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                    space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            context.setFillColor(red: red, green: 0, blue: 0, alpha: 1); context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            return context.makeImage()!
+        }
+        let card = try XCTUnwrap(CustomCardArt.compose(solid(100, 140, 0), picture: solid(30, 10, 1)))
+        func red(_ x: Int, _ y: Int) -> UInt8 {
+            let data = CFDataGetBytePtr(card.dataProvider!.data)!
+            return data[y * card.bytesPerRow + x * 4]
+        }
+        XCTAssertEqual(red(50, 50), 255, "inside the art box (y from the top)")
+        XCTAssertEqual(red(50, 10), 0, "the name line stays the card's")
+        XCTAssertEqual(red(50, 120), 0, "the rules text stays the card's")
+        XCTAssertEqual(red(3, 50), 0, "the frame stays the card's")
+    }
+
     func testWithoutAPlayingSavedDeckTheMostRecentlySavedDeckWinsAndNamesIgnoreCase() {
         let choices = CardArtChoices()
         choices.update(library: [
@@ -273,4 +308,11 @@ final class DoubleFacedCardsTests: XCTestCase {
         XCTAssertEqual(faces.otherFace(of: "Insectile Aberration"), DoubleFacedCards.Face(name: "Delver of Secrets", isBack: false))
         XCTAssertNil(faces.otherFace(of: "Sol Ring"))
     }
+}
+
+private final class PrefetchLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var log: [[String]] = []
+    var calls: [[String]] { lock.lock(); defer { lock.unlock() }; return log }
+    func append(_ call: [String]) { lock.lock(); log.append(call); lock.unlock() }
 }

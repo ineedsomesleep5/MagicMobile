@@ -164,7 +164,7 @@ enum OnDeviceSnapshotAdapter {
                 attackerID = active
             }
             return try OnDevicePromptAdapter.presentation(prompt, viewerPlayerID: viewer, cards: allCards,
-                                                          players: decodedPlayers, actingAttackerPlayerID: attackerID)
+                                                          players: decodedPlayers, stack: decodedXmage.stack, actingAttackerPlayerID: attackerID)
         }
         let cardActions: [LegalAction] = try decode(.array(playability.actions))
         let tableHints = Self.tableHints(view["myHelperEmblems"])
@@ -251,14 +251,19 @@ enum OnDeviceSnapshotAdapter {
             throw EngineError.invalidMessage("Card view has no engine UUID")
         }
         // Do not consult original, source images, or a catalogue to undo an upstream redaction.
-        let hidden = value["hideInfo"]?.bool == true
-        let name = hidden ? "Face-down card" : value["displayName"]?.string ?? value["name"]?.string ?? "Card details unavailable"
-        let types = hidden ? [] : (value["cardTypes"]?.array ?? []).compactMap(\.string)
-        let supers = hidden ? [] : (value["superTypes"]?.array ?? []).compactMap(\.string)
-        let subs = hidden ? [] : (value["subTypes"]?.array ?? []).compactMap(\.string)
+        // A face-down card its owner may look at carries the real card as `secondCardFace` (CardView: "Face Down: <name>");
+        // anyone else gets the face-down placeholder.
+        let faceDown = value["faceDown"]?.bool == true
+        let ownFace = faceDown && value["hideInfo"]?.bool != true ? value["secondCardFace"].flatMap { $0["name"]?.string == nil ? nil : $0 } : nil
+        let hidden = value["hideInfo"]?.bool == true || (faceDown && ownFace == nil)
+        let face = ownFace ?? value
+        let name = hidden ? "Face-down card" : face["displayName"]?.string ?? face["name"]?.string ?? "Card details unavailable"
+        let types = hidden ? [] : (face["cardTypes"]?.array ?? []).compactMap(\.string)
+        let supers = hidden ? [] : (face["superTypes"]?.array ?? []).compactMap(\.string)
+        let subs = hidden ? [] : (face["subTypes"]?.array ?? []).compactMap(\.string)
         var typeLine = (supers + types).map { $0.capitalized }.joined(separator: " ")
         if !subs.isEmpty { typeLine += " — " + subs.map { $0.capitalized }.joined(separator: " ") }
-        let rules = hidden ? "" : (value["rules"]?.array ?? []).compactMap(\.string).joined(separator: "\n")
+        let rules = hidden ? "" : (face["rules"]?.array ?? []).compactMap(\.string).joined(separator: "\n")
         let colorNames = [("white", "W"), ("blue", "U"), ("black", "B"), ("red", "R"), ("green", "G")]
         let tokenIdentityVisible = !hidden && value["faceDown"]?.bool != true
         let hasTokenColors = tokenIdentityVisible && value["isToken"]?.bool == true && colorNames.allSatisfy { value["color"]?[$0.0]?.bool != nil }
@@ -286,7 +291,8 @@ enum OnDeviceSnapshotAdapter {
                        "colors": .array(baseColors.map(J.string))]) : .null
         var result: [String: J] = ["instanceId": .string(id), "card": .object([
             "name": .string(name), "typeLine": .string(typeLine), "oracleText": .string(rules),
-            "manaCost": printedManaCost(value).map(J.string) ?? .null,
+            "manaCost": (ownFace.flatMap(printedManaCost) ?? printedManaCost(value)).map(J.string) ?? .null,
+            "faceDown": ownFace == nil ? .null : .bool(true),
             "isToken": tokenIdentityVisible ? (value["isToken"]?.bool.map(J.bool) ?? .null) : .null,
             "tokenColors": tokenColors, "copySourceArtworkName": sourceArt, "tokenArtwork": baseArt
         ])]

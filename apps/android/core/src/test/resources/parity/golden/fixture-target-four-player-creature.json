@@ -1,0 +1,866 @@
+{
+  "activePlayerId" : "ca6c70e0-52f7-4dc9-bc03-baba17ab688c",
+  "answers" : [
+    {
+      "answer" : {
+        "kind" : "boolean",
+        "value" : false
+      },
+      "type" : "answer_yes_no"
+    },
+    {
+      "answer" : {
+        "kind" : "uuid",
+        "value" : "e037bf05-42f1-42d5-bc26-65172f6f8a18"
+      },
+      "type" : "choose_target"
+    },
+    {
+      "answer" : {
+        "kind" : "uuid",
+        "value" : "47a2f813-f94a-49a1-b203-e7e8c5438013"
+      },
+      "type" : "choose_target"
+    }
+  ],
+  "bridgeRevision" : 85,
+  "gameStatus" : "in_progress",
+  "id" : "871856cd-eda9-4a21-891a-4b596a5f4aa3",
+  "isSpectating" : false,
+  "legalActions" : [
+    {
+      "abilityId" : null,
+      "cardInstanceId" : null,
+      "cardName" : null,
+      "choiceIds" : null,
+      "compactPromptTitle" : "Cancel",
+      "confirmed" : false,
+      "id" : "7234db0f-631e-466f-b699-78ef63889996:answer_yes_no",
+      "label" : "Cancel",
+      "messageId" : 85,
+      "playerId" : "ca6c70e0-52f7-4dc9-bc03-baba17ab688c",
+      "promptId" : "7234db0f-631e-466f-b699-78ef63889996",
+      "sourceInstanceId" : null,
+      "sourceZone" : null,
+      "type" : "answer_yes_no"
+    }
+  ],
+  "log" : [
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:1",
+      "message" : "Game has started"
+    },
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:5",
+      "message" : "<font color='#20B2AA'>Wren</font>'s library is shuffled"
+    },
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:9",
+      "message" : "<font color='#20B2AA'>You</font>'s library is shuffled"
+    },
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:13",
+      "message" : "<font color='#20B2AA'>Rook</font>'s library is shuffled"
+    },
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:17",
+      "message" : "<font color='#20B2AA'>Bryn</font>'s library is shuffled"
+    },
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:24",
+      "message" : "<font color='#20B2AA'>You</font> chooses that they take the first turn"
+    },
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:28",
+      "message" : "<font color='#20B2AA'>You</font> draws seven cards"
+    },
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:32",
+      "message" : "<font color='#20B2AA'>Wren</font> draws seven cards"
+    },
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:36",
+      "message" : "<font color='#20B2AA'>Bryn</font> draws seven cards"
+    },
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:40",
+      "message" : "<font color='#20B2AA'>Rook</font> draws seven cards"
+    },
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:47",
+      "message" : "<font color='#20B2AA'>You</font> keeps hand"
+    },
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:54",
+      "message" : "<font color='#20B2AA'>Wren</font> keeps hand"
+    },
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:61",
+      "message" : "<font color='#20B2AA'>Bryn</font> keeps hand"
+    },
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:68",
+      "message" : "<font color='#20B2AA'>Rook</font> keeps hand"
+    },
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:72",
+      "message" : "TURN 1 for <font color='#20B2AA'>You</font> (40 - 40 - 40 - 40)"
+    },
+    {
+      "id" : "xmage:871856cd-eda9-4a21-891a-4b596a5f4aa3:you:76",
+      "message" : "<font color='#20B2AA'>You</font> draws a card"
+    }
+  ],
+  "manaPayment" : null,
+  "pendingStatus" : null,
+  "phase" : "PRECOMBAT_MAIN",
+  "players" : [
+    {
+      "battlefield" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "888214da-124a-49c6-8c2b-fe567f168d8c",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Plains",
+          "oracleText" : "{T}: Add {W}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Plains",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "command" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "2",
+          "displayToughness" : "2",
+          "icons" : [
+
+          ],
+          "instanceId" : "304fe84f-68b7-47e8-9e71-dbc5133f5a37",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : "{W}",
+          "name" : "Isamaru, Hound of Konda",
+          "oracleText" : "<b>Commander</b>",
+          "phasedIn" : null,
+          "reportedPower" : "2",
+          "reportedToughness" : "2",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Legendary Creature — Dog",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "commanderDamage" : {
+
+      },
+      "commanders" : [
+        {
+          "castsFromCommandZone" : 0,
+          "commanderTax" : 0,
+          "damageToPlayers" : {
+
+          },
+          "id" : "304fe84f-68b7-47e8-9e71-dbc5133f5a37",
+          "name" : "Isamaru, Hound of Konda",
+          "ownerPlayerId" : "8243e984-c3b7-459a-a439-088885840a7c"
+        }
+      ],
+      "commanderTax" : 0,
+      "commanderTaxKnown" : true,
+      "counters" : {
+
+      },
+      "displayName" : "Wren",
+      "exile" : [
+
+      ],
+      "graveyard" : [
+
+      ],
+      "hand" : [
+
+      ],
+      "handCount" : 0,
+      "hasLeft" : false,
+      "initiative" : false,
+      "isHuman" : true,
+      "library" : [
+
+      ],
+      "libraryCount" : 98,
+      "life" : 40,
+      "manaPool" : {
+        "B" : 0,
+        "C" : 0,
+        "G" : 0,
+        "R" : 0,
+        "U" : 0,
+        "W" : 0
+      },
+      "monarch" : false,
+      "playerId" : "8243e984-c3b7-459a-a439-088885840a7c",
+      "poison" : 0,
+      "stack" : [
+
+      ]
+    },
+    {
+      "battlefield" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "2198380c-91a5-440d-aaba-e02d01e43334",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Swamp",
+          "oracleText" : "{T}: Add {B}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Swamp",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "537ee68b-b4b1-4d1d-a72c-75845db3bd91",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Swamp",
+          "oracleText" : "{T}: Add {B}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Swamp",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "command" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "1",
+          "displayToughness" : "4",
+          "icons" : [
+
+          ],
+          "instanceId" : "2112efd3-a192-4075-8752-5205cd73f85c",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : "{1}{W}{U}{B}",
+          "name" : "Zur the Enchanter",
+          "oracleText" : "Flying\nWhenever {this} attacks, you may search your library for an enchantment card with mana value 3 or less, put it onto the battlefield, then shuffle.\n<b>Commander</b>",
+          "phasedIn" : null,
+          "reportedPower" : "1",
+          "reportedToughness" : "4",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Legendary Creature — Human Wizard",
+          "visibleIcons" : [
+            "ABILITY_FLYING"
+          ]
+        }
+      ],
+      "commanderDamage" : {
+
+      },
+      "commanders" : [
+        {
+          "castsFromCommandZone" : 0,
+          "commanderTax" : 0,
+          "damageToPlayers" : {
+
+          },
+          "id" : "2112efd3-a192-4075-8752-5205cd73f85c",
+          "name" : "Zur the Enchanter",
+          "ownerPlayerId" : "ca6c70e0-52f7-4dc9-bc03-baba17ab688c"
+        }
+      ],
+      "commanderTax" : 0,
+      "commanderTaxKnown" : true,
+      "counters" : {
+
+      },
+      "displayName" : "You",
+      "exile" : [
+
+      ],
+      "graveyard" : [
+
+      ],
+      "hand" : [
+
+      ],
+      "handCount" : 0,
+      "hasLeft" : false,
+      "initiative" : false,
+      "isHuman" : true,
+      "library" : [
+
+      ],
+      "libraryCount" : 96,
+      "life" : 40,
+      "manaPool" : {
+        "B" : 0,
+        "C" : 0,
+        "G" : 0,
+        "R" : 0,
+        "U" : 0,
+        "W" : 0
+      },
+      "monarch" : false,
+      "playerId" : "ca6c70e0-52f7-4dc9-bc03-baba17ab688c",
+      "poison" : 0,
+      "stack" : [
+
+      ]
+    },
+    {
+      "battlefield" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "2",
+          "displayToughness" : "2",
+          "icons" : [
+
+          ],
+          "instanceId" : "47a2f813-f94a-49a1-b203-e7e8c5438013",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : "{1}{G}",
+          "name" : "Grizzly Bears",
+          "oracleText" : "",
+          "phasedIn" : true,
+          "reportedPower" : "2",
+          "reportedToughness" : "2",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Creature — Bear",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "command" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "2",
+          "displayToughness" : "2",
+          "icons" : [
+
+          ],
+          "instanceId" : "cdb23df5-7bc8-4f6c-946f-381099c091f8",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : "{W}",
+          "name" : "Isamaru, Hound of Konda",
+          "oracleText" : "<b>Commander</b>",
+          "phasedIn" : null,
+          "reportedPower" : "2",
+          "reportedToughness" : "2",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Legendary Creature — Dog",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "commanderDamage" : {
+
+      },
+      "commanders" : [
+        {
+          "castsFromCommandZone" : 0,
+          "commanderTax" : 0,
+          "damageToPlayers" : {
+
+          },
+          "id" : "cdb23df5-7bc8-4f6c-946f-381099c091f8",
+          "name" : "Isamaru, Hound of Konda",
+          "ownerPlayerId" : "05e36641-7afb-4333-9474-0708ee8d0be8"
+        }
+      ],
+      "commanderTax" : 0,
+      "commanderTaxKnown" : true,
+      "counters" : {
+
+      },
+      "displayName" : "Rook",
+      "exile" : [
+
+      ],
+      "graveyard" : [
+
+      ],
+      "hand" : [
+
+      ],
+      "handCount" : 0,
+      "hasLeft" : false,
+      "initiative" : false,
+      "isHuman" : true,
+      "library" : [
+
+      ],
+      "libraryCount" : 98,
+      "life" : 40,
+      "manaPool" : {
+        "B" : 0,
+        "C" : 0,
+        "G" : 0,
+        "R" : 0,
+        "U" : 0,
+        "W" : 0
+      },
+      "monarch" : false,
+      "playerId" : "05e36641-7afb-4333-9474-0708ee8d0be8",
+      "poison" : 0,
+      "stack" : [
+
+      ]
+    },
+    {
+      "battlefield" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "3",
+          "displayToughness" : "3",
+          "icons" : [
+
+          ],
+          "instanceId" : "e037bf05-42f1-42d5-bc26-65172f6f8a18",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : "{3}{R}",
+          "name" : "Hill Giant",
+          "oracleText" : "",
+          "phasedIn" : true,
+          "reportedPower" : "3",
+          "reportedToughness" : "3",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Creature — Giant",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "command" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "2",
+          "displayToughness" : "2",
+          "icons" : [
+
+          ],
+          "instanceId" : "8e7d8356-c281-4db6-8a76-fecdbbd1f665",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : "{W}",
+          "name" : "Isamaru, Hound of Konda",
+          "oracleText" : "<b>Commander</b>",
+          "phasedIn" : null,
+          "reportedPower" : "2",
+          "reportedToughness" : "2",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Legendary Creature — Dog",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "commanderDamage" : {
+
+      },
+      "commanders" : [
+        {
+          "castsFromCommandZone" : 0,
+          "commanderTax" : 0,
+          "damageToPlayers" : {
+
+          },
+          "id" : "8e7d8356-c281-4db6-8a76-fecdbbd1f665",
+          "name" : "Isamaru, Hound of Konda",
+          "ownerPlayerId" : "bfd0de80-04a5-4d54-836d-ca00091beb79"
+        }
+      ],
+      "commanderTax" : 0,
+      "commanderTaxKnown" : true,
+      "counters" : {
+
+      },
+      "displayName" : "Bryn",
+      "exile" : [
+
+      ],
+      "graveyard" : [
+
+      ],
+      "hand" : [
+
+      ],
+      "handCount" : 0,
+      "hasLeft" : false,
+      "initiative" : false,
+      "isHuman" : true,
+      "library" : [
+
+      ],
+      "libraryCount" : 98,
+      "life" : 40,
+      "manaPool" : {
+        "B" : 0,
+        "C" : 0,
+        "G" : 0,
+        "R" : 0,
+        "U" : 0,
+        "W" : 0
+      },
+      "monarch" : false,
+      "playerId" : "bfd0de80-04a5-4d54-836d-ca00091beb79",
+      "poison" : 0,
+      "stack" : [
+
+      ]
+    }
+  ],
+  "priorityPlayerId" : "ca6c70e0-52f7-4dc9-bc03-baba17ab688c",
+  "promptEnvelopeV2" : {
+    "abilities" : null,
+    "amounts" : null,
+    "cards" : [
+
+    ],
+    "choices" : null,
+    "chosenTargets" : [
+
+    ],
+    "confirmation" : null,
+    "id" : "7234db0f-631e-466f-b699-78ef63889996",
+    "kind" : "target",
+    "manaChoices" : null,
+    "maxChoices" : 1,
+    "message" : "Select a nonblack creature",
+    "messageId" : 85,
+    "method" : "GAME_PICK_TARGET",
+    "minChoices" : 1,
+    "modes" : null,
+    "multiAmounts" : null,
+    "optionKeys" : [
+      "chosenTargets",
+      "queryType",
+      "secondMessage",
+      "targetZone"
+    ],
+    "orderedItems" : null,
+    "piles" : null,
+    "playerId" : "ca6c70e0-52f7-4dc9-bc03-baba17ab688c",
+    "players" : null,
+    "required" : false,
+    "responseCommand" : {
+      "confirmed" : null,
+      "messageId" : 85,
+      "pay" : null,
+      "promptId" : "7234db0f-631e-466f-b699-78ef63889996",
+      "type" : "choose_target"
+    },
+    "responseKind" : "target",
+    "targetIds" : [
+      "e037bf05-42f1-42d5-bc26-65172f6f8a18",
+      "47a2f813-f94a-49a1-b203-e7e8c5438013"
+    ],
+    "targets" : [
+      {
+        "id" : "e037bf05-42f1-42d5-bc26-65172f6f8a18",
+        "label" : "Hill Giant"
+      },
+      {
+        "id" : "47a2f813-f94a-49a1-b203-e7e8c5438013",
+        "label" : "Grizzly Bears"
+      }
+    ],
+    "totalMax" : null,
+    "totalMin" : null
+  },
+  "promptText" : "Select a nonblack creature",
+  "source" : "xmage-ondevice",
+  "step" : "PRECOMBAT_MAIN",
+  "thinkingPlayerID" : null,
+  "turn" : 1,
+  "viewerPlayerId" : "ca6c70e0-52f7-4dc9-bc03-baba17ab688c",
+  "waitingOnPlayerId" : "ca6c70e0-52f7-4dc9-bc03-baba17ab688c",
+  "winnerPlayerIds" : [
+
+  ],
+  "xmage" : {
+    "bridgeRevision" : 85,
+    "combat" : [
+
+    ],
+    "gameId" : "871856cd-eda9-4a21-891a-4b596a5f4aa3",
+    "panels" : {
+      "command" : true,
+      "exile" : true,
+      "graveyard" : true,
+      "lookedAt" : false,
+      "revealed" : false,
+      "search" : false,
+      "stack" : true
+    },
+    "playableObjects" : [
+      {
+        "abilities" : [
+          {
+            "category" : "basicManaAbilities",
+            "id" : "f5b6b7af-d106-486c-84a3-7e5537cd99ea",
+            "label" : "{T}: Add {B}."
+          }
+        ],
+        "cardName" : "Swamp",
+        "categories" : [
+          "basicManaAbilities"
+        ],
+        "sourceInstanceId" : "2198380c-91a5-440d-aaba-e02d01e43334",
+        "sourceZone" : "battlefield"
+      },
+      {
+        "abilities" : [
+          {
+            "category" : "basicManaAbilities",
+            "id" : "a3d621ed-db51-4f19-a4e7-860d3460464a",
+            "label" : "{T}: Add {B}."
+          }
+        ],
+        "cardName" : "Swamp",
+        "categories" : [
+          "basicManaAbilities"
+        ],
+        "sourceInstanceId" : "537ee68b-b4b1-4d1d-a72c-75845db3bd91",
+        "sourceZone" : "battlefield"
+      }
+    ],
+    "players" : [
+      {
+        "active" : false,
+        "hasPriority" : false,
+        "name" : "Wren",
+        "passedAllTurns" : false,
+        "passedTurn" : false,
+        "playerId" : "8243e984-c3b7-459a-a439-088885840a7c",
+        "sideboard" : [
+
+        ],
+        "timerActive" : false
+      },
+      {
+        "active" : true,
+        "hasPriority" : true,
+        "name" : "You",
+        "passedAllTurns" : false,
+        "passedTurn" : false,
+        "playerId" : "ca6c70e0-52f7-4dc9-bc03-baba17ab688c",
+        "sideboard" : [
+
+        ],
+        "timerActive" : true
+      },
+      {
+        "active" : false,
+        "hasPriority" : false,
+        "name" : "Rook",
+        "passedAllTurns" : false,
+        "passedTurn" : false,
+        "playerId" : "05e36641-7afb-4333-9474-0708ee8d0be8",
+        "sideboard" : [
+
+        ],
+        "timerActive" : false
+      },
+      {
+        "active" : false,
+        "hasPriority" : false,
+        "name" : "Bryn",
+        "passedAllTurns" : false,
+        "passedTurn" : false,
+        "playerId" : "bfd0de80-04a5-4d54-836d-ca00091beb79",
+        "sideboard" : [
+
+        ],
+        "timerActive" : false
+      }
+    ],
+    "stack" : [
+      {
+        "id" : "0199341f-68b3-4f4e-890e-284d253ae2e8",
+        "name" : "Doom Blade",
+        "objectType" : "SPELL",
+        "paid" : false,
+        "rulesText" : "Destroy target nonblack creature.",
+        "sourceCard" : {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "0199341f-68b3-4f4e-890e-284d253ae2e8",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : "{1}{B}",
+          "name" : "Doom Blade",
+          "oracleText" : "Destroy target nonblack creature.",
+          "phasedIn" : null,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Instant",
+          "visibleIcons" : [
+
+          ]
+        },
+        "sourceInstanceId" : null,
+        "sourceName" : "Doom Blade",
+        "targetIds" : [
+
+        ]
+      }
+    ],
+    "xmageCycle" : 19,
+    "zones" : [
+      {
+        "cards" : [
+
+        ],
+        "id" : "c276a832-6671-479c-af2d-841c8d22a391",
+        "name" : "Permanent - Exile"
+      }
+    ]
+  },
+  "xmageCycle" : 19
+}

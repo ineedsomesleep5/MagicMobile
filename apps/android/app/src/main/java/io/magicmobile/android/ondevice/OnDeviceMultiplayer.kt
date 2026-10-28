@@ -8,6 +8,8 @@ import io.magicmobile.android.game.BuildIdentity
 import io.magicmobile.android.game.EngineClient
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.TableChatText
+import io.magicmobile.android.game.TableContinueVote
+import io.magicmobile.android.game.TableLeaveRules
 import io.magicmobile.android.game.EnginePrompt
 import io.magicmobile.android.game.TurnClock
 import io.magicmobile.android.game.TurnClockBoard
@@ -572,6 +574,10 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
         return code to minOf(3, seatsWanted - seatsTaken)
     }
     var isFailed by mutableStateOf(false); private set
+    /** The vote to go on without a player who is away ([TableLeaveRules]), as this phone shows it; null while nobody is. */
+    var continueVote by mutableStateOf<TableContinueVote?>(null); private set
+    /** "Jed left. The game goes on.": a player left for good and the others play on. Cleared by the root once shown. */
+    var tableNotice by mutableStateOf<String?>(null)
     /**
      * The online turn timer's clocks as this phone shows them (iOS turnClock). The host runs them
      * ([TurnClock]) and sends each change to the guests in a `clock` packet.
@@ -591,6 +597,8 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
     private var lobby: OnDeviceMultiplayerLobby? = null
     private var submission: J? = null
     private var epoch: UUID? = null
+    /** The game's voice channel (VoiceChatRules) once it has an epoch; null before. */
+    val voiceChannel: String? get() = io.magicmobile.android.game.VoiceChatRules.channel(epoch?.toString())
     private var hostEngine: EngineClient? = null
     private var nativeMatchID: String? = null
     private var startup: Job? = null
@@ -605,6 +613,12 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
     private val suspendedPeers = HashSet<String>()
     /** Players whose connection to the relay dropped; they may still resume their seat. */
     private val relayAwayPeers = HashSet<String>()
+    /** Players who left for good: their seat was conceded and the game goes on without them ([TableLeaveRules]). */
+    private val gonePeers = HashSet<String>()
+    /** Host only: when each paused player went away, and the seats that voted to go on without them. */
+    private val awaySince = HashMap<String, Double>()
+    private val continueVoters = HashMap<String, MutableSet<String>>()
+    private var lastVotePacket: String? = null
     private var presenceSequence = 0L
     private var suspensionRevision = 0L
     private val peerPresenceSequences = HashMap<String, Long>()
@@ -669,7 +683,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
                 else {
                     // A dropped phone pauses the match like a backgrounded app, until it returns or the relay gives up on it.
                     // Before the match starts, the lobby's repeating offer already covers a brief drop.
-                    val away = peers.filter { !it.connected && it.id != lobby.localPeerID }.map { it.id }.toSet()
+                    val away = peers.filter { !it.connected && it.id != lobby.localPeerID && it.id !in gonePeers }.map { it.id }.toSet()
                     if (away != relayAwayPeers) { relayAwayPeers.clear(); relayAwayPeers.addAll(away); if (endpoint != null) updateSuspension() }
                 }
             }
@@ -689,7 +703,10 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
         }
         transport.onDisconnect = { peer ->
             if (generation == token && !closing && peer != transport.localPeerID) {
-                fail(if (lobby?.hostID == peer || (lobby == null && peer.startsWith("p1-"))) "The host left this table."
+                // Once the game is on, a guest who leaves is conceded and the others play on; only the host's engine can't move.
+                val lobby = lobby
+                if (endpoint != null && lobby != null && peer != lobby.hostID) playerLeft(peer)
+                else fail(if (lobby?.hostID == peer || (lobby == null && peer.startsWith("p1-"))) "The host left this table."
                     else "A player left. This match cannot continue. Leave and start a new match.")
             }
         }
@@ -789,6 +806,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
         }
         val epoch = epoch
         if (epoch == null || uuidOrNull(fields["epoch"].string) != epoch) throw EngineError.IncompatibleBuild
+        if (peer in gonePeers) throw EngineError.UnboundPeer
         when (type) {
             "request" -> {
                 val dispatcher = hostDispatcher
@@ -859,7 +877,29 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
             }
             "end" -> {
                 if (fields.keys != setOf("type", "epoch")) throw EngineError.InvalidMessage("Invalid match ending.")
-                fail(if (peer == lobby.hostID) "The host ended this match." else "A player left. Start a new match to play again.")
+                when {
+                    peer == lobby.hostID -> fail("The host ended this match.")
+                    endpoint != null -> playerLeft(peer)
+                    else -> fail("A player left. Start a new match to play again.")
+                }
+            }
+            "left" -> {
+                val seat = fields["seat"].string
+                if (fields.keys != setOf("type", "epoch", "seat") || peer != lobby.hostID || lobby.localPeerID == lobby.hostID || seat == null) {
+                    throw EngineError.UnboundPeer
+                }
+                if (seat == endpoint?.seatID) { fail(TableLeaveRules.LEFT_BEHIND_MESSAGE); return }
+                markGone(lobby.peerIDs.firstOrNull { runCatching { lobby.seatID(it) }.getOrNull() == seat } ?: throw EngineError.UnboundPeer)
+            }
+            "vote" -> {
+                if (peer != lobby.hostID || lobby.localPeerID == lobby.hostID) throw EngineError.UnboundPeer
+                val vote = TableContinueVote.parse(value, seatNames, endpoint?.seatID)
+                continueVote = vote?.takeIf { it.seatID != endpoint?.seatID }
+            }
+            "continue" -> {
+                val seat = fields["seat"].string
+                if (fields.keys != setOf("type", "epoch", "seat") || lobby.localPeerID != lobby.hostID || seat == null) throw EngineError.UnboundPeer
+                castContinueVote(peer, seat)
             }
             "reject" -> {
                 if (fields.keys != setOf("type", "epoch", "reason") || fields["reason"].string != "aiSettings" ||
@@ -1110,7 +1150,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
             suspensionRevision += 1
             val revision = suspensionRevision
             router?.let { router -> scope.launch { router.setSuspended(paused, revision) } }
-            lobby.peerIDs.filter { it != lobby.hostID }.forEach { sendPresence(paused, it) }
+            lobby.peerIDs.filter { it != lobby.hostID && it !in gonePeers }.forEach { sendPresence(paused, it) }
         }
     }
 
@@ -1125,7 +1165,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
         clockDirty = true
         val notice = OnDeviceRevisionNotice.packet(epoch, revision)
         debugLog("host notice revision $revision")
-        for (peer in lobby.peerIDs) if (peer != lobby.hostID && peer !in relayAwayPeers) runCatching { send(notice, peer) }
+        for (peer in lobby.peerIDs) if (peer != lobby.hostID && peer !in relayAwayPeers && peer !in gonePeers) runCatching { send(notice, peer) }
     }
 
     private fun uptime(): Double = android.os.SystemClock.elapsedRealtime() / 1000.0
@@ -1148,6 +1188,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
 
     /** One second of the host's clock. False once the game is over. */
     private suspend fun tickHostClock(engine: EngineClient, matchID: String, seats: List<String>, token: UUID): Boolean {
+        updateContinueVote(uptime())
         var changed = hostClock.setPaused(isSuspended || (startingRoll != null && !rollShown), uptime())
         val due = hostClock.expired(uptime()).map { it.first }.toSet()
         val prompts = HashMap<String, EnginePrompt?>()
@@ -1192,7 +1233,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
         val epoch = epoch ?: return
         if (lobby.localPeerID != lobby.hostID) return
         val packet = TurnClockWire.packet(epoch.wire, hostClock.paused, entries)
-        for (peer in lobby.peerIDs) if (peer != lobby.hostID && peer !in relayAwayPeers) runCatching { send(packet, peer) }
+        for (peer in lobby.peerIDs) if (peer != lobby.hostID && peer !in relayAwayPeers && peer !in gonePeers) runCatching { send(packet, peer) }
     }
 
     private fun stopClock() {
@@ -1213,6 +1254,105 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
             send(obj("type" to text("presence"), "epoch" to text(epoch.wire), "sequence" to number(presenceSequence),
                 "suspended" to JsonPrimitive(suspended)), peer)
         } catch (error: Throwable) { /* The relay resumes the seat; presence repeats with the next change. */ }
+    }
+
+    // Players who leave (TableLeaveRules)
+
+    /** This phone votes to go on without the player who is away. */
+    fun voteToContinue() {
+        val vote = continueVote ?: return
+        val lobby = lobby ?: return
+        val epoch = epoch ?: return
+        if (vote.voted || isFailed || closing) return
+        if (lobby.localPeerID == lobby.hostID) castContinueVote(lobby.hostID, vote.seatID)
+        else {
+            runCatching { send(obj("type" to text("continue"), "epoch" to text(epoch.wire), "seat" to text(vote.seatID)), lobby.hostID) }
+            continueVote = vote.copy(voted = true)
+        }
+    }
+
+    /** A guest left for good (Leave, or the relay gave up on them): the host concedes their seat; a guest waits for its word. */
+    private fun playerLeft(peer: String) {
+        val lobby = lobby ?: return
+        if (peer == lobby.localPeerID || peer in gonePeers) return
+        if (lobby.localPeerID == lobby.hostID) retire(peer) else markGone(peer)
+    }
+
+    /** Host only: concede the seat, tell everyone (the player too, should they come back), and play on. */
+    private fun retire(peer: String) {
+        val lobby = lobby ?: return
+        val epoch = epoch ?: return
+        if (lobby.localPeerID != lobby.hostID || peer == lobby.hostID || peer in gonePeers) return
+        val seat = runCatching { lobby.seatID(peer) }.getOrNull() ?: return
+        val left = obj("type" to text("left"), "epoch" to text(epoch.wire), "seat" to text(seat))
+        runCatching { send(left, peer) }
+        markGone(peer)
+        runCatching { broadcast(left) }
+        // A seat that leaves during the starting roll rolls where it sat.
+        val progress = rollProgress
+        if (progress != null && progress.nextSeatID == seat) runCatching {
+            val index = progress.advance(seat, automated = false)
+            shareRollAdvance(index)
+            rollRevealedCount = progress.revealedCount
+            updateRollStatus()
+        }
+        val engine = hostEngine; val matchID = nativeMatchID
+        if (engine != null && matchID != null) scope.launch { runCatching { engine.concede(matchID, seat) } }
+        clockDirty = true
+        updateContinueVote(uptime())
+    }
+
+    /** Forget a player who left: nothing waits for them, and the table says so once. */
+    private fun markGone(peer: String) {
+        val lobby = lobby ?: return
+        if (!gonePeers.add(peer)) return
+        suspendedPeers.remove(peer); relayAwayPeers.remove(peer); awaySince.remove(peer); continueVoters.remove(peer)
+        val seat = runCatching { lobby.seatID(peer) }.getOrNull()
+        tableNotice = TableLeaveRules.leftNotice(seat?.let { seatNames[it] } ?: playerNames[peer] ?: "A player")
+        if (continueVote?.seatID == seat) continueVote = null
+        if (endpoint != null) updateSuspension()
+    }
+
+    /** Host only: a vote from [peer] (the host itself included) to go on without the player in [seat]. */
+    private fun castContinueVote(peer: String, seat: String) {
+        val lobby = lobby ?: return
+        if (lobby.localPeerID != lobby.hostID) return
+        val away = lobby.peerIDs.firstOrNull { runCatching { lobby.seatID(it) }.getOrNull() == seat } ?: return
+        if (away == peer) return
+        val voter = runCatching { lobby.seatID(peer) }.getOrNull() ?: return
+        continueVoters.getOrPut(away) { HashSet() }.add(voter)
+        updateContinueVote(uptime())
+    }
+
+    /** Host only, every clock tick and on each vote: who is away long enough to vote on, the tally, and the outcome. */
+    private fun updateContinueVote(now: Double) {
+        val lobby = lobby ?: return
+        val epoch = epoch ?: return
+        if (lobby.localPeerID != lobby.hostID || endpoint == null || isFailed || closing) return
+        val paused = (suspendedPeers + relayAwayPeers) - gonePeers - lobby.hostID
+        for (peer in paused) awaySince.getOrPut(peer) { now }
+        awaySince.keys.filter { it !in paused }.forEach { awaySince.remove(it); continueVoters.remove(it) }
+        val eligible = lobby.peerIDs.filter { it !in gonePeers && it !in paused && it !in suspendedPeers }
+            .mapNotNull { runCatching { lobby.seatID(it) }.getOrNull() }.toSet()
+        // The server can turn the vote off (AppConfig "leaveVote"); a player who leaves is still conceded.
+        val candidate = if (!io.magicmobile.android.game.AppConfigState.current.isOn("leaveVote")) null
+            else paused.filter { now - (awaySince[it] ?: now) >= TableLeaveRules.VOTE_AFTER_SECONDS }
+                .minWithOrNull(compareBy<String>({ awaySince[it] ?: now }, { it }))
+        var vote: TableContinueVote? = null
+        val seat = candidate?.let { runCatching { lobby.seatID(it) }.getOrNull() }
+        if (candidate != null && seat != null && eligible.isNotEmpty()) {
+            val yes = continueVoters[candidate].orEmpty().intersect(eligible)
+            if (TableLeaveRules.passes(yes.size, eligible.size)) { retire(candidate); return }
+            vote = TableContinueVote(seat, seatNames[seat] ?: playerNames[candidate] ?: "A player", yes.sorted(), eligible.size, false)
+        }
+        val localSeat = runCatching { lobby.seatID(lobby.hostID) }.getOrNull()
+        continueVote = vote?.let { it.copy(voted = localSeat != null && localSeat in it.voters) }
+        val packet = (vote ?: TableContinueVote.NONE).packet(epoch.wire)
+        val text = packet.toString()
+        if (text != lastVotePacket) {
+            lastVotePacket = text
+            runCatching { broadcast(packet) }
+        }
     }
 
     /** A failed native destroy or close keeps the endpoint and engine so Leave can be retried. */
@@ -1240,6 +1380,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
             startingRoll = null; rollProgress = null; rollRevealedCount = 0; hasRolled = false; rollStatus = ""; tableSeats = emptyList()
             remote = null; tableLink = null; router = null; hostDispatcher = null; relay = null; lobby = null; epoch = null; submission = null; requestedAISeats = emptyList()
             suspendedPeers.clear(); relayAwayPeers.clear(); peerPresenceSequences.clear(); presenceSequence = 0; suspensionRevision = 0
+            gonePeers.clear(); awaySince.clear(); continueVoters.clear(); lastVotePacket = null; continueVote = null; tableNotice = null
             room = null; localReady = false; reportedReady = emptyMap(); playerNames.clear()
             tableCode = null; seatsTaken = 0; seatsWanted = 0; waitingSeats = emptyList(); isHosting = false
             isFailed = false; isSuspended = false; status = "Match closed."
@@ -1249,6 +1390,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
     private fun fail(message: String) {
         if (isFailed) return
         isFailed = true; isConnected = false; status = message; seatNames = emptyMap(); room = null; waitingSeats = emptyList()
+        continueVote = null
         rollTimer?.cancel(); rollTimer = null
         stopClock()
         startingRoll = null; rollProgress = null; rollRevealedCount = 0; hasRolled = false; rollStatus = ""; tableSeats = emptyList()
@@ -1265,7 +1407,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
 
     private fun broadcast(value: J) {
         val lobby = lobby ?: return
-        for (peer in lobby.peerIDs) if (peer != lobby.localPeerID) send(value, peer)
+        for (peer in lobby.peerIDs) if (peer != lobby.localPeerID && peer !in gonePeers) send(value, peer)
     }
 
     private fun settingsRejection(epoch: String): J = obj("type" to text("reject"), "epoch" to text(epoch), "reason" to text("aiSettings"))

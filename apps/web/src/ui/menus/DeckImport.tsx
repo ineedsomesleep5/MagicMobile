@@ -132,7 +132,7 @@ export function ImportPanel({ library, catalogue, resolver, close, saved }: {
               )}
             </div>
             <p className="mnote strong">{reviewed ? DraftPresentation.gameCount(reviewed) : 0} main + commander cards</p>
-            {unresolved.length > 0 && <p className="mnote warn">{unresolved.length} {unresolved.length === 1 ? "name" : "names"} not in this catalogue: {unresolved.slice(0, 6).join(", ")}{unresolved.length > 6 ? "…" : ""}</p>}
+            {unresolved.length > 0 && <p className="mnote warn">{unresolved.length} not in MagicMobile yet: {unresolved.slice(0, 6).join(", ")}{unresolved.length > 6 ? "…" : ""}</p>}
             {preview.annotations.length > 0 && (
               <details className="mimportnotes"><summary>{preview.annotations.length} {preview.annotations.length === 1 ? "note" : "notes"}</summary>
                 {preview.annotations.map((note, i) => <p key={i} className="mnote">Line {note.line}: {note.text}</p>)}

@@ -57,7 +57,11 @@ struct OnDeviceRootView: View {
     @State private var showImport = false
     @State private var studioFocus: DeckStudioPlaySelection.FixRequest?
     @State private var confirmLeave = false
+    /// When this game's engine match began, for the game's length on the profile.
+    @State private var gameStartedAt: Date?
     @StateObject private var emotes = EmoteCenter()
+    /// Voice chat for this online game (VoiceRoom); nil in solo games and while the server's switch is off.
+    @State private var voiceRoom: VoiceRoom?
     @State private var showDiagnostics = false
     @State private var confirmDeleteReport = false
     @State private var bannerError: String?
@@ -70,6 +74,8 @@ struct OnDeviceRootView: View {
     /// The game on the table is the guided first game: its coach shows notes (GuidedGame.swift).
     @State private var guidedGame = false
     @State private var guidedTip: GuidedGameTip?
+    /// The game on the table is a lesson (Lessons.swift): recorded, coached, never counted.
+    @State private var lessonRun: LessonRun?
     /// The table code typed or opened from a join link; a link that arrives before the
     /// catalogue is ready waits in `pendingJoinCode`.
     @State private var relayJoinCode = ""
@@ -85,6 +91,9 @@ struct OnDeviceRootView: View {
     // Quick Match, Ranked and the profile (Ranked/).
     @ObservedObject private var profileRecord = PlayerRecordStore.shared
     @StateObject private var matchmaker = RankedMatchmaker(service: nil)
+    /// The freeze log's launch question and its answer (docs/FREEZE_LOG.md).
+    @State private var freezePrompt: FreezeIncident?
+    @State private var freezeResult: String?
     @StateObject private var challenges = FriendChallengeCoordinator(service: nil)
     /// The friend a challenge is waiting on, and its mode.
     @State private var challengeTarget: (name: String, mode: PlayMode)?
@@ -100,10 +109,14 @@ struct OnDeviceRootView: View {
     @AppStorage("magicmobile.quick.opponentBracket") private var quickBracket = 0
     @AppStorage("magicmobile.quick.opponentDeck") private var quickDeckID = ""
     @AppStorage("magicmobile.quick.aiSkill") private var quickSkill = 3
+    /// Easy, Medium or Hard pick the AI's deck by Power and set its skill; "advanced" keeps the bracket, deck and skill controls.
+    @AppStorage("magicmobile.quick.level") private var quickLevel = "medium"
     /// The game being played from Quick Match or Ranked, for its result.
     @State private var activeMatch: ActiveMatch?
     /// How the last ranked result moved the ladder (the result screen's rank strip).
     @State private var rankChange: RankChange?
+    /// Why the last ranked win left the ladder alone, once the server answers.
+    @State private var rankNote: String?
     /// A division or tier change waiting for its full-screen moment.
     @State private var ceremony: RankChange?
     @State private var showBracketSheet = false
@@ -142,8 +155,9 @@ struct OnDeviceRootView: View {
     /// Seats for the intro: the table's own players when known, else the chosen decks.
     private func makeVersusIntro() -> VersusIntro {
         let name = playerDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tier = profileRecord.rank.position.tier
         let you = VersusIntroOverlay.Seat(id: "you", name: name.isEmpty ? "You" : name,
-                                          commander: selectedDeck?.commander?.cardName)
+                                          commander: selectedDeck?.commander?.cardName, tier: tier)
         // A table knows everyone's commander before its first snapshot shows the command zones.
         if setup.usingMultiplayer, let seats = setup.multiplayer?.tableSeats, seats.contains(where: \.isLocal) {
             let opponents = seats.filter { !$0.isLocal }.prefix(3).map {
@@ -152,7 +166,7 @@ struct OnDeviceRootView: View {
             if !opponents.isEmpty {
                 let local = seats.first(where: \.isLocal)
                 let tableYou = VersusIntroOverlay.Seat(id: "you", name: local?.name ?? you.name,
-                                                       commander: local?.commanders.first ?? you.commander)
+                                                       commander: local?.commanders.first ?? you.commander, tier: tier)
                 return VersusIntro(you: tableYou, opponents: Array(opponents))
             }
         }
@@ -228,7 +242,7 @@ struct OnDeviceRootView: View {
         guidedTip = nil
         if !guidedGame { applyResumeSetup(record.setup) }
         activeMatch = resumedMatch(record.setup, deckName: record.playerDeckName)
-        rankChange = nil
+        rankChange = nil; rankNote = nil
         showSetup = false
         skipNextVersusIntro = true
         Task {
@@ -464,6 +478,21 @@ struct OnDeviceRootView: View {
             do { try await Task.sleep(for: .seconds(GameResumeText.noticeSeconds)) } catch { return }
             resume.notice = nil
         }
+        // A player left the table and the others play on (TableLeaveRules); on the menu, the server's notice (AppConfig).
+        .overlay(alignment: .top) {
+            if activeGame, let notice = setup.multiplayer?.tableNotice {
+                GameResumeNoticeBanner(message: notice, symbol: "figure.walk.departure") { setup.multiplayer?.tableNotice = nil }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            } else if !activeGame && !showSetup && lobby == nil && resume.notice == nil {
+                AppNoticeBanner()
+            }
+        }
+        .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: setup.multiplayer?.tableNotice)
+        .task(id: setup.multiplayer?.tableNotice) {
+            guard setup.multiplayer?.tableNotice != nil else { return }
+            do { try await Task.sleep(for: .seconds(GameResumeText.noticeSeconds)) } catch { return }
+            setup.multiplayer?.tableNotice = nil
+        }
         .environment(\.nativeTurnControl, turnControl)
         .arenaPanel(isPresented: $showDiagnostics, fitsContent: true) { diagnosticSheet }
         .background {
@@ -476,10 +505,17 @@ struct OnDeviceRootView: View {
         } message: {
             Text(setup.multiplayer?.endpoint?.isHost == true
                  ? "You are hosting. Leaving ends this match for everyone; it cannot be resumed."
+                 : setup.multiplayer?.endpoint != nil
+                 ? "You leave the table and the others play on without you. You can't come back to this game."
                  : "This closes the current match. It cannot be resumed after leaving.")
         }
         // Every menu, sheet and overlay wears the Arena look (the game sets its own board's).
         .environment(\.arenaBoard, true)
+        // A friend's profile can join their open table: every page over the menu closes first, then the table setup opens.
+        .environment(\.joinFriendTable, { code in
+            showFriends = false; lobby = nil; chatProfile = nil
+            Task { try? await Task.sleep(for: .milliseconds(450)); openJoinLink(code) }
+        })
     }
 
     /// Decks is the Arena menus' Decks tab (Caleb, 2026-10-22; it was a spell book that opened on the table).
@@ -530,7 +566,7 @@ struct OnDeviceRootView: View {
         if howToPlayOpensTable {
             return HowToPlayView(tutorialID: HowToPlayText.tutorials[0].id, playGuided: nil)
         }
-        return HowToPlayView(tutorialID: nil, playGuided: { startGuidedGame() })
+        return HowToPlayView(tutorialID: nil, playGuided: { startGuidedGame() }, playLesson: { startLesson($0) })
     }
 
     private func closeHowToPlay() {
@@ -570,6 +606,11 @@ struct OnDeviceRootView: View {
             try? diagnostics.save(engineReport: "UI TEST FIXTURE: Sample engine incident", status: "Presentation test")
             setup.errorMessage = "UI test fixture: engine incident."
         }
+        // UI tests and screenshots: MAGICMOBILE_UI_TEST_LESSON=<id> opens that lesson; it needs no engine.
+        if OnDeviceAppConfiguration.entryPoint == .setupPreview,
+           let lesson = ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_LESSON"] {
+            startLesson(lesson)
+        }
         // UI tests: MAGICMOBILE_UI_TEST_CEREMONY=tierUp|tierDown|divisionUp|divisionDown plays a rank moment.
         if OnDeviceAppConfiguration.entryPoint == .setupPreview,
            let kind = ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_CEREMONY"] {
@@ -585,7 +626,9 @@ struct OnDeviceRootView: View {
         #endif
     }
 
-    private var lifecycleContent: some View {
+    /// The presented content with deck sync, preferences and the app's comings and goings (split from lifecycleContent
+    /// to keep each modifier chain inside the type checker's budget).
+    private var syncedContent: some View {
         presentedContent.holdInspectionScope().task { await preparePresentation() }
         .onChange(of: library.decks.map(\.id)) { _, _ in
             if !activeGame { restoreSetupPreferences() }
@@ -619,8 +662,51 @@ struct OnDeviceRootView: View {
             if phase == .background { resume.enteredBackground() }
             if phase == .active { resume.enteredForeground(); GameAudio.shared.resume() }
             account.setForeground(phase == .active)
+            MainThreadWatchdog.shared.setPaused(phase != .active)
         }
         .onAppear { if scenePhase == .active { account.setForeground(true) } }
+        // Each engine match's start, for the game's length on the profile.
+        .onChange(of: session.matchID) { _, id in gameStartedAt = id == nil ? nil : Date() }
+    }
+
+    private var lifecycleContent: some View {
+        syncedContent
+        // Freeze log (docs/FREEZE_LOG.md): what the game is, the ranked search's steps, and last session's freeze.
+        .onChange(of: activeMatch, initial: true) { _, match in
+            session.freezeMode = match.map { "\($0.mode.rawValue)\($0.opponents.contains { $0.isAI } ? " vs AI" : " vs people")" }
+                ?? (setup.usingMultiplayer ? "table" : "custom")
+        }
+        .onChange(of: matchmaker.phase) { _, phase in
+            switch phase {
+            case .idle: FreezeLog.shared.note("Ranked search: idle")
+            case .searching: FreezeLog.shared.note("Ranked search: looking for a player")
+            case .matched: FreezeLog.shared.note("Ranked search: matched with a player")
+            }
+        }
+        .task(id: account.phase == .ready) {
+            // The server's settings for this build (AppConfig): the menu's notice, name fixes, feature switches.
+            await account.refreshAppConfig()
+            guard account.phase == .ready, !activeGame, freezePrompt == nil,
+                  ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_PREFERENCES"] == nil else { return }
+            let now = Date().timeIntervalSince1970
+            let asked = UserDefaults.standard.object(forKey: FreezeLog.askedAtKey) as? Double
+            guard FreezeRules.mayAsk(secondsSinceAsked: asked.map { now - $0 }), let incident = FreezeLog.shared.unsent else { return }
+            UserDefaults.standard.set(now, forKey: FreezeLog.askedAtKey)
+            freezePrompt = incident
+        }
+        .tavernConfirmation(active: true, title: "The last game froze",
+                            message: "Send the report? It holds the game's state and your recent actions, not your account or decks.",
+                            isPresented: Binding(get: { freezePrompt != nil && !activeGame }, set: { if !$0 { freezePrompt = nil } }),
+                            actions: [TavernDialogAction(title: "Send") {
+                                guard let incident = freezePrompt else { return }
+                                freezePrompt = nil
+                                Task { await sendFreezeReport(incident) }
+                            }],
+                            cancelTitle: "Not now",
+                            onCancel: { if let incident = freezePrompt { FreezeLog.shared.dismiss(incident.id) }; freezePrompt = nil })
+        .tavernConfirmation(active: true, title: freezeResult ?? "", message: nil,
+                            isPresented: Binding(get: { freezeResult != nil }, set: { if !$0 { freezeResult = nil } }),
+                            actions: [], cancelTitle: "OK", onCancel: { freezeResult = nil })
         #if DEBUG
         // Development fixtures (SocialFixtures): open the profile or the friends sheet at launch.
         .task {
@@ -723,6 +809,7 @@ struct OnDeviceRootView: View {
         .onChange(of: setup.multiplayer?.isSuspended) { _, _ in setup.updateSessionForeground() }
         .onChange(of: setup.multiplayer?.endpoint?.matchID) { _, matchID in
             if matchID != nil { Task { await setup.attachMultiplayer(deckID: selectedDeckID, deck: selectedDeck) } }
+            syncVoiceRoom()
         }
         .onChange(of: session.snapshot?.bridgeRevision) { _, _ in
             refreshInspections()
@@ -1032,18 +1119,31 @@ struct OnDeviceRootView: View {
         .overlay(alignment: .top) {
             if guidedGame, let guidedTip {
                 GuidedGameCoachCard(tip: guidedTip, dismiss: { self.guidedTip = nil }, turnOff: { endGuidedTips() })
+                    .environment(\.arenaBoard, BoardMode.resolved(boardMode) == .arena)
                     .padding(.top, 6)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: guidedTip)
         .onReceive(session.$snapshot) { snapshot in advanceGuidedTip(snapshot) }
+        .overlay(alignment: .top) {
+            // A lesson that ends in a win hands over to the result screen, whose button goes on to the next lesson.
+            if let lessonRun, session.snapshot?.isCompleted != true {
+                LessonCoachCard(run: lessonRun, nextTitle: LessonCatalog.next(after: lessonRun.script.id) == nil ? LessonText.guided : LessonText.next,
+                                next: { nextLesson() }, done: { finishLesson() })
+                    .environment(\.arenaBoard, BoardMode.resolved(boardMode) == .arena)
+                    .padding(.top, 6)
+            }
+        }
+        .modifier(LessonFocusIfAny(run: lessonRun))
         .environment(\.inspectorBattlefield, session.snapshot?.visibleBattlefield ?? [])
         .disabled(setup.isBusy)
-        .environment(\.gameRematchTitle, setup.usingMultiplayer ? nil
+        .environment(\.gameRematchTitle, lessonRun.map { LessonCatalog.next(after: $0.script.id) == nil ? LessonText.guided : LessonText.next }
+                     ?? (setup.usingMultiplayer ? nil
                      : activeMatch?.mode == .quick ? String(localized: "Play Again")
-                     : activeMatch?.mode == .ranked ? String(localized: "Next Match") : "Rematch")
+                     : activeMatch?.mode == .ranked ? String(localized: "Next Match") : "Rematch"))
         .environment(\.gameRankChange, rankChange)
+        .environment(\.gameRankNote, rankNote)
         .environment(\.boardAnswerActions, BoardAnswerActions(
             supported: session.supportedAnswerActions, rememberedAnswers: session.rememberedAnswers,
             rememberedTriggerOrders: session.rememberedTriggerOrders,
@@ -1055,7 +1155,9 @@ struct OnDeviceRootView: View {
         .onChange(of: stopForOwnSpells) { _, _ in session.setSmartPass(.load()) }
         .onChange(of: stopForThreats) { _, _ in session.setSmartPass(.load()) }
         .environment(\.gameConcede, GameConcedeHandler(concede: concede))
+        .environment(\.gameFreezeReport, GameFreezeReportHandler(report: reportFreezeNow))
         .environment(\.emoteCenter, emotes)
+        .environment(\.voiceRoom, voiceRoom)
         // Messages from friends inside a game too: the game menu's Messages button, and a banner for a new one.
         .environment(\.friendMessages, account.phase == .ready && account.username != nil && account.messagesAvailable
                      ? FriendMessagesEntry(unread: account.unreadMessages, hub: { [account] in AnyView(FriendMessagesHub(account: account)) })
@@ -1111,6 +1213,24 @@ struct OnDeviceRootView: View {
         .onChange(of: session.snapshot?.id) { _, _ in emotes.reset(); connectEmotes() }
     }
 
+    /// Voice chat (VoiceRoom; docs/VOICE_CHAT.md): one room per online game once it has its channel and the server's
+    /// voiceChat switch is on. Nobody is in voice until they tap the mic; leaving the game leaves the channel.
+    private func syncVoiceRoom() {
+        let multiplayer = setup.usingMultiplayer ? setup.multiplayer : nil
+        let channel = multiplayer?.voiceChannel
+        let seat = VoiceChatRules.account(seat: multiplayer?.endpoint?.seatID)
+        let on = AppConfigStore.shared.current.isOn(VoiceChatRules.switchName, default: false)
+        if let room = voiceRoom, on, room.channel == channel, room.account == seat { return }
+        voiceRoom?.close()
+        voiceRoom = nil
+        guard on, let channel, let seat else { return }
+        let room = VoiceRoom(channel: channel, account: seat) { [account] channel, seat in
+            try await account.voiceToken(channel: channel, account: seat)
+        }
+        room.table = multiplayer
+        voiceRoom = room
+    }
+
     /// Game Center games carry quick chat between devices; solo games only answer from the AI.
     private func connectEmotes() {
         let multiplayer = setup.usingMultiplayer ? setup.multiplayer : nil
@@ -1145,11 +1265,12 @@ struct OnDeviceRootView: View {
         guard session.snapshot?.isCompleted == true, !setup.usingMultiplayer else { return requestLeave() }
         let mode = activeMatch?.mode
         let guided = guidedGame
+        if lessonRun != nil { return nextLesson() }
         Task {
             guard await setup.close() else { return }
             if guided { return startGuidedGame() }
             selectedCard = nil; inspectedCard = nil; zone = nil
-            activeMatch = nil; rankChange = nil
+            activeMatch = nil; rankChange = nil; rankNote = nil
             // Quick Match deals a new opponent; Ranked looks for the next match.
             switch mode {
             case .quick: startQuickMatch()
@@ -1426,7 +1547,7 @@ struct OnDeviceRootView: View {
             sections: deckBoxSections, selectedDeckID: $selectedDeckID, deckName: selectedDeck?.name, deckBracket: selectedDeckBracket,
             mode: Binding(get: { ArenaPlayMode(rawValue: playModeRaw) ?? .quick }, set: { playModeRaw = $0.rawValue }),
             tab: $playTab,
-            quickBracket: $quickBracket, quickDeckID: $quickDeckID, quickSkill: $quickSkill, startingPlayer: $aiStartingPlayerMode,
+            quickBracket: $quickBracket, quickDeckID: $quickDeckID, quickSkill: $quickSkill, quickLevel: $quickLevel, startingPlayer: $aiStartingPlayerMode,
             rank: profileRecord.rank, canSearchPeople: account.rankedQueue != nil,
             search: matchmaker.isSearching ? matchmaker.phase : fixtureSearch,
             waitingFor: challenges.isWaiting ? challengeTarget?.name : nil,
@@ -1478,6 +1599,11 @@ struct OnDeviceRootView: View {
 
     private func startQuickMatch() {
         guard let deck = selectedDeck, let bracket = selectedDeckBracket else { return }
+        if let level = AIDeckPool.power?.quickMatch[quickLevel],
+           let opponent = AIDeckPool.pick(targetPower: level.power, maxBracket: nil, avoidingCommander: deck.commander?.cardName,
+                                          recent: profileRecord.recentAIDecks) {
+            return startSolo(mode: .quick, deck: deck, deckBracket: bracket, opponent: opponent, skill: level.skill)
+        }
         let opponentBracket = quickBracket == 0 ? min(4, bracket.rawValue) : quickBracket
         let chosen = quickDeckID.isEmpty ? nil : AIDeckPool.deck(id: quickDeckID)
         // "Match my deck" at Core or below meets a precon: the Core AI decks are tuned tribal lists.
@@ -1508,11 +1634,21 @@ struct OnDeviceRootView: View {
 
     private func startRankedAI(deck: DeckList, bracket: CommanderBracket) {
         let position = profileRecord.rank.position
-        guard let opponent = AIDeckPool.pick(bracket: position.opponentBracket, avoidingCommander: deck.commander?.cardName,
+        // The deck nearest the division's Power from the tier's bracket or lower (docs/DECK_POWER.md); by bracket if unrated.
+        // The server's ticket can name the Power instead (ranked_ai_tuning), when the game starts.
+        let recent = profileRecord.recentAIDecks
+        let pickByPower = { (target: Double) -> AIDeck? in
+            AIDeckPool.power == nil ? nil : AIDeckPool.pick(targetPower: target, maxBracket: position.tier.maxDeckBracket,
+                                                            avoidingCommander: deck.commander?.cardName, recent: recent)
+        }
+        let byPower = AIDeckPool.power.flatMap { power in
+            pickByPower(AIDeckPool.rankedTarget(tier: position.tier.rawValue, division: position.division, tiers: power.rankedTiers))
+        }
+        guard let opponent = byPower ?? AIDeckPool.pick(bracket: position.opponentBracket, avoidingCommander: deck.commander?.cardName,
                                              recent: profileRecord.recentAIDecks,
                                              preconsOnly: position.tier.preconOpponentsOnly,
                                              onlyPrecons: position.tier.preconOpponentsOnly ? AIDeckPool.gentlestPrecons : nil) else { return }
-        startSolo(mode: .ranked, deck: deck, deckBracket: bracket, opponent: opponent, skill: position.tier.aiSkill)
+        startSolo(mode: .ranked, deck: deck, deckBracket: bracket, opponent: opponent, skill: position.tier.aiSkill, repick: pickByPower)
     }
 
     /// The host opens a two-seat relay table and shares its code; the guest joins it. Both ready up
@@ -1523,7 +1659,7 @@ struct OnDeviceRootView: View {
                                   colors: selectedDeckColors, deckBracket: bracket.rawValue,
                                   opponents: [.init(name: ticket.opponent ?? String(localized: "Challenger"), commander: nil, isAI: false)],
                                   opponentBracket: nil, aiSkill: nil, aiDeckID: nil, rankedMatchID: matchID)
-        rankChange = nil
+        rankChange = nil; rankNote = nil
         diagnostics.beginAttempt()
         if ticket.isHost {
             await setup.hostRelay(name: playerDisplayName, deck: deck, playerCount: 2, aiDecks: [], aiSkill: 2)
@@ -1586,7 +1722,7 @@ struct OnDeviceRootView: View {
                                       colors: selectedDeckColors, deckBracket: bracket.rawValue,
                                       opponents: [.init(name: friend, commander: nil, isAI: false)],
                                       opponentBracket: nil, aiSkill: nil, aiDeckID: nil, privateTable: true)
-            rankChange = nil
+            rankChange = nil; rankNote = nil
             challengeTarget = (friend, mode)
             diagnostics.beginAttempt()
             await setup.hostRelay(name: playerDisplayName, deck: deck, playerCount: 2, aiDecks: [], aiSkill: 2)
@@ -1628,7 +1764,7 @@ struct OnDeviceRootView: View {
                                           opponents: [.init(name: friend, commander: nil, isAI: false)],
                                           opponentBracket: nil, aiSkill: nil, aiDeckID: nil, rankedMatchID: accepted.matchId,
                                           privateTable: true)
-                rankChange = nil
+                rankChange = nil; rankNote = nil
                 diagnostics.beginAttempt()
                 setup.joinRelay(code: code, name: playerDisplayName, deck: deck)
                 watchPersonTable(friend)
@@ -1672,13 +1808,55 @@ struct OnDeviceRootView: View {
                                   deckBracket: CommanderBracket.core.rawValue,
                                   opponents: [.init(name: opponent.name, commander: opponent.commander, isAI: true)],
                                   opponentBracket: opponent.bracket.rawValue, aiSkill: GuidedGameSetup.aiSkill, aiDeckID: opponent.id)
-        rankChange = nil
+        rankChange = nil; rankNote = nil
         Task {
             await setup.startAI(name: name, deck: precon.deckList, aiDecks: [opponent.deckList], aiSkill: GuidedGameSetup.aiSkill,
                                 deckID: GuidedGameSetup.playerDeckID, aiDeckIDs: [opponent.id],
                                 startingPlayerMode: aiStartingPlayerMode, mode: .casual,
                                 deckBracket: CommanderBracket.core.rawValue)
             if session.matchID == nil { activeMatch = nil; endGuidedGame() }
+        }
+    }
+
+    // MARK: Lessons
+
+    /// A lesson (Lessons.swift): the recorded game on the real board, with Maren's notes. Nothing is saved or counted.
+    private func startLesson(_ id: String) {
+        guard let info = LessonCatalog.all.first(where: { $0.id == id }) else { return }
+        let script: LessonScript
+        do { script = try LessonScript.load(id: id) } catch { setup.errorMessage = error.localizedDescription; return }
+        HowToPlayLaunch.markSeen(in: MagicMobilePreferences.current)
+        endGuidedGame()
+        let run = LessonRun(script: info, defaults: MagicMobilePreferences.current)
+        run.refresh = { [session] in Task { try? await session.refresh() } }
+        lessonRun = run
+        lobby = nil; showSetup = false
+        activeMatch = nil; rankChange = nil; rankNote = nil
+        Task {
+            await setup.startLesson(script, run: run)
+            if session.matchID == nil { lessonRun = nil }
+        }
+    }
+
+    /// The next lesson, or after the last one the guided game.
+    private func nextLesson() {
+        guard let run = lessonRun else { return }
+        let next = LessonCatalog.next(after: run.script.id)
+        Task {
+            guard await setup.close() else { return }
+            selectedCard = nil; inspectedCard = nil; zone = nil
+            lessonRun = nil
+            if let next { startLesson(next.id) } else { startGuidedGame() }
+        }
+    }
+
+    /// Back to the lessons.
+    private func finishLesson() {
+        Task {
+            guard await setup.close() else { return }
+            selectedCard = nil; inspectedCard = nil; zone = nil
+            lessonRun = nil
+            showHowToPlay = true
         }
     }
 
@@ -1710,9 +1888,10 @@ struct OnDeviceRootView: View {
         showGuidedWelcome = false
     }
 
+    /// The welcome's main button: the first lesson (the guided game follows the last one).
     private func playGuidedFromWelcome() {
         answerGuidedWelcome()
-        startGuidedGame()
+        if let first = LessonCatalog.all.first { startLesson(first.id) } else { startGuidedGame() }
     }
 
     /// The slideshow opens once the welcome has slid away, straight into the table's tutorial.
@@ -1725,7 +1904,9 @@ struct OnDeviceRootView: View {
         }
     }
 
-    private func startSolo(mode: PlayMode, deck: DeckList, deckBracket: CommanderBracket, opponent: AIDeck, skill: Int) {
+    /// `repick`: a ranked game's AI deck for the Power its server ticket names (ranked_ai_tuning).
+    private func startSolo(mode: PlayMode, deck: DeckList, deckBracket: CommanderBracket, opponent: AIDeck, skill: Int,
+                           repick: ((Double) -> AIDeck?)? = nil) {
         diagnostics.beginAttempt()
         do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
         catch { setup.errorMessage = error.localizedDescription; return }
@@ -1733,20 +1914,31 @@ struct OnDeviceRootView: View {
                                   colors: selectedDeckColors, deckBracket: deckBracket.rawValue,
                                   opponents: [.init(name: opponent.name, commander: opponent.commander, isAI: true)],
                                   opponentBracket: opponent.bracket.rawValue, aiSkill: skill, aiDeckID: opponent.id)
-        rankChange = nil
+        rankChange = nil; rankNote = nil
         if mode == .ranked { profileRecord.beginRankedAIGame(ticket: nil) }
         Task {
             // The server's ticket for a ranked game, so its result counts there too; its seed deals this game.
             var seed: Int64?
+            var foe = opponent, aiSkill = skill
+            var mistakes: Int?
             if mode == .ranked {
                 let ticket = await account.startRankedAIGame(deckBracket: deckBracket.rawValue)
                 profileRecord.beginRankedAIGame(ticket: ticket?.id, seeded: ticket != nil)
                 seed = ticket?.seed
+                // The server tunes the AI without an app build: its skill, mistakes and the deck's Power.
+                if let tuned = ticket?.ai {
+                    foe = repick?(tuned.power) ?? opponent
+                    aiSkill = tuned.skill; mistakes = tuned.mistakePercent
+                    activeMatch = ActiveMatch(mode: mode, deckID: selectedDeckID, deckName: deck.name, commander: deck.commander?.cardName,
+                                              colors: selectedDeckColors, deckBracket: deckBracket.rawValue,
+                                              opponents: [.init(name: foe.name, commander: foe.commander, isAI: true)],
+                                              opponentBracket: foe.bracket.rawValue, aiSkill: aiSkill, aiDeckID: foe.id)
+                }
             }
-            await setup.startAI(name: playerDisplayName, deck: deck, aiDecks: [opponent.deckList], aiSkill: skill,
-                                deckID: selectedDeckID, aiDeckIDs: [opponent.id],
+            await setup.startAI(name: playerDisplayName, deck: deck, aiDecks: [foe.deckList], aiSkill: aiSkill,
+                                deckID: selectedDeckID, aiDeckIDs: [foe.id],
                                 startingPlayerMode: mode.startingPlayerMode(preference: aiStartingPlayerMode),
-                                mode: mode, deckBracket: deckBracket.rawValue, seed: seed)
+                                mode: mode, deckBracket: deckBracket.rawValue, seed: seed, aiMistakePercent: mistakes)
             if session.matchID == nil { activeMatch = nil }
         }
     }
@@ -1768,7 +1960,7 @@ struct OnDeviceRootView: View {
     }
 
     private func recordFinishedGameIfNeeded() {
-        guard let snapshot = session.snapshot, snapshot.isCompleted || session.isOverForSeat else { return }
+        guard lessonRun == nil, let snapshot = session.snapshot, snapshot.isCompleted || session.isOverForSeat else { return }
         var match = activeMatch ?? casualMatch(snapshot)
         guard let current = match, !current.recorded else { return }
         let winners = snapshot.winnerPlayerIds ?? []
@@ -1795,15 +1987,23 @@ struct OnDeviceRootView: View {
         let colors = match.colors.isEmpty ? PlayerStats.colors(manaCost: snapshot?.human?.zones.command.first?.card.manaCost) : match.colors
         let change = profileRecord.record(mode: match.mode, outcome: outcome, opponents: match.opponents, opponentBracket: match.opponentBracket,
                                    aiSkill: match.aiSkill, deckID: match.deckID, deckName: match.deckName, commander: match.commander,
-                                   colors: colors, deckBracket: match.deckBracket, turns: turns, aiDeckID: match.aiDeckID,
+                                   colors: colors, deckBracket: match.deckBracket, turns: turns,
+                                   durationSeconds: gameStartedAt.map { Int(Date().timeIntervalSince($0)) }, aiDeckID: match.aiDeckID,
                                    engineMatchID: session.matchID, gameRecordFile: gameRecordFile)
         rankChange = change
+        rankNote = nil
         let rankedMatchID = match.rankedMatchID, ranked = match.mode == .ranked
+        let recordedID = ranked ? profileRecord.matches.first?.id : nil
         Task { [account] in
             if let rankedMatchID { await matchmaker.report(match: rankedMatchID, outcome: outcome) }
             // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile),
             // then upload the game so its rank history point is the standing after it.
             if ranked { await account.afterRefresh?() }
+            // The server's word replaces the phone's guess on the result screen still showing this game.
+            if let recordedID, rankChange == change, let settled = profileRecord.matches.first(where: { $0.id == recordedID }) {
+                rankChange = settled.rankChange
+                rankNote = settled.rankNote
+            }
         }
         if let change, [.divisionUp, .divisionDown, .tierUp, .tierDown].contains(change.kind) {
             // After the result screen's own reveal.
@@ -2288,6 +2488,14 @@ struct OnDeviceRootView: View {
                     }
                 } else if activeGame && !setup.canUseSession {
                     Text(setup.liveStatus)
+                    // Everyone still at the table may vote to go on without a player who is away (TableLeaveRules).
+                    if let vote = setup.multiplayer?.continueVote {
+                        Button(vote.voted ? String(localized: "Waiting for the others (\(vote.voters.count)/\(vote.needed))")
+                               : TableLeaveRules.buttonTitle(vote)) { setup.multiplayer?.voteToContinue() }
+                            .buttonStyle(ArenaButtonStyle(kind: .primary, compact: true))
+                            .disabled(vote.voted)
+                            .accessibilityIdentifier("ondevice.continueWithout")
+                    }
                 } else if activeGame && session.snapshot == nil {
                     Text("Waiting for the first game update.")
                 }
@@ -2324,10 +2532,26 @@ struct OnDeviceRootView: View {
         }
     }
 
+    /// Sends one freeze incident with the phone's crash and hang summaries (docs/FREEZE_LOG.md), only when the player chose to.
+    private func sendFreezeReport(_ incident: FreezeIncident) async {
+        let sections = [FreezeLog.text(incident), OnDeviceSystemReports.section(OnDeviceSystemReports.load(directory: OnDeviceDiagnostics.defaultDirectory))]
+        let sent = await account.sendDiagnostic(kind: incident.kind, report: sections.compactMap { $0 }.joined(separator: "\n\n"))
+        if sent { FreezeLog.shared.markSent(incident.id) }
+        freezeResult = sent ? String(localized: "Report sent. Thank you.") : String(localized: "Couldn't send the report. It will ask again next time.")
+    }
+
+    /// The game menu's Report a freeze: record this moment with the game around it, then send it.
+    private func reportFreezeNow() {
+        session.refreshFreezeContext()
+        let id = FreezeLog.shared.record(kind: "reported", extra: FreezeDevice.summary(foreground: scenePhase == .active))
+        guard let incident = FreezeLog.shared.incidents.first(where: { $0.id == id }) else { return }
+        Task { await sendFreezeReport(incident) }
+    }
+
     private func startAI() {
         diagnostics.beginAttempt()
         guard let deck = selectedDeck, aiPrecons.count == opponentCount else { return }
-        activeMatch = nil; rankChange = nil
+        activeMatch = nil; rankChange = nil; rankNote = nil
         let opponentDecks = aiPrecons.map(\.deckList)
         Task {
             do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
@@ -2428,6 +2652,7 @@ struct OnDeviceRootView: View {
         Task {
             if await setup.close() {
                 endGuidedGame()
+                lessonRun = nil
                 selectedCard = nil; inspectedCard = nil; zone = nil
                 activeMatch = nil; rankChange = nil; ceremony = nil
                 matchmaker.finish(); rankedConnectTask?.cancel()
@@ -2540,9 +2765,24 @@ private final class OnDeviceSetupModel: ObservableObject {
         } catch { errorMessage = error.localizedDescription; status = "Local setup unavailable" }
     }
 
+    /// A lesson: its recording answers for the engine (LessonTransport). No runtime, save or game record.
+    func startLesson(_ script: LessonScript, run: LessonRun) async {
+        guard !isBusy, !needsLeave else { return }
+        isBusy = true; errorMessage = nil; feedback = nil; status = "Starting lesson"
+        defer { isBusy = false }
+        do {
+            let client = EngineClient(transport: LessonTransport(script: script, run: run))
+            updateSessionForeground()
+            try await session.attach(client: client, matchID: script.matchID, seatID: script.viewer, close: {})
+            status = "Lesson started"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func startAI(name: String, deck: DeckList, aiDecks: [DeckList], aiSkill: Int = 2,
                  deckID: String, aiDeckIDs: [String], startingPlayerMode: String,
-                 mode: PlayMode? = nil, deckBracket: Int? = nil, seed: Int64? = nil) async {
+                 mode: PlayMode? = nil, deckBracket: Int? = nil, seed: Int64? = nil, aiMistakePercent: Int? = nil) async {
         guard !isBusy, !needsLeave, let resolver, let identity else { return }
         isBusy = true; errorMessage = nil; feedback = nil; status = "Starting XMage"
         defer { isBusy = false }
@@ -2551,7 +2791,7 @@ private final class OnDeviceSetupModel: ObservableObject {
             let humanDeck = try resolver.resolve(deck)
             let opponentDecks = try aiDecks.map { try resolver.resolve($0) }
             let seats = try OnDeviceAppConfiguration.aiGameSeats(name: name, humanDeck: humanDeck,
-                aiDecks: opponentDecks, aiSkill: aiSkill)
+                aiDecks: opponentDecks, aiSkill: aiSkill, aiMistakePercent: aiMistakePercent)
             let client = try await runtime.makeClient(identity: identity)
             aiClient = client
             // A ranked game's server seed, on engines that keep a game record (docs/PROTOCOL.md "Game record").
@@ -2728,7 +2968,7 @@ private final class OnDeviceSetupModel: ObservableObject {
             return
         }
         errorMessage = nil; feedback = nil
-        do { try await operation() } catch { errorMessage = error.localizedDescription }
+        do { try await operation() } catch { if !error.isLessonNudge { errorMessage = error.localizedDescription } }
     }
 
     /// Waits up to 3 seconds for the current response and its refresh to finish.

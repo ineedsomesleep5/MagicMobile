@@ -259,3 +259,81 @@ actor RankSpinFrames {
         return complete
     }
 }
+
+/// A season's badge (Caleb, 2026-10-26): the emblem of the tier peaked at, on a ribbon naming the season. Season 1 wears
+/// a gold founder ribbon with a star; the season in play is dimmed under a dashed ring until it ends.
+struct SeasonBadgeView: View {
+    let badge: SeasonBadge
+    var size: CGFloat = 64
+
+    var body: some View {
+        VStack(spacing: size * 0.05) {
+            RankEmblem(tier: badge.tier, size: size)
+                .opacity(badge.inProgress ? 0.55 : 1)
+                .overlay {
+                    if badge.inProgress {
+                        Circle().strokeBorder(badge.tier.tint.opacity(0.8), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                    }
+                }
+                .shadow(color: badge.founder ? Color(red: 1, green: 0.8, blue: 0.36).opacity(0.65) : .clear, radius: size * 0.16)
+            ribbon
+            Text(RankLadder.seasonName(badge.season))
+                .font(ArenaMenuStyle.font(max(9, size * 0.15), .semibold)).opacity(0.75).lineLimit(1).minimumScaleFactor(0.7)
+        }
+        .frame(width: size * 1.55)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier("seasonBadge.\(badge.season)")
+    }
+
+    private var ribbonText: String {
+        if badge.inProgress { return String(localized: "IN PLAY") }
+        guard let number = badge.number else { return badge.peak.tier.name.uppercased() }
+        return badge.founder ? String(localized: "SEASON 1 ★") : String(localized: "SEASON \(number)")
+    }
+
+    private var ribbon: some View {
+        let gold = [Color(red: 1, green: 0.9, blue: 0.6), Color(red: 0.93, green: 0.72, blue: 0.3), Color(red: 0.55, green: 0.36, blue: 0.12)]
+        return Text(ribbonText)
+            .font(.system(size: max(8, size * 0.14), weight: .black, design: .serif)).tracking(0.6)
+            .foregroundStyle(badge.founder ? Color(red: 0.25, green: 0.12, blue: 0.04) : .white)
+            .lineLimit(1).minimumScaleFactor(0.7)
+            .padding(.horizontal, size * 0.12).padding(.vertical, size * 0.04)
+            .background(Capsule().fill(badge.founder ? AnyShapeStyle(LinearGradient(colors: gold, startPoint: .top, endPoint: .bottom))
+                                                    : AnyShapeStyle(LinearGradient(colors: [badge.tier.shade, .black.opacity(0.85)], startPoint: .top, endPoint: .bottom))))
+            .overlay(Capsule().strokeBorder(badge.founder ? .black.opacity(0.3) : badge.tier.tint.opacity(0.7), lineWidth: 1))
+    }
+
+    private var label: String {
+        let name = RankLadder.seasonName(badge.season)
+        if badge.inProgress { return String(localized: "\(name), in play: peak so far \(badge.peak.title)") }
+        return badge.founder ? String(localized: "Season 1 founder, \(name): peaked at \(badge.peak.title)")
+            : String(localized: "\(name): peaked at \(badge.peak.title)")
+    }
+}
+
+/// A row of season badges, newest first, the best finished one pinned at the front.
+struct SeasonBadgeShelf: View {
+    let badges: [SeasonBadge]
+    var size: CGFloat = 60
+
+    var body: some View {
+        let best = SeasonBadge.best(badges)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 12) {
+                if let best {
+                    SeasonBadgeView(badge: best, size: size * 1.2)
+                        .overlay(alignment: .topTrailing) {
+                            Image(systemName: "pin.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(ArenaMenuStyle.gold)
+                                .accessibilityHidden(true)
+                        }
+                    if badges.count > 1 { Rectangle().fill(TavernPalette.brass.opacity(0.35)).frame(width: 1, height: size) }
+                }
+                ForEach(badges.filter { $0.id != best?.id }) { SeasonBadgeView(badge: $0, size: size) }
+            }
+            .padding(.horizontal, 2)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("seasonBadges")
+    }
+}

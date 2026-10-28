@@ -484,6 +484,34 @@
         "hasPlay": false
       },
       "pass": false
+    },
+    {
+      "name": "your own trigger resolves with only a counterspell in hand",
+      "context": {
+        "emptyStack": false
+      },
+      "situation": {
+        "step": "DECLARE_ATTACKERS",
+        "hasPlay": true,
+        "topStackIsMine": true,
+        "hasResponse": true,
+        "hasAbilityResponse": false
+      },
+      "pass": true
+    },
+    {
+      "name": "your own trigger stops for an ability that can use it (Gogo)",
+      "context": {
+        "emptyStack": false
+      },
+      "situation": {
+        "step": "DECLARE_ATTACKERS",
+        "hasPlay": true,
+        "topStackIsMine": true,
+        "hasResponse": true,
+        "hasAbilityResponse": true
+      },
+      "pass": false
     }
   ],
   "threats": [

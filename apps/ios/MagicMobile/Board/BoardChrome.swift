@@ -177,6 +177,7 @@ struct AIWaitFallbackControls: View {
 
 struct GameRematchTitleKey: EnvironmentKey { static let defaultValue: String? = nil }
 struct GameRankChangeKey: EnvironmentKey { static let defaultValue: RankChange? = nil }
+struct GameRankNoteKey: EnvironmentKey { static let defaultValue: String? = nil }
 
 /// On-device games concede through the engine. Hosted games keep XMage's own "concede" action.
 struct GameConcedeHandler {
@@ -184,6 +185,20 @@ struct GameConcedeHandler {
 }
 
 struct GameConcedeKey: EnvironmentKey { static let defaultValue: GameConcedeHandler? = nil }
+
+/// The game menu's Report a freeze (docs/FREEZE_LOG.md): records this moment and sends it.
+struct GameFreezeReportHandler {
+    let report: @MainActor () -> Void
+}
+
+struct GameFreezeReportKey: EnvironmentKey { static let defaultValue: GameFreezeReportHandler? = nil }
+
+extension EnvironmentValues {
+    var gameFreezeReport: GameFreezeReportHandler? {
+        get { self[GameFreezeReportKey.self] }
+        set { self[GameFreezeReportKey.self] = newValue }
+    }
+}
 
 extension EnvironmentValues {
     var gameConcede: GameConcedeHandler? {
@@ -197,6 +212,12 @@ extension EnvironmentValues {
     var gameRankChange: RankChange? {
         get { self[GameRankChangeKey.self] }
         set { self[GameRankChangeKey.self] = newValue }
+    }
+
+    /// Why a ranked win left the ladder alone (the server's answer), under the rank on the result screen.
+    var gameRankNote: String? {
+        get { self[GameRankNoteKey.self] }
+        set { self[GameRankNoteKey.self] = newValue }
     }
 }
 
@@ -215,6 +236,7 @@ struct GameCompletionOverlay: View {
     let quitGame: () -> Void
     @Environment(\.gameRematchTitle) private var rematchTitle
     @Environment(\.gameRankChange) private var rankChange
+    @Environment(\.gameRankNote) private var rankNote
 
     private var title: String {
         guard let winners = snapshot.winnerPlayerIds, !winners.isEmpty else { return "Game Over" }
@@ -242,7 +264,7 @@ struct GameCompletionOverlay: View {
 
     @ViewBuilder var body: some View {
         if arena {
-            ArenaGameResultView(snapshot: snapshot, stats: stats, rankChange: rankChange, rematchTitle: rematchTitle,
+            ArenaGameResultView(snapshot: snapshot, stats: stats, rankChange: rankChange, rankNote: rankNote, rematchTitle: rematchTitle,
                                 newGame: newGame, quitGame: quitGame)
         } else {
             tavernResult
@@ -300,6 +322,11 @@ struct GameCompletionOverlay: View {
                         .environment(\.tavernBoard, true)
                         .opacity(revealed || reduceMotion ? 1 : 0)
                         .animation(reduceMotion ? nil : .easeOut(duration: 0.45).delay(0.5), value: revealed)
+                }
+                if let rankNote {
+                    Text(rankNote).font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.75))
+                        .multilineTextAlignment(.center)
+                        .accessibilityIdentifier("board.result.rankNote")
                 }
 
                 HStack(spacing: 10) {
@@ -1647,14 +1674,17 @@ struct TavernSheetBackground: View {
 /// A panel title engraved in gold.
 struct TavernPanelTitle: View {
     let text: String
+    @Environment(\.arenaBoard) private var arena
 
     var body: some View {
+        // On the Arena board: Arena's serif in plain gold, not the engraved tavern capitals.
         Text(text.uppercased())
-            .font(TavernDisplayFont.font(16))
-            .tracking(1.2)
-            .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.80, green: 0.56, blue: 0.22)],
-                                            startPoint: .top, endPoint: .bottom))
-            .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
+            .font(arena ? ArenaMenuStyle.font(16, .bold) : TavernDisplayFont.font(16))
+            .tracking(arena ? 1 : 1.2)
+            .foregroundStyle(arena ? AnyShapeStyle(ArenaMenuStyle.gold)
+                             : AnyShapeStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.80, green: 0.56, blue: 0.22)],
+                                                            startPoint: .top, endPoint: .bottom)))
+            .shadow(color: .black.opacity(arena ? 0 : 0.7), radius: 1, y: 1)
             .lineLimit(1)
             .minimumScaleFactor(0.7)
             // Engraved in capitals, named in normal case (VoiceOver reads capitals letter by letter).
@@ -2096,8 +2126,11 @@ struct TavernMenuItem: View {
 
 /// A thin brass rule between groups of tavern menu rows.
 struct TavernMenuDivider: View {
+    @Environment(\.arenaBoard) private var arena
+
     var body: some View {
-        Rectangle().fill(TavernPalette.brassLine).frame(height: 1).opacity(0.7).padding(.vertical, 2)
+        Rectangle().fill(arena ? AnyShapeStyle(ArenaGlass.hairline) : AnyShapeStyle(TavernPalette.brassLine))
+            .frame(height: 1).opacity(arena ? 0.45 : 0.7).padding(.vertical, 2)
     }
 }
 
@@ -2153,18 +2186,17 @@ private struct TavernConfirmationModifier: ViewModifier {
                 .ignoresSafeArea()
                 .onTapGesture(perform: cancel)
                 .accessibilityHidden(true)
+            // The menus' glass and pills (they wear Arena's look; the Hearth board has its own menus).
             VStack(spacing: 14) {
-                Text(title.uppercased())
-                    .font(.system(size: 17, weight: .heavy, design: .serif))
-                    .tracking(1)
+                Text(title)
+                    .font(ArenaMenuStyle.title(19, .bold))
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.80, green: 0.56, blue: 0.22)],
-                                                    startPoint: .top, endPoint: .bottom))
-                    .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
+                    .foregroundStyle(ArenaMenuStyle.text)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let message {
                     Text(message)
-                        .font(.system(size: 14, weight: .regular, design: .serif))
-                        .foregroundStyle(TavernPalette.parchment.opacity(0.9))
+                        .font(ArenaMenuStyle.font(14, .regular))
+                        .foregroundStyle(ArenaMenuStyle.text.opacity(0.8))
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -2174,16 +2206,16 @@ private struct TavernConfirmationModifier: ViewModifier {
                             isPresented = false
                             choice.action()
                         }
-                        .buttonStyle(TavernButtonStyle(kind: choice.destructive ? .danger : .primary, fullWidth: true))
+                        .buttonStyle(ArenaButtonStyle(kind: choice.destructive ? .danger : .primary, fullWidth: true))
                     }
                     Button(cancelTitle, action: cancel)
-                        .buttonStyle(TavernButtonStyle(kind: .secondary, fullWidth: true))
+                        .buttonStyle(ArenaButtonStyle(kind: .secondary, fullWidth: true))
                 }
+                .padding(.top, 2)
             }
             .padding(22)
-            .frame(maxWidth: 330)
-            .modifier(TavernPanelChrome(tavern: true, cornerRadius: 16))
-            .shadow(color: .black.opacity(0.6), radius: 18, y: 8)
+            .frame(maxWidth: 340)
+            .modifier(ArenaGlassPanel(cornerRadius: 18, opacity: 0.96))
             .padding(.horizontal, 24)
             .accessibilityElement(children: .contain)
             .accessibilityAddTraits(.isModal)
@@ -2488,12 +2520,16 @@ struct TavernPlayerStatusPanel: View {
 }
 
 /// The bottom of an opponent's pop-over in a pod: swap to another opponent's information.
-/// The current one carries an ember ring.
+/// The current one carries an ember ring; each portrait has its player's name under it.
 struct TavernOpponentSwap: View {
     let opponents: [PlayerGameState]
     let current: String
     let label: (String) -> String
     let select: (String) -> Void
+    /// Opponents with something to choose for the open target question (ArenaTargetReach): their portraits glow.
+    var withChoices: Set<String> = []
+    /// A lesson's swap step rings the opponent to pick (LessonViews.swift).
+    @Environment(\.lessonFocus) private var lessonFocus
 
     var body: some View {
         VStack(spacing: 6) {
@@ -2507,14 +2543,29 @@ struct TavernOpponentSwap: View {
                 ForEach(opponents) { opponent in
                     let chosen = opponent.playerId == current
                     Button { select(opponent.playerId) } label: {
-                        PlayerPortrait(player: opponent, size: 36)
-                            .overlay(Circle().strokeBorder(chosen ? TavernPalette.ember : TavernPalette.brass.opacity(0.6),
-                                                           lineWidth: chosen ? 2.5 : 1.2))
-                            .opacity(opponent.isOut ? 0.45 : 1)
-                            .shadow(color: chosen ? TavernPalette.ember.opacity(0.7) : .clear, radius: 4)
+                        VStack(spacing: 3) {
+                            PlayerPortrait(player: opponent, size: 36)
+                                .overlay(Circle().strokeBorder(chosen ? TavernPalette.ember : TavernPalette.brass.opacity(0.6),
+                                                               lineWidth: chosen ? 2.5 : 1.2))
+                                .shadow(color: chosen ? TavernPalette.ember.opacity(0.7) : .clear, radius: 4)
+                                .overlay { if withChoices.contains(opponent.playerId) && !chosen {
+                                    Circle().strokeBorder(ArenaPalette.targetGlow, lineWidth: 2.5)
+                                        .shadow(color: ArenaPalette.targetGlow, radius: 5)
+                                } }
+                                .overlay { if lessonFocus.ids.contains(opponent.playerId) && !chosen {
+                                    GeometryReader { proxy in LessonFocusRing(rect: proxy.frame(in: .local), circle: true) }
+                                } }
+                            Text(label(opponent.playerId))
+                                .font(.system(size: 11, weight: .semibold, design: .serif))
+                                .foregroundStyle(TavernPalette.parchment)
+                                .lineLimit(1)
+                                .frame(maxWidth: 56)
+                        }
+                        .opacity(opponent.isOut ? 0.45 : 1)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Swap to \(label(opponent.playerId))")
+                    .accessibilityValue(withChoices.contains(opponent.playerId) ? "Has a choice" : "")
                     .accessibilityAddTraits(chosen ? .isSelected : [])
                     .accessibilityIdentifier("board.zones.swap.\(opponent.playerId)")
                 }

@@ -406,3 +406,24 @@ clock runs out, and every 5 seconds otherwise, and sends each change to the gues
 travels instead of a deadline, so phones' clocks never need to agree. Only the host may send it.
 `apps/android/core/src/test/resources/parity/turn-clock-cases.json` holds the shared cases. The adapter
 identity includes `clock-1`.
+
+### Players who leave
+
+A table with people plays on when a guest leaves (`TableLeaveRules.swift`, `TableLeaveRules.kt`, `apps/web/src/core/tableLeave.ts`;
+2026-10-26). Only the host's phone runs the game, so the host leaving still ends it for everyone (`end` from the host).
+
+- A guest who taps Leave sends `end` as before. Once the game is on, the host no longer fails the table: it concedes that
+  seat (`concede`), sends the guest `{"type":"left","epoch":"...","seat":"player3"}` (should it come back to the relay) and
+  then the same packet to everyone else, who show "Jed left. The game goes on." The relay's `gone` for a guest (it left or
+  did not come back within 90 seconds) is handled the same way. A guest that hears `left` for its own seat ends its game.
+- A guest who is away (dropped from the relay, or `presence` suspended) pauses the table as before. After 15 seconds
+  everyone else still at the table may vote to go on without them. A guest's vote is
+  `{"type":"continue","epoch":"...","seat":"player3"}` to the host; the host counts its own tap too. The host sends the tally
+  whenever it changes, `{"type":"vote","epoch":"...","seat":"player3","voters":["player1"],"needed":2}` (exactly those keys,
+  seats `player1`…`player4`, at most four voters, `needed` 0 to 4), and `seat` "" with `needed` 0 when no vote is open.
+  When every player still at the table has voted, the host concedes the seat and sends `left`. The player coming back first
+  clears the vote. One vote is open at a time, for whoever has been away longest.
+
+Packets from a player who left are ignored. The relay identity is unchanged, so a table that mixes builds still works: an
+older phone ignores `left` and `vote`, and an older host still ends the table when a guest leaves.
+`apps/android/core/src/test/resources/parity/table-leave-cases.json` holds the shared cases.

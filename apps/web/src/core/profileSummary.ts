@@ -4,8 +4,8 @@
  * browser's games. Checked by test/profileSummary.test.ts against parity/profile-cases.json, as iOS and Android are.
  * Dates are milliseconds since 1970. The public-profile and player-search parts wait for accounts on the web.
  */
-import type { MatchOpponent, MatchRecord, PlayMode } from "./playerRecord";
-import { RankChange, type RankOutcome, RankPosition } from "./rankLadder";
+import { type MatchOpponent, type MatchRecord, type PlayMode, rankNote } from "./playerRecord";
+import { RankChange, type RankOutcome, RankPosition, RankTier } from "./rankLadder";
 
 /** One finished game as a profile shows it. */
 export interface ProfileGame {
@@ -21,16 +21,28 @@ export interface ProfileGame {
   turns?: number;
   /** Pips a ranked game moved. */
   rankDelta?: number;
+  /** A ranked game's move on the ladder, "Gold II: 3 → 5 pips" (own games only). */
+  rankLine?: string;
+  /** Why a ranked win left the ladder alone (own games only). */
+  rankNote?: string;
+  /** How long it ran (own games from 2026-10-26 on). */
+  durationSeconds?: number;
+  /** The tier a ranked game was played at (own games only). */
+  rankTier?: RankTier;
 }
 
 export const ProfileGame = {
   from(match: MatchRecord): ProfileGame {
+    const note = rankNote(match);
     return {
       id: match.id, date: match.date, mode: match.mode, outcome: match.outcome, deckName: match.deckName,
       commanders: match.commander !== undefined ? [match.commander] : [], colors: match.colors,
       opponents: match.opponents.map((o) => ({ name: o.name, ...(o.commander !== undefined ? { commander: o.commander } : {}), isAI: o.isAI })),
       ...(match.turns > 0 ? { turns: match.turns } : {}),
-      ...(match.rankChange ? { rankDelta: RankChange.pipDelta(match.rankChange) } : {}),
+      ...(match.rankChange ? { rankDelta: RankChange.pipDelta(match.rankChange), rankLine: RankChange.line(match.rankChange) } : {}),
+      ...(note !== undefined ? { rankNote: note } : {}),
+      ...(match.durationSeconds !== undefined ? { durationSeconds: match.durationSeconds } : {}),
+      ...(match.mode === "ranked" && match.rankChange ? { rankTier: match.rankChange.before.tier } : {}),
     };
   },
   commander: (game: ProfileGame) => game.commanders[0],
@@ -49,6 +61,64 @@ export const ProfileGame = {
   },
   resultLetter: (game: ProfileGame) => ({ win: "W", loss: "L", draw: "D" })[game.outcome],
   resultName: (game: ProfileGame) => ({ win: "Won", loss: "Lost", draw: "Drawn" })[game.outcome],
+} as const;
+
+/**
+ * More of the player's story from their own games (ProfileInsights.swift / .kt; parity/profile-cases.json "insights"): the
+ * last ten results, records by mode and by ranked tier, how they do against each commander, and highlights.
+ */
+export interface InsightLine { id: string; games: number; wins: number; losses: number }
+export interface ProfileInsights {
+  /** Newest first. */
+  form: RankOutcome[];
+  modes: InsightLine[];
+  tiers: InsightLine[];
+  matchups: InsightLine[];
+  fastestWin?: number;
+  averageTurnsInWins?: number;
+  averageTurnsInLosses?: number;
+  averageMinutes?: number;
+  bestDeck?: InsightLine;
+}
+
+const winRate = (line: InsightLine) => (line.games === 0 ? 0 : line.wins / line.games);
+const average = (values: number[]) => (values.length === 0 ? undefined : values.reduce((a, b) => a + b, 0) / values.length);
+const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+export const ProfileInsights = {
+  formCount: 10,
+  maxMatchups: 5,
+  /** A deck needs this many games to be the best one. */
+  bestDeckGames: 3,
+  /** Games newest first (the record's order). */
+  of(games: ProfileGame[]): ProfileInsights {
+    const line = (id: string, list: ProfileGame[]): InsightLine =>
+      ({ id, games: list.length, wins: list.filter((g) => g.outcome === "win").length, losses: list.filter((g) => g.outcome === "loss").length });
+    const modes = (["ranked", "quick", "casual"] as PlayMode[]).map((mode) => line(mode, games.filter((g) => g.mode === mode))).filter((l) => l.games > 0);
+    const tiers = RankTier.all.map((tier) => line(tier, games.filter((g) => g.mode === "ranked" && g.rankTier === tier))).filter((l) => l.games > 0);
+    const faced = new Map<string, ProfileGame[]>();
+    for (const game of games) {
+      for (const commander of new Set(game.opponents.map((o) => o.commander).filter((c): c is string => c !== undefined))) {
+        faced.set(commander, [...(faced.get(commander) ?? []), game]);
+      }
+    }
+    const matchups = [...faced].map(([id, list]) => line(id, list)).sort((a, b) => b.games - a.games || byText(a.id, b.id)).slice(0, ProfileInsights.maxMatchups);
+    const wins = games.filter((g) => g.outcome === "win").map((g) => g.turns).filter((t): t is number => t !== undefined);
+    const losses = games.filter((g) => g.outcome === "loss").map((g) => g.turns).filter((t): t is number => t !== undefined);
+    const lengths = games.map((g) => g.durationSeconds).filter((s): s is number => s !== undefined && s > 0);
+    const decks = new Map<string, ProfileGame[]>();
+    for (const game of games) if (game.deckName !== "") decks.set(game.deckName, [...(decks.get(game.deckName) ?? []), game]);
+    const best = [...decks].map(([id, list]) => line(id, list)).filter((l) => l.games >= ProfileInsights.bestDeckGames)
+      .sort((a, b) => winRate(b) - winRate(a) || b.games - a.games || byText(a.id, b.id))[0];
+    const minutes = average(lengths);
+    const result: ProfileInsights = { form: games.slice(0, ProfileInsights.formCount).map((g) => g.outcome), modes, tiers, matchups };
+    if (wins.length > 0) result.fastestWin = Math.min(...wins);
+    if (wins.length > 0) result.averageTurnsInWins = average(wins);
+    if (losses.length > 0) result.averageTurnsInLosses = average(losses);
+    if (minutes !== undefined) result.averageMinutes = minutes / 60;
+    if (best) result.bestDeck = best;
+    return result;
+  },
 } as const;
 
 export interface ProfileShare { id: string; games: number; wins: number }

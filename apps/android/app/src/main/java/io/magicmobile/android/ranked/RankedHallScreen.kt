@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -70,6 +71,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.magicmobile.android.game.ArenaProfileRules
@@ -328,7 +330,9 @@ private sealed interface BoardLoad {
  */
 @Composable
 fun RankedLeaderboardScreen(account: PlayerAccount, back: () -> Unit) {
-    var scope by remember { mutableStateOf(RankedLeaderboard.Scope.EVERYONE) }
+    // Everyone, friends, or last season's champions (from the everyone board).
+    var tab by remember { mutableStateOf(BoardTab.EVERYONE) }
+    val scope = if (tab == BoardTab.FRIENDS) RankedLeaderboard.Scope.FRIENDS else RankedLeaderboard.Scope.EVERYONE
     var load by remember { mutableStateOf<BoardLoad>(BoardLoad.Loading) }
     val moves = remember { mutableStateMapOf<String, Int>() }
     var profile by remember { mutableStateOf<String?>(null) }
@@ -358,8 +362,8 @@ fun RankedLeaderboardScreen(account: PlayerAccount, back: () -> Unit) {
     }
     val open: (RankedLeaderboard.Entry) -> Unit = { GameAudio.play(GameSound.UI_OPEN); profile = it.username }
     val scopePicker: @Composable (Modifier) -> Unit = { modifier ->
-        ArenaSegmented(RankedLeaderboard.Scope.entries.map { (if (it == RankedLeaderboard.Scope.EVERYONE) "Everyone" else "Friends") to it }, scope,
-            { scope = it }, modifier, identifier = "leaderboard.scope")
+        ArenaSegmented(listOf("Everyone" to BoardTab.EVERYONE, "Friends" to BoardTab.FRIENDS, "Champions" to BoardTab.CHAMPIONS), tab,
+            { tab = it }, modifier, identifier = "leaderboard.scope")
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -376,7 +380,15 @@ fun RankedLeaderboardScreen(account: PlayerAccount, back: () -> Unit) {
                 is BoardLoad.Loaded -> {
                     val loaded = state.board
                     if (!wide) LiveStrip(loaded)
-                    if (loaded.entries.isEmpty()) {
+                    if (tab == BoardTab.CHAMPIONS) {
+                        val champions = loaded.champions
+                        if (champions != null && champions.entries.isNotEmpty()) Column(Modifier.testTag("leaderboard.champions"),
+                            verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            io.magicmobile.android.menus.ArenaCaps("${RankLadder.seasonName(champions.season)} champions")
+                            Box(if (wide) Modifier.widthIn(max = 420.dp) else Modifier) { Podium(champions.entries, compact = wide, open) }
+                        } else BoardNote("The first champions are crowned when ${RankLadder.seasonName(loaded.season)} ends.", "crown.fill",
+                            "leaderboard.champions.empty")
+                    } else if (loaded.entries.isEmpty()) {
                         BoardNote(if (scope == RankedLeaderboard.Scope.FRIENDS) "None of your friends has played ranked this season yet. Challenge one from Friends."
                             else "Nobody has played ranked this season yet. Win a game to take the top spot.", "trophy.fill", "leaderboard.empty")
                     } else if (wide) {
@@ -384,19 +396,19 @@ fun RankedLeaderboardScreen(account: PlayerAccount, back: () -> Unit) {
                             Box(Modifier.width(330.dp)) { Podium(loaded.entries.take(3), compact = true, open) }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 loaded.pinnedMe?.let { BoardRow(it, moves[it.username], shimmerPhase, pinned = true, open) }
-                                for (entry in loaded.entries.drop(3)) BoardRow(entry, moves[entry.username], shimmerPhase, pinned = false, open)
+                                BoardRows(loaded.entries.drop(3), moves, shimmerPhase, open)
                             }
                         }
                     } else {
                         Podium(loaded.entries.take(3), compact = false, open)
-                        for (entry in loaded.entries.drop(3)) BoardRow(entry, moves[entry.username], shimmerPhase, pinned = false, open)
+                        BoardRows(loaded.entries.drop(3), moves, shimmerPhase, open)
                     }
-                    if (loaded.pinnedMe != null && !wide) Spacer(Modifier.height(72.dp))
+                    if (loaded.pinnedMe != null && !wide && tab != BoardTab.CHAMPIONS) Spacer(Modifier.height(72.dp))
                 }
             }
         }
         val me = board?.pinnedMe
-        if (me != null && !wide) {
+        if (me != null && !wide && tab != BoardTab.CHAMPIONS) {
             Box(Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp).padding(bottom = 8.dp)
                 .widthIn(max = 608.dp)) { BoardRow(me, moves[me.username], shimmerPhase, pinned = true, open) }
         }
@@ -409,6 +421,27 @@ fun RankedLeaderboardScreen(account: PlayerAccount, back: () -> Unit) {
 
 private const val REFRESH_MILLIS = 20_000L
 
+private enum class BoardTab { EVERYONE, FRIENDS, CHAMPIONS }
+
+/** The standings below the podium, a tier's name over its first row. */
+@Composable
+private fun BoardRows(entries: List<RankedLeaderboard.Entry>, moves: Map<String, Int>, shimmerPhase: Float, open: (RankedLeaderboard.Entry) -> Unit) {
+    entries.forEachIndexed { index, entry ->
+        if (index == 0 || entries[index - 1].rank.tier != entry.rank.tier) TierHeader(entry.rank.tier)
+        BoardRow(entry, moves[entry.username], shimmerPhase, pinned = false, open)
+    }
+}
+
+@Composable
+private fun TierHeader(tier: RankTier) {
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp).semantics { heading() }, horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f).height(1.dp).background(ArenaMenuStyle.gold.copy(alpha = 0.35f)))
+        Text(tier.label.uppercase(), color = ArenaMenuStyle.gold, style = ArenaMenuStyle.font(11f, SfWeight.heavy).copy(letterSpacing = 1.2.sp))
+        Box(Modifier.weight(1f).height(1.dp).background(ArenaMenuStyle.gold.copy(alpha = 0.35f)))
+    }
+}
+
 @Composable
 private fun LiveStrip(board: RankedLeaderboard) {
     Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp)
@@ -420,7 +453,8 @@ private fun LiveStrip(board: RankedLeaderboard) {
         FitText(if (board.online == 1) "1 player online" else "${board.online} players online", ArenaMenuStyle.font(14f, SfWeight.bold),
             color = ArenaMenuStyle.text, minimumScale = 0.8f)
         Spacer(Modifier.weight(1f))
-        Text("${board.total} ranked · ${RankLadder.seasonName(board.season)}", Modifier.alpha(0.75f), color = ArenaMenuStyle.text,
+        Text(listOfNotNull("${board.total} ranked", RankLadder.seasonName(board.season), RankLadder.seasonCountdown(board.season, System.currentTimeMillis()))
+            .joinToString(" · "), Modifier.alpha(0.75f), color = ArenaMenuStyle.text,
             style = ArenaMenuStyle.font(12f, SfWeight.semibold), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -490,9 +524,11 @@ private fun BoardRow(entry: RankedLeaderboard.Entry, move: Int?, shimmerPhase: F
         .testTag(if (pinned) "leaderboard.me" else "leaderboard.row.${entry.username}")
         .padding(horizontal = 12.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("${entry.position}", Modifier.widthIn(min = 34.dp), style = sf(17f, SfWeight.black, SfDesign.SERIF).copy(brush = brassFill, fontFeatureSettings = "tnum"))
-        Box(contentAlignment = Alignment.BottomEnd) {
-            RankEmblem(rank.tier, 40.dp)
-            if (entry.online) OnlineDot(9.dp)
+        // Their commander's art, their rank's emblem on its rim.
+        Box(Modifier.size(44.dp)) {
+            CommanderArtMedallion(entry.commander, 40.dp, Modifier.align(Alignment.Center))
+            Box(Modifier.align(Alignment.BottomEnd).offset(4.dp, 4.dp)) { RankEmblem(rank.tier, 20.dp) }
+            if (entry.online) Box(Modifier.align(Alignment.TopEnd)) { OnlineDot(9.dp) }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -500,7 +536,7 @@ private fun BoardRow(entry: RankedLeaderboard.Entry, move: Int?, shimmerPhase: F
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (entry.you) TavernTag("YOU", leather = true)
             }
-            Text(entry.title?.let { "${rank.title} · $it" } ?: rank.title, Modifier.alpha(0.75f), color = ArenaMenuStyle.text,
+            Text(listOfNotNull(rank.title, entry.title, entry.winRate?.let { "$it% wins" }).joinToString(" · "), Modifier.alpha(0.75f), color = ArenaMenuStyle.text,
                 style = ArenaMenuStyle.font(12f, SfWeight.regular), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -511,6 +547,12 @@ private fun BoardRow(entry: RankedLeaderboard.Entry, move: Int?, shimmerPhase: F
                     Text(if (m > 0) "▲" else "▼", color = tint, style = sf(8f, SfWeight.black))
                     Text("${kotlin.math.abs(m)}", color = tint, style = ArenaMenuStyle.font(11f, SfWeight.heavy).copy(fontFeatureSettings = "tnum"))
                 }
+            }
+            // Three straight wins or more: a flame with the count.
+            val streak = entry.streak ?: 0
+            if (move == null && streak >= 3) Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                SfImage("flame.fill", STREAK, 10.dp)
+                Text("$streak", color = STREAK, style = ArenaMenuStyle.font(11f, SfWeight.heavy).copy(fontFeatureSettings = "tnum"))
             }
             Text("${entry.wins}–${entry.losses}", Modifier.alpha(0.85f), color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(13f, SfWeight.bold).copy(fontFeatureSettings = "tnum"))
             if (!mythic) RankPips(rank.pips, rank.tier, 7.dp)
@@ -526,10 +568,13 @@ private fun BoardNote(text: String, icon: String, tag: String) {
     }
 }
 
+private val STREAK = Color(1f, 0.62f, 0.25f)
+
 private fun describe(entry: RankedLeaderboard.Entry): String = buildList {
     add("Number ${entry.position}"); add(entry.username); add(entry.rank.title)
     entry.title?.let(::add)
     if (entry.online) add("online")
     add("${entry.wins} wins, ${entry.losses} losses")
+    entry.streak?.takeIf { it >= 3 }?.let { add("$it wins in a row") }
     if (entry.you) add("you")
 }.joinToString(", ")

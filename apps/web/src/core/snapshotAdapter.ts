@@ -24,13 +24,19 @@ const card = (value: J): J => {
   const id = str(get(value, "id"));
   if (!isUuid(id)) throw EngineError.invalid("Card view has no engine UUID");
   // Do not consult original, source images, or a catalogue to undo an upstream redaction.
-  const hidden = bool(get(value, "hideInfo")) === true;
-  const name = hidden ? "Face-down card" : str(get(value, "displayName")) ?? str(get(value, "name")) ?? "Card details unavailable";
-  const strings = (key: string) => (hidden ? [] : stringsOf(get(value, key)));
+  // A face-down card its owner may look at carries the real card as `secondCardFace` (CardView: "Face Down: <name>");
+  // anyone else gets the face-down placeholder.
+  const faceDown = bool(get(value, "faceDown")) === true;
+  const second = get(value, "secondCardFace");
+  const ownFace = faceDown && bool(get(value, "hideInfo")) !== true && str(get(second, "name")) !== undefined ? second : undefined;
+  const hidden = bool(get(value, "hideInfo")) === true || (faceDown && ownFace === undefined);
+  const face = ownFace ?? value;
+  const name = hidden ? "Face-down card" : str(get(face, "displayName")) ?? str(get(face, "name")) ?? "Card details unavailable";
+  const strings = (key: string) => (hidden ? [] : stringsOf(get(face, key)));
   let typeLine = [...strings("superTypes"), ...strings("cardTypes")].map(capitalizedWords).join(" ");
   const subs = strings("subTypes");
   if (subs.length > 0) typeLine += " — " + subs.map(capitalizedWords).join(" ");
-  const rules = hidden ? "" : stringsOf(get(value, "rules")).join("\n");
+  const rules = hidden ? "" : stringsOf(get(face, "rules")).join("\n");
   const tokenIdentityVisible = !hidden && bool(get(value, "faceDown")) !== true;
   const isToken = bool(get(value, "isToken")) === true;
   const hasTokenColors = tokenIdentityVisible && isToken && colorNames.every(([color]) => bool(at(value, "color", color)) !== undefined);
@@ -54,7 +60,8 @@ const card = (value: J): J => {
   const result: JObject = {
     instanceId: id,
     card: {
-      name, typeLine, oracleText: rules, manaCost: printedManaCost(value) ?? null,
+      name, typeLine, oracleText: rules, manaCost: (ownFace !== undefined ? printedManaCost(ownFace) : undefined) ?? printedManaCost(value) ?? null,
+      faceDown: ownFace !== undefined ? true : null,
       isToken: tokenIdentityVisible ? bool(get(value, "isToken")) ?? null : null,
       tokenColors, copySourceArtworkName: sourceArt, tokenArtwork: baseArt,
     },
@@ -378,7 +385,8 @@ export const OnDeviceSnapshotAdapter = {
         }
         attackerID = active;
       }
-      presentation = OnDevicePromptAdapter.presentation(prompt, viewer, allCards, decodedPlayers, attackerID);
+      presentation = OnDevicePromptAdapter.presentation(prompt, viewer, allCards, decodedPlayers, attackerID,
+        stack.map((s) => ({ id: str(get(s, "id")) ?? "", sourceName: str(get(s, "sourceName")), sourceCardID: str(get(get(s, "sourceCard"), "instanceId")) })));
     }
     const cardActions = cardActionValues.map(decodeLegalAction);
     const [dayNight, stormCount] = tableHints(get(view, "myHelperEmblems"));

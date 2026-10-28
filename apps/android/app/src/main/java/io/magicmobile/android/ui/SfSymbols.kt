@@ -116,6 +116,8 @@ object SfSymbols {
         "exclamationmark.bubble" -> Icons.Filled.Feedback
         "paperplane.fill" -> Icons.AutoMirrored.Filled.Send
         "speaker.slash" -> Icons.AutoMirrored.Filled.VolumeOff
+        "mic.fill" -> Icons.Filled.Mic
+        "mic.slash.fill" -> Icons.Filled.MicOff
         "person.badge.plus" -> Icons.Filled.PersonAdd
         "person.crop.circle.badge.checkmark" -> Icons.Filled.HowToReg
         "link" -> Icons.Filled.Link
@@ -193,6 +195,7 @@ object SfSymbols {
         "flag.checkered" -> Icons.Filled.SportsScore
         "eye" -> Icons.Outlined.Visibility
         "eye.fill" -> Icons.Filled.Visibility
+        "eye.slash.fill" -> Icons.Filled.VisibilityOff
         "eye.trianglebadge.exclamationmark" -> Icons.Outlined.RemoveRedEye
         "ellipsis" -> Icons.Filled.MoreHoriz
         "ellipsis.circle" -> Icons.Outlined.Pending
@@ -264,6 +267,9 @@ object SfSymbols {
         "ticket.fill" -> Icons.Filled.ConfirmationNumber
         "seal.fill" -> Icons.Filled.Verified
         "figure.fencing" -> Icons.Filled.SportsKabaddi
+        // Season badges (ranked/RankedViews.kt).
+        "rosette" -> Icons.Filled.WorkspacePremium
+        "pin.fill" -> Icons.Filled.PushPin
         // The Arena menus (menus/): the top bar's tabs and utilities, the Play panel and the home page's rail.
         "house.fill" -> Icons.Filled.Home
         "person.fill" -> Icons.Filled.Person

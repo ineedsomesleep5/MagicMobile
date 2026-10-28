@@ -412,3 +412,7 @@ enabled = true
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# Voice chat tokens (supabase/functions/agora-token, docs/VOICE_CHAT.md); the secret AGORA_APP_CERTIFICATE is set in the dashboard.
+[functions.agora-token]
+verify_jwt = true

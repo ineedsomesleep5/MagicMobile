@@ -336,8 +336,13 @@ fun ArenaAbilityBrowser(prompt: PromptEnvelopeV2, abilities: List<XmagePromptAbi
  * as their card, abilities as ability cards; whose each is and what it targets sits underneath. A tap reads a card.
  */
 @Composable
-fun ArenaStackBrowser(snapshot: GameSnapshot, resolveAll: (() -> Unit)?, stopSkipping: (() -> Unit)?, inspect: (ZoneCard) -> Unit, close: () -> Unit) {
+fun ArenaStackBrowser(snapshot: GameSnapshot, resolveAll: (() -> Unit)?, stopSkipping: (() -> Unit)?, inspect: (ZoneCard) -> Unit,
+                      choosable: Set<String> = emptySet(), choose: ((String) -> Unit)? = null, answers: List<ArenaAnswer> = emptyList(),
+                      close: () -> Unit) {
     val objects = snapshot.stackTopFirst
+    // A target question's choices on the stack (ArenaTargetReach; Gogo copying Zur's trigger): its message is the title,
+    // the choices glow, the rest dim, and a tap chooses.
+    val choosing = choose != null && choosable.isNotEmpty()
     val safe = LocalArenaSafeArea.current
     BoxWithConstraints(Modifier.fillMaxSize().semantics { testTag = "arena.stackBrowser" }) {
         val landscape = maxWidth > maxHeight
@@ -351,25 +356,31 @@ fun ArenaStackBrowser(snapshot: GameSnapshot, resolveAll: (() -> Unit)?, stopSki
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(if (landscape) 8.dp else 12.dp)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    ArenaScreenTitle("The Stack", 22f, maxLines = 1)
-                    val count = snapshot.xmage?.stack?.size ?: objects.size
-                    ArenaCountBadge(count, Modifier.semantics { contentDescription = "$count on the stack" }, size = 28.dp)
+                    // Choosing, the question is the title and each card wears its place.
+                    if (choosing) ArenaScreenTitle(PromptDisplayText.clean(snapshot.promptEnvelopeV2?.message ?: "Choose one"), 19f, maxLines = 2,
+                        modifier = Modifier.padding(horizontal = 24.dp))
+                    else {
+                        ArenaScreenTitle("The Stack", 22f, maxLines = 1)
+                        val count = snapshot.xmage?.stack?.size ?: objects.size
+                        ArenaCountBadge(count, Modifier.semantics { contentDescription = "$count on the stack" }, size = 28.dp)
+                    }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(if (objects.size > 1) "Resolves left to right" else "Resolves next", color = ArenaGlass.text.copy(alpha = 0.75f),
                         style = ArenaMenuStyle.font(13f, SfWeight.medium))
                     val responding = ArenaScreens.stackResponding(snapshot)
-                    TavernTag(if (responding) "YOUR RESPONSE" else "WAITING", leather = true, accent = if (responding) TavernPalette.ember else null)
+                    TavernTag(if (choosing) "CHOOSE ONE" else if (responding) "YOUR RESPONSE" else "WAITING", leather = true,
+                        accent = if (choosing || responding) TavernPalette.ember else null)
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 if (landscape) ArenaCenteredRow(screenWidth - side * 2, spacing = 18.dp, horizontal = 28.dp, vertical = 20.dp) {
-                    objects.forEachIndexed { index, item -> ArenaStackEntry(item, index, size, snapshot, inspect) }
+                    objects.forEachIndexed { index, item -> ArenaStackEntry(item, index, size, snapshot, inspect, choosing, item.id in choosable, choose) }
                 } else Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 20.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(26.dp)) {
                     objects.withIndex().chunked(2).forEach { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.Top) {
-                            row.forEach { (index, item) -> ArenaStackEntry(item, index, size, snapshot, inspect) }
+                            row.forEach { (index, item) -> ArenaStackEntry(item, index, size, snapshot, inspect, choosing, item.id in choosable, choose) }
                             if (row.size == 1 && objects.size > 1) Spacer(Modifier.width(size.width))
                         }
                     }
@@ -377,29 +388,42 @@ fun ArenaStackBrowser(snapshot: GameSnapshot, resolveAll: (() -> Unit)?, stopSki
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 stopSkipping?.let { ArenaPlaqueButton("Stop skipping", it, Modifier.size(150.dp, 44.dp), kind = ArenaPlaqueKind.SECONDARY, fontSize = 15f) }
-                resolveAll?.let { ArenaPlaqueButton("Resolve All", it, Modifier.size(150.dp, 44.dp), kind = ArenaPlaqueKind.SECONDARY, fontSize = 16f,
+                resolveAll?.takeUnless { choosing }?.let { ArenaPlaqueButton("Resolve All", it, Modifier.size(150.dp, 44.dp), kind = ArenaPlaqueKind.SECONDARY, fontSize = 16f,
                     identifier = "board.stack.sheet.resolveAll") }
-                ArenaPlaqueButton("Done", close, Modifier.size(150.dp, 44.dp), fontSize = 16f, identifier = "board.stack.done")
+                if (choosing) answers.forEach { ArenaPlaqueButton(it.title, it.action, Modifier.size(150.dp, 44.dp), kind = ArenaPlaqueKind.SECONDARY, fontSize = 16f) }
+                ArenaPlaqueButton(if (choosing) "View Battlefield" else "Done", close, Modifier.size(150.dp, 44.dp), fontSize = if (choosing) 15f else 16f,
+                    kind = if (choosing) ArenaPlaqueKind.SECONDARY else ArenaPlaqueKind.PRIMARY, identifier = "board.stack.done")
             }
         }
     }
 }
 
 @Composable
-private fun ArenaStackEntry(item: XmageStackObject, position: Int, size: DpSize, snapshot: GameSnapshot, inspect: (ZoneCard) -> Unit) {
+private fun ArenaStackEntry(item: XmageStackObject, position: Int, size: DpSize, snapshot: GameSnapshot, inspect: (ZoneCard) -> Unit,
+                            choosing: Boolean = false, choice: Boolean = false, choose: ((String) -> Unit)? = null) {
     val next = position == 0
     val ability = ArenaTableRules.isAbility(item) || item.displaySourceCard == null
     val owner = ArenaScreens.stackOwner(item, snapshot)
+    val view = LocalView.current
     Column(Modifier.width(size.width).semantics(mergeDescendants = true) {
         contentDescription = "${position + 1}. ${item.displayName}, $owner. ${PromptDisplayText.clean(item.rulesText ?: "")}"
         testTag = "arena.stack.${item.id}"
+        if (choice) selected = true
     }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Box(Modifier.glow(Color.Black.copy(alpha = 0.6f), 8.dp, 8.dp).clickable { item.displaySourceCard?.let(inspect) }) {
+        // The glow (a choice's, the next one's) sits behind the card; only its border goes on top, or the glow tints the card.
+        Box(Modifier.alpha(if (choosing && !choice) 0.5f else 1f)
+            .glow(if (choice) ArenaPalette.targetGlow.copy(alpha = 0.75f) else if (next && !choosing) rgb(1.0, 0.75, 0.3).copy(alpha = 0.6f)
+                else Color.Black.copy(alpha = 0.6f), if (choice) 12.dp else 8.dp, 8.dp)
+            .pointerInput(item.id, choice) {
+                detectTapGestures(onLongPress = { item.displaySourceCard?.let(inspect) }) {
+                    if (choice && choose != null) { GameHaptics.selection(view); choose(item.id) } else item.displaySourceCard?.let(inspect)
+                }
+            }) {
             if (ability) ArenaAbilityCard(item.displaySourceCard, name = if (item.displaySourceCard == null) item.displayName else null,
                 text = item.rulesText ?: item.displayName, size = size)
             else item.displaySourceCard?.let { CardTile(it, false, zoneName = "Stack", width = size.width, height = size.height, ignoreTappedRotation = true) }
-            if (next) Box(Modifier.matchParentSize().glow(rgb(1.0, 0.75, 0.3).copy(alpha = 0.6f), 8.dp, size.width * 0.05f)
-                .border(3.dp, arenaPickGold, RoundedCornerShape(size.width * 0.05f)))
+            if (choice) Box(Modifier.matchParentSize().border(3.dp, ArenaPalette.targetGlow, RoundedCornerShape(size.width * 0.05f)))
+            else if (next && !choosing) Box(Modifier.matchParentSize().border(3.dp, arenaPickGold, RoundedCornerShape(size.width * 0.05f)))
             ArenaCountBadge(position + 1, Modifier.align(Alignment.TopCenter).offset(y = (-15).dp), size = 30.dp)
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -810,7 +834,8 @@ fun ArenaPileBrowser(title: String, detail: String?, piles: List<XmagePromptPile
  * top over your medallion, your rank, the game's numbers and the two ways on. View Battlefield lifts it all.
  */
 @Composable
-fun ArenaGameResultView(snapshot: GameSnapshot, stats: GameStats?, rankChange: RankChange?, rematchTitle: String?, newGame: () -> Unit, quitGame: () -> Unit) {
+fun ArenaGameResultView(snapshot: GameSnapshot, stats: GameStats?, rankChange: RankChange?, rematchTitle: String?, newGame: () -> Unit, quitGame: () -> Unit,
+                        rankNote: String? = null) {
     val reduce = BoardMotion.reduceMotion
     val view = LocalView.current
     val safe = LocalArenaSafeArea.current
@@ -876,6 +901,9 @@ fun ArenaGameResultView(snapshot: GameSnapshot, stats: GameStats?, rankChange: R
                             }
                         }
                     }
+                    // Why a ranked win left the ladder alone, once the server says so.
+                    rankNote?.let { Text(it, Modifier.semantics { testTag = "board.result.rankNote" }, color = ArenaGlass.text.copy(alpha = 0.8f),
+                        style = ArenaMenuStyle.font(13f, SfWeight.semibold), textAlign = TextAlign.Center) }
                     if (stats != null && stats.turns > 0) Row(horizontalArrangement = Arrangement.spacedBy(if (landscape) 22.dp else 28.dp)) {
                         for ((value, label) in listOf("${stats.turns}" to "Turns", "${stats.combatDamage}" to "Damage", "${stats.creaturesDestroyed}" to "Destroyed")) {
                             Column(Modifier.semantics(mergeDescendants = true) { }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {

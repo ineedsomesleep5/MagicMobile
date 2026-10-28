@@ -134,6 +134,7 @@ fun CardTile(card: ZoneCard, selected: Boolean, modifier: Modifier = Modifier, p
             .semantics { contentDescription = card.accessibilityLabel(zoneName, selected, legal, pending) }) {
             Box(Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp))) {
                 CardArtworkOrPlaceholder(card, width, height, tokenCopyTagTrailingReserve = tokenCopyTagTrailingReserve)
+                if (card.card.faceDown == true) FaceDownMark(width)
             }
             Box(Modifier.fillMaxSize().border(0.8.dp, Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp)))
         }
@@ -146,6 +147,7 @@ fun CardTile(card: ZoneCard, selected: Boolean, modifier: Modifier = Modifier, p
         .semantics { contentDescription = card.accessibilityLabel(zoneName, selected, legal, pending) }) {
         Box(Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp)).colorAdjust(if (tapped) 0.3f else 1f, if (tapped) -0.12f else 0f)) {
             CardArtworkOrPlaceholder(card, width, height, tokenCopyTagTrailingReserve = tokenCopyTagTrailingReserve)
+            if (card.card.faceDown == true) FaceDownMark(width)
         }
         if (!ignoreTappedRotation) {
             XmageCardIconStrip(card.visibleXmageIcons, width, Modifier.align(Alignment.CenterStart).padding(start = 2.dp))
@@ -516,11 +518,14 @@ private fun combatKeywordStyle(keyword: CombatKeyword): Pair<Color, Color> = whe
 /** Compact public permanent face; the complete printed card remains in inspection. On the tavern table it wears its painted frame. */
 @Composable
 fun ArenaBattlefieldCard(card: ZoneCard, zoneName: String, width: Dp, height: Dp, modifier: Modifier = Modifier, selected: Boolean = false,
-                         legal: Boolean = false, targetable: Boolean = false, reduceMotion: Boolean = BoardMotion.reduceMotion) {
+                         legal: Boolean = false, targetable: Boolean = false, reduceMotion: Boolean = BoardMotion.reduceMotion,
+                         ability: Boolean = false) {
     if (io.magicmobile.android.ui.LocalTavernBoard.current) {
-        // Card Frames off (per board mode): the reference game's card instead of the tavern frame.
-        if (!LocalCardFrames.current) ArenaPlainCard(card, zoneName, width, height, modifier, selected, legal, targetable, reduceMotion)
-        else TavernFramedCard(card, zoneName, width, height, modifier, selected, legal, targetable, reduceMotion)
+        androidx.compose.runtime.CompositionLocalProvider(LocalArenaAbility provides ability) {
+            // Card Frames off (per board mode): the reference game's card instead of the tavern frame.
+            if (!LocalCardFrames.current) ArenaPlainCard(card, zoneName, width, height, modifier, selected, legal, targetable, reduceMotion)
+            else TavernFramedCard(card, zoneName, width, height, modifier, selected, legal, targetable, reduceMotion)
+        }
         return
     }
     val accent = when {
@@ -694,7 +699,7 @@ private fun TavernFramedCard(card: ZoneCard, zoneName: String, width: Dp, height
 private fun ArenaFramedCard(card: ZoneCard, zoneName: String, width: Dp, height: Dp, modifier: Modifier, selected: Boolean, legal: Boolean,
                             targetable: Boolean, kind: io.magicmobile.android.game.TavernFrameKind, frame: androidx.compose.ui.graphics.ImageBitmap,
                             tapped: Boolean, rotation: Float, phasedAlpha: Float, showsFooter: Boolean) {
-    val glow = io.magicmobile.android.game.ArenaCardLook.glow(card, selected, legal, targetable, LocalArenaPaying.current)
+    val glow = io.magicmobile.android.game.ArenaCardLook.glow(card, selected, legal, targetable, LocalArenaPaying.current, LocalArenaAbility.current)
     val window = kind.window
     val w = width.value; val h = height.value
     Box(modifier.requiredSize(width, height)
@@ -769,7 +774,7 @@ private fun ArenaPlainCard(card: ZoneCard, zoneName: String, width: Dp, height: 
     val arena = io.magicmobile.android.menus.LocalArenaBoard.current
     val token = io.magicmobile.android.game.ArenaCardLook.isToken(card)
     val tapped = io.magicmobile.android.game.ArenaCardLook.showsTapped(card, arena)
-    val arenaGlow = if (arena) io.magicmobile.android.game.ArenaCardLook.glow(card, selected, legal, targetable, LocalArenaPaying.current) else null
+    val arenaGlow = if (arena) io.magicmobile.android.game.ArenaCardLook.glow(card, selected, legal, targetable, LocalArenaPaying.current, LocalArenaAbility.current) else null
     val accent = when { card.isPhasedOut -> Color.Gray; targetable -> Color.Red; selected -> MagicPalette.antiqueGold; legal -> rgb(1.0, 0.68, 0.32)
         else -> rgb(0.36, 0.24, 0.11) }
     val rotation by animateFloatAsState(if (tapped) (if (arena) 12f else -7f) else 0f, if (reduceMotion) tween(0) else tween(220), label = "plainTapTilt")
@@ -873,4 +878,16 @@ fun tavernFrameDrawable(kind: io.magicmobile.android.game.TavernFrameKind): Int 
     io.magicmobile.android.game.TavernFrameKind.ENCHANTMENT -> R.drawable.tavern_frame_enchantment
     io.magicmobile.android.game.TavernFrameKind.LAND -> R.drawable.tavern_frame_land
     io.magicmobile.android.game.TavernFrameKind.SPELL -> R.drawable.tavern_frame_spell
+}
+
+/** Your own face-down card (exiled by Hideaway or Foretell, a morph, a manifest): its real face, dimmed, with a closed eye, as only you see it. */
+@Composable
+fun FaceDownMark(width: Dp) {
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.38f)).semantics { contentDescription = "Face down: only you can see it" },
+        contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.padding(top = maxOf(width * 0.05f, 3.dp)).background(MagicPalette.iron.copy(alpha = 0.85f), CircleShape)
+            .border(0.7.dp, MagicPalette.antiqueGold.copy(alpha = 0.5f), CircleShape).padding(maxOf(width * 0.04f, 3.dp))) {
+            SfImage("eye.slash.fill", MagicPalette.parchment, maxOf(width * 0.13f, 8.dp))
+        }
+    }
 }

@@ -223,7 +223,13 @@
 .mleaderplace { min-width: 34px; text-align: center; font: 900 17px/1 var(--serif); font-variant-numeric: tabular-nums;
   background: linear-gradient(#fff2c7, #f0bf6b 55%, #b77a2c); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .mleaderemblem { position: relative; flex: none; }
-.mleaderdot { position: absolute; right: 0; bottom: 0; }
+.mleaderdot { position: absolute; right: 0; top: 0; }
+.mleaderrank { position: absolute; right: -5px; bottom: -5px; }
+/* a tier's name over its first row; last season's champions above their podium */
+.mleadertier { display: flex; align-items: center; gap: 10px; margin: 6px 0 2px; color: var(--gold, #fad584); font: 800 11px/1 var(--sans);
+  letter-spacing: 1.2px; text-transform: uppercase; }
+.mleadertier::before, .mleadertier::after { content: ""; flex: 1; height: 1px; background: rgba(250,213,132,.35); }
+.mleaderchampions { margin: 4px 0 10px; text-align: center; color: var(--gold, #fad584); font: 800 12px/1 var(--sans); letter-spacing: 1.2px; text-transform: uppercase; }
 .mleaderrow .grow { display: flex; flex-direction: column; gap: 2px; }
 .mleadername { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .mleadername b { font: 900 16px/1.2 var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -232,6 +238,7 @@
 .mleaderend em { font: normal 800 11px/1 var(--sans); font-variant-numeric: tabular-nums; animation: mpop .25s ease-out both; }
 .mleaderend em.up { color: var(--win); }
 .mleaderend em.down { color: var(--loss); }
+.mleaderend em.streak { color: #ff9e40; }
 .mleaderrecord { font: 700 13px/1 var(--sans); font-variant-numeric: tabular-nums; opacity: .85; }
 .mshimmer { position: absolute; top: 0; bottom: 0; left: 0; width: 40%; pointer-events: none; mix-blend-mode: screen;
   background: linear-gradient(90deg, transparent, rgba(250,214,133,.22), rgba(255,255,255,.22), transparent); animation: mshimmer 2.8s ease-in-out .6s infinite; transform: translateX(-125%); }

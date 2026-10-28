@@ -10,9 +10,9 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026102303
+        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026102801
         versionName = providers.gradleProperty("androidVersionName").orNull ?: "0.1.1"
-        buildConfigField("int", "RELEASE_BUILD", "36")
+        buildConfigField("int", "RELEASE_BUILD", "46")
         ndk { abiFilters += "arm64-v8a" }
         buildConfigField("boolean", "NATIVE_ENGINE", withNative.toString())
         val relayURL = providers.gradleProperty("relayUrl").orNull ?: "https://magicmobile-relay.calebjfeliciano.workers.dev"
@@ -56,6 +56,7 @@ val prepareAssets by tasks.registering(Exec::class) {
     inputs.file(rootProject.file("../ios/MagicMobile/Resources/commander-brackets.json"))
     inputs.file(rootProject.file("../ios/MagicMobile/Resources/ai-decks.json"))
     inputs.files(rootProject.file("../ios/MagicMobile/Resources/tavern-room.json")).optional()
+    inputs.dir(rootProject.file("../ios/MagicMobile/Resources/Lessons"))
     outputs.dir(layout.buildDirectory.dir("generated/magicmobile-assets"))
     commandLine("python3",script.absolutePath, rootProject.file("../..").absolutePath,layout.buildDirectory.dir("generated/magicmobile-assets").get().asFile.absolutePath)
 }
@@ -136,6 +137,9 @@ dependencies {
     // models. Only the arm64 libraries ship (abiFilters above), about 3 MB.
     implementation("com.google.android.filament:filament-android:1.75.1")
     implementation("com.google.android.filament:gltfio-android:1.75.1")
+    // Voice chat at online tables (ondevice/VoiceRoom.kt, docs/VOICE_CHAT.md): Agora's basic voice SDK, the version iOS uses.
+    // Only its arm64 library ships (abiFilters above), about 14 MB.
+    implementation("io.agora.rtc:voice-rtc-basic:4.6.4")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }
 tasks.register<JavaExec>("artworkCatalogueChecks") {

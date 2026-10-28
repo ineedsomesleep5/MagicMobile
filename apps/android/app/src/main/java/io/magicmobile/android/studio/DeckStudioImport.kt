@@ -95,7 +95,8 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
     var name by remember { mutableStateOf("Imported Commander Deck") }
     var text by remember { mutableStateOf("") }
     var link by remember { mutableStateOf("") }
-    var excludeSideboards by remember { mutableStateOf(false) }
+    // On by default: a link's maybeboard is left out rather than failing the whole import (10 of 60 popular Archidekt decks have one).
+    var excludeSideboards by remember { mutableStateOf(true) }
     var preview by remember { mutableStateOf<OnDeviceDeckLinkImporter.Preview?>(null) }
     var sourceURL by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -438,7 +439,8 @@ private fun ImportReview(preview: OnDeviceDeckLinkImporter.Preview) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             SfImage(if (preview.unresolvedNames.isEmpty()) "checkmark.circle" else "exclamationmark.triangle", DeckStudioPalette.ink, 17.dp)
-            Text(if (preview.unresolvedNames.isEmpty()) "Names resolved in the compiled catalogue" else "${preview.unresolvedNames.size} unresolved names retained",
+            Text(if (preview.unresolvedNames.isEmpty()) "Every card found"
+                else "${preview.unresolvedNames.size} not in MagicMobile yet: ${preview.unresolvedNames.take(4).joinToString(", ")}${if (preview.unresolvedNames.size > 4) "…" else ""}",
                 color = DeckStudioPalette.ink, style = StudioText.body)
         }
         Text("${DeckStudioDraftPresentation.gameCount(draft)} main + commander cards; ${preview.deck.totalCards} across all imported sections.",
@@ -451,7 +453,7 @@ private fun ImportReview(preview: OnDeviceDeckLinkImporter.Preview) {
                     Text("${row.quantity}× ${row.cardName}", Modifier.weight(1f), color = DeckStudioPalette.ink, style = StudioText.body)
                     Text(DeckStudioDraftPresentation.section(row), color = DeckStudioPalette.ink, style = StudioText.caption)
                 }
-                if (row.cardName in preview.unresolvedNames) Text("Unresolved; retained in draft", color = DeckStudioPalette.warning, style = StudioText.caption)
+                if (row.cardName in preview.unresolvedNames) Text("Not in MagicMobile yet; kept in the draft", color = DeckStudioPalette.warning, style = StudioText.caption)
             }
         }
         if (preview.annotations.isNotEmpty()) {

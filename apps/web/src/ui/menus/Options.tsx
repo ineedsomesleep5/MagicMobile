@@ -13,7 +13,8 @@ import {
 import { PhaseStops } from "../arena/Menus";
 import { storage } from "../storage";
 import { performanceReport, readPerformance } from "./performanceLog";
-import { BackChevron, Caps, Checkbox, CloseButton, Pill, Segmented, Slider } from "./kit";
+import { BackChevron, Caps, Checkbox, CloseButton, Pill, Segmented, Slider, TalkKeyButton } from "./kit";
+import { DEFAULT_PUSH_TO_TALK_BIND, PUSH_TO_TALK_BIND_KEY, PUSH_TO_TALK_KEY } from "../../core/voiceChat";
 
 export type OptionsPage = "gameplay" | "board" | "audio" | "display" | "performance" | "support" | "about" | "soundLab" | "phaseStops";
 
@@ -148,6 +149,8 @@ function AudioPage({ openLab }: { openLab: () => void }) {
   const [effectsVolume, setEffectsVolume] = useState(() => gameAudio.volume);
   const [music, setMusicRaw] = useState(() => gameAudio.musicEnabled);
   const [musicVolume, setMusicVolume] = useState(() => gameAudio.musicVolume);
+  const [pushToTalk, setPushToTalk] = useSwitch(PUSH_TO_TALK_KEY, false);
+  const [talkKey, setTalkKey] = useState(() => storage.get(PUSH_TO_TALK_BIND_KEY) ?? DEFAULT_PUSH_TO_TALK_BIND);
   const setMusic = (on: boolean) => {
     setMusicRaw(on);
     storage.set(SOUND_KEYS.music, on ? "on" : "off");
@@ -162,6 +165,8 @@ function AudioPage({ openLab }: { openLab: () => void }) {
       <Checkbox title="Music" on={music && musicVolume > 0} id="settings.music" onChange={setMusic} />
       {music && musicVolume > 0 && <Slider label="Music volume" value={musicVolume}
         onChange={(v) => { setMusicVolume(v); storage.set(SOUND_KEYS.musicVolume, v.toFixed(2)); gameAudio.settingsChanged(); }} />}
+      <Checkbox title="Push to Talk" on={pushToTalk} id="settings.pushToTalk" onChange={setPushToTalk} />
+      {pushToTalk && <TalkKeyButton code={talkKey} id="settings.talkKey" onChange={(code) => { setTalkKey(code); storage.set(PUSH_TO_TALK_BIND_KEY, code); }} />}
       <div className="mright"><Pill id="settings.soundLab" onClick={openLab}>Sound Lab</Pill></div>
     </div>
   );

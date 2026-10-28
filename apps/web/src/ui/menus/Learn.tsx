@@ -6,13 +6,17 @@
  */
 import { useEffect, useState } from "react";
 import { gameAudio } from "../audio";
+import { DeckArt } from "./DeckBox";
 import { Btn, CloseButton, BackChevron } from "./kit";
+import { type LessonInfo, LessonText } from "../../core/lessons";
+import { lessonProgress } from "../../table/lessonTable";
 
 interface LearnPage { id: string; title: string; body: string }
-interface Tutorial { id: string; title: string; subtitle: string; pages: LearnPage[] }
+/** `art`: the card whose art fills the tutorial's tile, `colors` its glass until the art loads. */
+interface Tutorial { id: string; title: string; subtitle: string; art: string; colors: string[]; pages: LearnPage[] }
 
 export const TUTORIALS: Tutorial[] = [
-  { id: "table", title: "How MagicMobile works", subtitle: "Eleven short pages on the table and its controls.", pages: [
+  { id: "table", title: "How MagicMobile works", subtitle: "Eleven short pages on the table and its controls.", art: "Teferi, Temporal Archmage", colors: ["U"], pages: [
     { id: "welcome", title: "Welcome to the tavern", body: "Play Commander against AI opponents or your friends, right in your browser. The XMage rules engine runs on this computer and handles every rule for you." },
     { id: "decks", title: "Choose your deck", body: "Click Decks, or Play, to see every deck as a box. Click a box to choose it: it opens and its commander rises out." },
     { id: "start", title: "Start a game", body: "Click Play and pick Quick, Ranked or Custom. A Custom Table takes one to three AI opponents and their skill. Under Who goes first, choose the starting player or roll a D20: the highest roll starts. Then keep your opening hand or take a mulligan." },
@@ -25,7 +29,7 @@ export const TUTORIALS: Tutorial[] = [
     { id: "reading", title: "Read a card", body: "Point at any card to read it, and right-click it to see it up close with its full rules text. Open the game log to look back at every play." },
     { id: "friends", title: "Play with friends", body: "On a Custom Table, choose Online and enter a friend's table code to join the table their phone is hosting. Online works with iPhone and Android." },
   ] },
-  { id: "commander", title: "Commander basics", subtitle: "Nine pages on the rules of the format.", pages: [
+  { id: "commander", title: "Commander basics", subtitle: "Nine pages on the rules of the format.", art: "The Ur-Dragon", colors: ["W", "U", "B", "R", "G"], pages: [
     { id: "format", title: "The format", body: "Commander is Magic for a table of friends: usually three or four players, each with a 100-card deck led by a legendary creature. Every card but basic lands is a single copy, and everyone starts at 40 life." },
     { id: "commander", title: "Your commander", body: "Your commander starts in the command zone, and you can cast it from there whenever you could cast a creature. If it would leave the battlefield, you may send it back to the command zone instead. Each time you cast it again, it costs two more mana: the commander tax." },
     { id: "colors", title: "Colour identity", body: "Your commander's colours decide your deck. Every card may only use mana symbols that appear on your commander, in its cost or its rules text. A colourless commander means a deck of colourless cards." },
@@ -38,8 +42,12 @@ export const TUTORIALS: Tutorial[] = [
   ] },
 ];
 
-export function LearnPanel({ onClose }: { onClose: () => void }) {
+/** `playLesson` starts a lesson (lessons.ts); the chooser offers the lessons first when there are any. */
+export function LearnPanel({ onClose, lessons = [], playLesson }: { onClose: () => void; lessons?: LessonInfo[]; playLesson?: (id: string) => void }) {
   const [tutorial, setTutorial] = useState<Tutorial>();
+  const [lessonList, setLessonList] = useState(false);
+  const completed = lessonProgress.completed();
+  const firstUnfinished = lessons.find((lesson) => !completed.has(lesson.id))?.id;
   const [index, setIndex] = useState(0);
   const page = tutorial?.pages[index];
   const step = (delta: number) => {
@@ -62,16 +70,43 @@ export function LearnPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="mlearn">
       <header className="mpanelhead centered">
-        {tutorial ? <BackChevron onBack={() => setTutorial(undefined)} /> : <span className="mspacer" />}
-        <h2>{tutorial?.title ?? "How to play"}</h2>
+        {tutorial || lessonList ? <BackChevron onBack={() => { setTutorial(undefined); setLessonList(false); }} /> : <span className="mspacer" />}
+        <h2>{tutorial?.title ?? (lessonList ? LessonText.title : "How to play")}</h2>
         <CloseButton onClose={onClose} />
       </header>
-      {!tutorial || !page ? (
+      {lessonList && playLesson ? (
+        // The lessons in order, a check on each one finished (iOS LessonListView).
+        <div className="mlessons">
+          {lessons.map((lesson, index) => {
+            const done = completed.has(lesson.id), next = lesson.id === firstUnfinished;
+            return (
+              <button key={lesson.id} type="button" className={`mlesson ${next ? "next" : ""}`} data-id={`lessons.${lesson.id}`}
+                aria-label={done ? `${lesson.title}, finished` : lesson.title} onClick={() => { gameAudio.play("ui-open"); onClose(); playLesson(lesson.id); }}>
+                <i className={done ? "done" : ""}>{done ? "✓" : index + 1}</i>
+                <b>{lesson.title}</b>
+                <span className={`mbtn ${next ? "" : "secondary"} compact`}>{done ? "Replay" : "Play"} ›</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : !tutorial || !page ? (
         <div className="mlearnchooser">
+          {playLesson && lessons.length > 0 && (
+            <button type="button" className="mlearncard" data-id="learn.lessons" aria-label={LessonText.title}
+              onClick={() => { gameAudio.play("ui-open"); setLessonList(true); }}>
+              <DeckArt name="Grizzly Bears" colors={["G"]} focus={0.3} />
+              <i className="mlearnshade" />
+              <span className="mlearntitle"><b>{LessonText.title}</b><span className="mbtn compact">Begin ›</span></span>
+            </button>
+          )}
           {TUTORIALS.map((t) => (
-            <button key={t.id} type="button" className="mcard mlearncard" data-id={`learn.${t.id}`}
+            // Arena's Learn tile (HowToPlayChooser.upright): the art fills it, framed on its upper part, the title and plaque on a
+            // shade along its foot. What it teaches is the screen reader's.
+            <button key={t.id} type="button" className="mlearncard" data-id={`learn.${t.id}`} aria-label={`${t.title}. ${t.subtitle}`}
               onClick={() => { gameAudio.play("ui-open"); setTutorial(t); setIndex(0); }}>
-              <b>{t.title}</b><small>{t.subtitle}</small><em>Begin</em>
+              <DeckArt name={t.art} colors={t.colors} focus={0.3} />
+              <i className="mlearnshade" />
+              <span className="mlearntitle"><b>{t.title}</b><span className="mbtn secondary compact">Begin ›</span></span>
             </button>
           ))}
         </div>

@@ -204,11 +204,19 @@ extension NativeGameView {
     /// A full-table screen is up (a browser, the stack, a question): it hides the corner, the caption, the stack card and
     /// the arrows over the table.
     func arenaScreenUp(_ snapshot: GameSnapshot) -> Bool {
-        isCardChoiceOpen || isTavernStackOpen || arenaAbilityPrompt(snapshot) != nil || arenaModePrompt(snapshot) != nil
+        isCardChoiceOpen || isTavernStackOpen || arenaStackPick(snapshot).shown || arenaAbilityPrompt(snapshot) != nil || arenaModePrompt(snapshot) != nil
             || arenaChoicePrompt(snapshot) != nil || arenaPlayerPrompt(snapshot) != nil || arenaSplitPrompt(snapshot) != nil
             || arenaPilePrompt(snapshot) != nil
             || arenaQuestion(snapshot, targetableIds: GameBoardInteractionState.boardTargetableIds(for: snapshot)) != nil
             || inspectingZoneTitle != nil
+    }
+
+    /// A target question whose choices are on the stack (ArenaTargetReach): its choices, its key, and whether the stack
+    /// browser is up for it (it opens by itself; Done steps aside until the stack card is tapped).
+    func arenaStackPick(_ snapshot: GameSnapshot) -> (choices: Set<String>, key: String?, shown: Bool) {
+        let choices = Set(ArenaTargetReach.of(snapshot, targetable: GameBoardInteractionState.boardTargetableIds(for: snapshot)).stack)
+        let key = choices.isEmpty ? nil : snapshot.promptEnvelopeV2.map { "\($0.id):\($0.messageId)" }
+        return (choices, key, key != nil && key != arenaStackPickDismissed && !snapshot.stackTopFirst.isEmpty)
     }
 
     /// Each side laid out the current reference game's way (Caleb, 2026-10-20): creatures in the front row nearest
@@ -458,6 +466,11 @@ extension NativeGameView {
         }
         arenaGameMenu(snapshot: snapshot)
             .position(canvas.point(layout.menu))
+        // Voice chat's mic (ArenaVoiceMic) under the gear, clear of the hand and the screen's edge.
+        if let voiceRoom {
+            ArenaVoiceMic(room: voiceRoom)
+                .position(x: canvas.point(layout.menu).x, y: canvas.point(layout.menu).y + 40)
+        }
     }
 
     private func arenaOpponentMedallion(snapshot: GameSnapshot, opponent: PlayerGameState, canvas: ArenaCanvas) -> some View {
@@ -473,6 +486,7 @@ extension NativeGameView {
             .overlay { if let turnClockFeed, let playerName = opponent.displayName {
                 TurnClockRing(feed: turnClockFeed, playerName: playerName, diameter: diameter * 1.08)
             } }
+            .overlay { arenaVoiceHalo(seat: voiceRoom?.seat(named: opponent.displayName), diameter: diameter, badge: true) }
             .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [TavernSeatAnchor.top: $0] }
         let label = opponent.isOut ? "\(name), out of the game" : "\(name), \(opponent.life) life"
         return Group {
@@ -556,6 +570,7 @@ extension NativeGameView {
         let medallion = ArenaHeroMedallion(player: human, diameter: diameter, active: snapshot.isViewer(snapshot.activePlayerId),
                                            glow: targetID != nil ? ArenaPalette.targetGlow : nil, commanderReady: !castable.isEmpty)
             .overlay { if let turnClockFeed { TurnClockRing(feed: turnClockFeed, diameter: diameter * 1.08) } }
+            .overlay { arenaVoiceHalo(seat: voiceRoom?.account, diameter: diameter, badge: false) }
             .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [TavernSeatAnchor.bottom: $0] }
         return Group {
             if let targetID {
@@ -598,25 +613,52 @@ extension NativeGameView {
                 player.commanders?.contains { $0.name == top.displaySourceName || $0.name == top.displayName } == true
             }
             let revealing = arenaRevealID == top.id
-            ArenaStackCard(object: top, count: snapshot.xmage?.stack.count ?? objects.count, size: rect.size, commander: commander,
-                           fallbackSource: arenaSourceCard(top, snapshot: snapshot), lands: !arenaLandedStackIDs.contains(top.id),
-                           inspect: { inspectedCard = $0 }, openStack: { isTavernStackOpen = true })
-                // An opponent's spell is revealed first, larger and toward the middle, then settles onto the stack card
-                // (the reference's ~0.4 s grow, ~0.9 s hold, 0.3 s settle).
-                // Low enough that the larger card clears the opponent's piles above the stack card.
-                .scaleEffect(revealing ? 1.2 : 1)
-                .offset(x: revealing ? -rect.width * 0.8 : 0, y: revealing ? rect.height * 0.14 : 0)
-                .animation(.easeInOut(duration: 0.3), value: revealing)
-                .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { ["arena.stack": $0] }
-                .id(top.id)
-                .transition(.scale(scale: 0.6).combined(with: .opacity))
-                .position(x: rect.midX, y: rect.midY)
-                .onAppear {
-                    arenaBeginReveal(top, snapshot: snapshot)
-                    arenaLandedStackIDs.insert(top.id)
+            let count = snapshot.xmage?.stack.count ?? objects.count
+            // It tucks itself while you pick on the table, never when the choices are on the stack.
+            let targetable = GameBoardInteractionState.boardTargetableIds(for: snapshot)
+            let tucked = !revealing && ArenaStackTuck.isTucked(top: top.id, tuckedTop: arenaStackTuckedTop, peekTop: arenaStackPeekTop,
+                                                                picking: AppConfigStore.shared.current.isOn("stackAutoTuck") && !targetable.isEmpty
+                                                                    && ArenaTargetReach.of(snapshot, targetable: targetable).stack.isEmpty)
+            if tucked {
+                // The slim tab at the table's edge brings the card back.
+                ArenaStackTab(tucked: true, count: count) {
+                    GameAudio.shared.play(.uiOpen)
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) { arenaStackTuckedTop = nil; arenaStackPeekTop = top.id }
                 }
-                .onChange(of: isTavernStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
+                .position(x: canvas.screen.width - 22, y: rect.midY)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
                 .zIndex(30)
+            } else {
+                ArenaStackCard(object: top, count: count, size: rect.size, commander: commander,
+                               fallbackSource: arenaSourceCard(top, snapshot: snapshot), lands: !arenaLandedStackIDs.contains(top.id),
+                               inspect: { inspectedCard = $0 }, openStack: { isTavernStackOpen = true })
+                    // The eye at its lower left, under the tab that opens the whole stack, tucks it aside.
+                    .overlay(alignment: .bottomLeading) {
+                        if !revealing {
+                            ArenaStackTab(tucked: false, count: count) {
+                                GameAudio.shared.play(.uiClose)
+                                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) { arenaStackTuckedTop = top.id; arenaStackPeekTop = nil }
+                            }
+                            .offset(x: -43, y: -6)
+                        }
+                    }
+                    // An opponent's spell is revealed first, larger and toward the middle, then settles onto the stack card
+                    // (the reference's ~0.4 s grow, ~0.9 s hold, 0.3 s settle).
+                    // Low enough that the larger card clears the opponent's piles above the stack card.
+                    .scaleEffect(revealing ? 1.2 : 1)
+                    .offset(x: revealing ? -rect.width * 0.8 : 0, y: revealing ? rect.height * 0.14 : 0)
+                    .animation(.easeInOut(duration: 0.3), value: revealing)
+                    .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { ["arena.stack": $0] }
+                    .id(top.id)
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    .position(x: rect.midX, y: rect.midY)
+                    .onAppear {
+                        arenaBeginReveal(top, snapshot: snapshot)
+                        arenaLandedStackIDs.insert(top.id)
+                    }
+                    .onChange(of: isTavernStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
+                    .zIndex(30)
+            }
         }
     }
 
@@ -827,8 +869,16 @@ extension NativeGameView {
         if snapshot.source == "xmage-ondevice" {
             items.append(ArenaMenuItem(id: "more", title: "More actions", symbol: "ellipsis") { openPromptDetails() })
         }
+        if let voiceRoom, voiceRoom.state.stage == .live {
+            items.append(ArenaMenuItem(id: "leave-voice", title: "Leave Voice Chat", symbol: "mic.slash.fill") { voiceRoom.leave() })
+        }
         items.append(ArenaMenuItem(id: "settings", title: "Game Settings", symbol: "gearshape.fill") { isGameMenuOpen = true })
         return items
+    }
+
+    @ViewBuilder
+    private func arenaVoiceHalo(seat: String?, diameter: CGFloat, badge: Bool) -> some View {
+        if let voiceRoom, let seat { ArenaVoiceHalo(room: voiceRoom, seat: seat, diameter: diameter, badge: badge) }
     }
 
     private func arenaGameMenu(snapshot: GameSnapshot) -> some View {
@@ -959,7 +1009,10 @@ extension NativeGameView {
                     .transition(.opacity)
             }
         }
-        if isTavernStackOpen && !snapshot.stackTopFirst.isEmpty {
+        // A target question whose choices are on the stack opens the stack to choose (ArenaTargetReach).
+        let pick = arenaStackPick(snapshot)
+        let stackChoices = pick.choices, stackPick = pick.key
+        if (isTavernStackOpen || pick.shown) && !snapshot.stackTopFirst.isEmpty {
             let resolve = GameplayAffordances.resolveStackCommand(snapshot: snapshot, pendingActionID: pendingActionId, supported: answerActions.supported)
             ArenaStackBrowser(snapshot: snapshot, screen: canvas.screen,
                               resolveAll: resolve.map { command in {
@@ -967,8 +1020,15 @@ extension NativeGameView {
                                   runCommand(command, "Resolve the stack", "resolve-stack-\(command.promptId ?? "")")
                               } },
                               stopSkipping: nativeTurnControl.flatMap { control in control.isAutoPassing ? control.stop : nil },
+                              choosable: pendingActionId == nil ? stackChoices : [],
+                              answers: stackPick == nil ? [] : arenaPromptAnswers(snapshot, excluding: ["choose_target"]),
+                              choose: stackPick == nil ? nil : { id in
+                                  isTavernStackOpen = false
+                                  arenaSubmitTargetID(id, label: "Choose \(snapshot.stackTopFirst.first { $0.id == id }?.displaySourceName ?? "it")",
+                                                      snapshot: snapshot)
+                              },
                               inspect: { inspectedCard = $0 },
-                              close: { isTavernStackOpen = false })
+                              close: { isTavernStackOpen = false; arenaStackPickDismissed = stackPick })
                 .transition(.opacity)
         }
         // The opening hand has its own screen (OpeningHandOverlay): XMage's mulligan question never shows behind it.
@@ -1093,6 +1153,7 @@ extension NativeGameView {
                     }
                 }
             }
+            if !lessonFocus.isEmpty { arenaLessonRings(bounds: bounds, human: human, opponent: opponent, canvas: canvas) }
             let stack = canvas.rect(canvas.layout.stack)
             boardFXOverlay(bounds: bounds, snapshot: snapshot,
                            opponentRect: canvas.area(canvas.layout.creatureLane(viewer: false, rows: 1)),
@@ -1104,6 +1165,23 @@ extension NativeGameView {
         }
         .allowsHitTesting(false)
         .accessibilityRepresentation { EmptyView() }
+    }
+
+    /// The lesson coach's rings: a card on the table or in hand, a player's medallion, or the corner button.
+    @ViewBuilder
+    private func arenaLessonRings(bounds: [String: CGRect], human: PlayerGameState, opponent: PlayerGameState, canvas: ArenaCanvas) -> some View {
+        ForEach(Array(lessonFocus.ids).sorted(), id: \.self) { id in
+            if let rect = bounds[id] ?? bounds["hand:" + id] {
+                LessonFocusRing(rect: rect)
+            } else if id == opponent.playerId, let rect = bounds[TavernSeatAnchor.top] {
+                LessonFocusRing(rect: rect, circle: true)
+            }
+        }
+        switch lessonFocus.control {
+        case "primary": LessonFocusRing(rect: canvas.rect(canvas.layout.primary))
+        case "medallion": if let rect = bounds[TavernSeatAnchor.bottom] { LessonFocusRing(rect: rect, circle: true) }
+        default: EmptyView()
+        }
     }
 
     // MARK: Decisions
@@ -1217,6 +1295,11 @@ extension NativeGameView {
     }
 
     func arenaSubmitPlayerTarget(_ id: String, snapshot: GameSnapshot) {
+        arenaSubmitTargetID(id, label: "Target \(snapshot.playerLabel(id))", snapshot: snapshot)
+    }
+
+    /// Answers a target question with a player or a stack object the table doesn't draw as a card.
+    func arenaSubmitTargetID(_ id: String, label: String, snapshot: GameSnapshot) {
         guard let prompt = snapshot.promptEnvelopeV2 else { return }
         if (prompt.maxChoices ?? 1) > 1 || (prompt.minChoices ?? 1) > 1 {
             isPromptDetailOpen = true
@@ -1231,7 +1314,7 @@ extension NativeGameView {
             return
         }
         GameHaptics.success()
-        runCommand(command, "Target \(snapshot.playerLabel(id))", "\(promptId)-\(id)")
+        runCommand(command, label, "\(promptId)-\(id)")
     }
 }
 

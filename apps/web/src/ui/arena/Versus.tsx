@@ -4,9 +4,12 @@
  * through, and it never holds the game up.
  */
 import { useEffect, useState } from "react";
+import { RankTier } from "../../core/rankLadder";
+import { TIER_SHADE, TIER_TINT } from "../../core/socialText";
 import { DeckArt } from "../menus/DeckBox";
 
-export interface VersusSeat { id: string; name: string; commander?: string }
+/** `tier`: the player's ranked tier; their commander's arch is framed in its metal (Caleb, 2026-10-26). None for the AI. */
+export interface VersusSeat { id: string; name: string; commander?: string; tier?: RankTier }
 
 /** iOS's timings: in (0.45 s spring), the slam at 0.48 s, the fade 1.5 s later, gone 0.48 s after that. */
 const SLAM_MS = 480, FADE_MS = 1980, DONE_MS = 2460;
@@ -30,11 +33,21 @@ export function VersusIntro({ you, opponents, finished }: { you: VersusSeat; opp
   );
 }
 
-/** A player as Arena shows them before a match: their commander in a tall gold arch, their name on a black plate. */
+/**
+ * A player as Arena shows them before a match: their commander in a tall gold arch, their name on a black plate. A
+ * ranked tier frames the arch in its metal instead (a bright edge over its dark, thicker the higher the tier) and glows in
+ * its tint. No emblem on the arch (Caleb, 2026-10-26: badges belong on the profile).
+ */
 function Seat({ seat, tilt }: { seat: VersusSeat; tilt: number }) {
+  const tier = seat.tier;
+  const style = tier === undefined ? undefined : {
+    ["--tint" as string]: TIER_TINT[tier], ["--shade" as string]: TIER_SHADE[tier], ["--rim" as string]: `${3 + RankTier.index(tier) * 0.6}px`,
+  };
   return (
     <div className="vseat" style={{ transform: `rotate(${tilt}deg)` }}>
-      <div className="arch"><DeckArt name={seat.commander} colors={[]} /></div>
+      <div className={`arch ${tier ? `tiered ${tier}` : ""}`} style={style}>
+        <div className="archart"><DeckArt name={seat.commander} colors={[]} focus={0.3} /></div>
+      </div>
       <span className="plate">{seat.name}</span>
     </div>
   );

@@ -312,7 +312,10 @@ struct RankedLeaderboardView: View {
         var id: String { name }
     }
 
-    @State private var scope: RankedLeaderboard.Scope = .everyone
+    /// Everyone, friends, or last season's champions (from the everyone board).
+    private enum Tab: Hashable { case everyone, friends, champions }
+    @State private var tab: Tab = .everyone
+    private var scope: RankedLeaderboard.Scope { tab == .friends ? .friends : .everyone }
     @State private var load: Load = .loading
     @State private var lastPositions: [String: Int] = [:]
     /// Places gained (positive) or lost since the last refresh.
@@ -322,6 +325,7 @@ struct RankedLeaderboardView: View {
     @State private var profile: ProfileTarget?
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.joinFriendTable) private var joinFriendTable
     /// Compact height: the phone held sideways.
     @Environment(\.verticalSizeClass) private var verticalSize
 
@@ -348,7 +352,9 @@ struct RankedLeaderboardView: View {
                          icon: "wifi.exclamationmark", identifier: "leaderboard.offline")
                 case .loaded(let board):
                     if !wide { liveStrip(board) }
-                    if board.entries.isEmpty {
+                    if tab == .champions {
+                        champions(board, compact: wide)
+                    } else if board.entries.isEmpty {
                         note(scope == .friends
                              ? String(localized: "None of your friends has played ranked this season yet. Challenge one from Friends.")
                              : String(localized: "Nobody has played ranked this season yet. Win a game to take the top spot."),
@@ -370,7 +376,7 @@ struct RankedLeaderboardView: View {
                     if board.pinnedMe != nil && !wide { Color.clear.frame(height: 72) }
                 }
             }
-            if !wide, case .loaded(let board) = load, let me = board.pinnedMe {
+            if !wide, tab != .champions, case .loaded(let board) = load, let me = board.pinnedMe {
                 row(me, pinned: true)
                     .frame(maxWidth: 608)
                     .padding(.horizontal, 16)
@@ -390,6 +396,7 @@ struct RankedLeaderboardView: View {
         }
         .fullScreenCover(item: $profile) { target in
             PublicProfileView(account: account, username: target.name) { profile = nil }
+                .environment(\.joinFriendTable, joinFriendTable)
         }
     }
 
@@ -420,10 +427,28 @@ struct RankedLeaderboardView: View {
 
     // MARK: Scope
 
-    /// Everyone or friends, as Arena's tab strip.
+    /// Everyone, friends or last season's champions, as Arena's tab strip.
     private var scopePicker: some View {
-        ArenaSegmented(options: RankedLeaderboard.Scope.allCases.map { ($0 == .everyone ? String(localized: "Everyone") : String(localized: "Friends"), $0) },
-                       selection: $scope, identifier: "leaderboard.scope")
+        ArenaSegmented(options: [(String(localized: "Everyone"), Tab.everyone), (String(localized: "Friends"), Tab.friends),
+                                 (String(localized: "Champions"), Tab.champions)],
+                       selection: $tab, identifier: "leaderboard.scope")
+    }
+
+    // MARK: Champions
+    /// Last season's top three on their podium, or when the first are crowned.
+    @ViewBuilder
+    private func champions(_ board: RankedLeaderboard, compact: Bool) -> some View {
+        if let champions = board.champions, !champions.entries.isEmpty {
+            VStack(spacing: 10) {
+                ArenaCaps(text: String(localized: "\(RankLadder.seasonName(champions.season)) champions"))
+                podium(champions.entries.map(\.row), compact: compact)
+                    .frame(maxWidth: compact ? 420 : nil)
+            }
+            .accessibilityIdentifier("leaderboard.champions")
+        } else {
+            note(String(localized: "The first champions are crowned when \(RankLadder.seasonName(board.season)) ends."),
+                 icon: "crown", identifier: "leaderboard.champions.empty")
+        }
     }
 
     // MARK: Live strip
@@ -435,7 +460,8 @@ struct RankedLeaderboardView: View {
                 .font(ArenaMenuStyle.font(14, .bold))
                 .lineLimit(1).minimumScaleFactor(0.8)
             Spacer(minLength: 6)
-            Text(String(localized: "\(board.total) ranked · \(RankLadder.seasonName(board.season))"))
+            Text([String(localized: "\(board.total) ranked"), RankLadder.seasonName(board.season), RankLadder.seasonCountdown(board.season)]
+                    .compactMap { $0 }.joined(separator: " · "))
                 .font(ArenaMenuStyle.font(12, .semibold)).opacity(0.75)
                 .lineLimit(1).minimumScaleFactor(0.8)
         }
@@ -524,13 +550,36 @@ struct RankedLeaderboardView: View {
 
     // MARK: Rows
 
+    /// The standings below the podium, a tier's name over its first row.
     private func rows(_ entries: [RankedLeaderboard.Entry]) -> some View {
         VStack(spacing: 8) {
-            ForEach(entries) { entry in
+            ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                if index == 0 || entries[index - 1].rank.tier != entry.rank.tier { tierHeader(entry.rank.tier) }
                 row(entry, pinned: false)
                     .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
             }
         }
+    }
+
+    private func tierHeader(_ tier: RankTier) -> some View {
+        HStack(spacing: 10) {
+            Rectangle().fill(ArenaMenuStyle.gold.opacity(0.35)).frame(height: 1)
+            Text(tier.name.uppercased()).font(ArenaMenuStyle.font(11, .heavy)).tracking(1.2).foregroundStyle(ArenaMenuStyle.gold)
+                .fixedSize()
+            Rectangle().fill(ArenaMenuStyle.gold.opacity(0.35)).frame(height: 1)
+        }
+        .padding(.top, 4)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    /// Three straight wins or more: a flame with the count.
+    private func streakMark(_ streak: Int) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "flame.fill").font(.system(size: 10, weight: .black))
+            Text("\(streak)").font(ArenaMenuStyle.font(11, .heavy)).monospacedDigit()
+        }
+        .foregroundStyle(Color(red: 1, green: 0.62, blue: 0.25))
+        .accessibilityLabel(String(localized: "\(streak) wins in a row"))
     }
 
     private func row(_ entry: RankedLeaderboard.Entry, pinned: Bool) -> some View {
@@ -542,21 +591,24 @@ struct RankedLeaderboardView: View {
                     .font(.system(size: 17, weight: .black, design: .serif)).monospacedDigit()
                     .foregroundStyle(BrandTheme.brassGradient)
                     .frame(minWidth: 34)
+                // Their commander's art, their rank's emblem on its rim.
                 ZStack(alignment: .bottomTrailing) {
-                    RankEmblem(tier: rank.tier, size: 40)
-                    if entry.online { LeaderboardOnlineDot(size: 9) }
+                    CommanderArtMedallion(name: entry.commander, diameter: 40).frame(width: 44, height: 44)
+                    RankEmblem(tier: rank.tier, size: 20).offset(x: 4, y: 4)
                 }
+                .overlay(alignment: .topTrailing) { if entry.online { LeaderboardOnlineDot(size: 9) } }
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(entry.username).font(ArenaMenuStyle.font(16, .black)).lineLimit(1)
                         if entry.you { TavernTag(text: String(localized: "YOU"), leather: true) }
                     }
-                    Text(entry.title.map { "\(rank.title) · \($0)" } ?? rank.title)
+                    Text([rank.title, entry.title, entry.winRate.map { String(localized: "\($0)% wins") }].compactMap { $0 }.joined(separator: " · "))
                         .font(ArenaMenuStyle.font(12, .regular)).opacity(0.75).lineLimit(1)
                 }
                 Spacer(minLength: 4)
                 VStack(alignment: .trailing, spacing: 4) {
                     if let move = moves[entry.username] { moveMark(move) }
+                    else if let streak = entry.streak, streak >= 3 { streakMark(streak) }
                     Text("\(entry.wins)–\(entry.losses)")
                         .font(ArenaMenuStyle.font(13, .bold)).monospacedDigit().opacity(0.85)
                     if !mythic { RankPips(filled: rank.pips, tier: rank.tier, size: 7) }
@@ -599,6 +651,7 @@ struct RankedLeaderboardView: View {
         if let title = entry.title { parts.append(title) }
         if entry.online { parts.append(String(localized: "online")) }
         parts.append(String(localized: "\(entry.wins) wins, \(entry.losses) losses"))
+        if let streak = entry.streak, streak >= 3 { parts.append(String(localized: "\(streak) wins in a row")) }
         if entry.you { parts.append(String(localized: "you")) }
         return parts.joined(separator: ", ")
     }

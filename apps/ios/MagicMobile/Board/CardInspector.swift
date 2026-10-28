@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import PhotosUI
 import UIKit
@@ -35,9 +36,19 @@ struct CardInspector: View {
     /// after a moment (a finger holding it can't tap); an opened one turns with its Flip button.
     @State private var otherFace: DoubleFacedCards.Face?
     @State private var turned = false
+    /// The tab shown: the held card, what it is attached to, or one of its attachments (nil is the held card).
+    @State private var focusID: String?
+    @State private var tabFrames: [String: CGRect] = [:]
 
     /// Inspection is held with a finger, so the attachment list reads, never scrolls or taps.
-    private var shown: ZoneCard { card }
+    private var shown: ZoneCard { tabs.first { $0.instanceId == focusID } ?? card }
+
+    /// The held card with what it is attached to (first) and what is attached to it, for the tab strip; one card, no strip.
+    private var tabs: [ZoneCard] {
+        let parent = card.attachedToInstanceId.flatMap { id in battlefield.first { $0.instanceId == id } }
+        let carried = battlefield.filter { $0.attachedToInstanceId == card.instanceId && $0.instanceId != card.instanceId }
+        return (parent.map { [$0] } ?? []) + [card] + carried
+    }
 
     /// Auras, Equipment and anything else attached to the shown card, in table order.
     private var attachments: [ZoneCard] {
@@ -53,6 +64,7 @@ struct CardInspector: View {
     private var liveState: [String] {
         let card = shown
         var details: [String] = []
+        if card.card.faceDown == true { details.append(String(localized: "Face down")) }
         if card.card.isToken == true {
             details.append(card.card.copySourceArtworkName == nil ? "Token" : "Token copy")
         }
@@ -93,7 +105,15 @@ struct CardInspector: View {
             if arena { arenaBody } else { tavernBody }
         }
         .onPreferenceChange(CardArtPlaceholderShownKey.self) { artMissing = $0 }
-        .task(id: card.card.name) {
+        .onPreferenceChange(InspectorTabFrameKey.self) { tabFrames = $0 }
+        .onChange(of: card.instanceId) { _ in focusID = nil }
+        .onReceive(hold?.$finger.eraseToAnyPublisher() ?? Empty().eraseToAnyPublisher()) { finger in
+            // A holding finger slid onto a tab shows that card.
+            guard let finger, let hit = tabFrames.first(where: { $0.value.insetBy(dx: -6, dy: -10).contains(finger) }) else { return }
+            if hit.key != shown.instanceId { focusID = hit.key }
+        }
+        .task(id: shown.card.name) {
+            let card = shown
             turned = false
             otherFace = nil
             guard NativeCardArtworkPolicy.permitsLookup(card: card), card.card.isToken != true else { return }
@@ -119,7 +139,7 @@ struct CardInspector: View {
         let glossary = ArenaKeywordGlossary.entries(rules: rules)
         let reminder = CardRulesReminder.text(for: card)
         let attached = attachments
-        let hasNotes = !liveState.isEmpty || !glossary.isEmpty || (showsRules && !rules.isEmpty) || reminder != nil || !attached.isEmpty
+        let hasNotes = tabs.count > 1 || !liveState.isEmpty || !glossary.isEmpty || (showsRules && !rules.isEmpty) || reminder != nil || !attached.isEmpty
         return GeometryReader { proxy in
             let landscape = proxy.size.width > proxy.size.height
             let ratio = BattlefieldLayoutMetrics.magicCardHeightToWidth
@@ -155,6 +175,7 @@ struct CardInspector: View {
                 .modifier(ArenaGlassPanel(cornerRadius: 10))
         }
         return VStack(alignment: .leading, spacing: 8) {
+            if tabs.count > 1 { tabStrip }
             if !liveState.isEmpty {
                 note {
                     Text(liveState.joined(separator: "  •  "))
@@ -199,6 +220,12 @@ struct CardInspector: View {
         }
     }
 
+    private var tabStrip: some View {
+        InspectorTabStrip(cards: tabs, held: card.instanceId, selected: shown.instanceId) { focusID = $0 }
+            // A thumbnail's missing art must not read as the main card's.
+            .transformPreference(CardArtPlaceholderShownKey.self) { $0 = false }
+    }
+
     private var tavernBody: some View {
         let card = shown
         let rules = card.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -209,7 +236,7 @@ struct CardInspector: View {
         // Rules get their room first; CardInspectorFit shrinks the card, then the text.
         return CardInspectorLayout {
             InspectorCardFace(card: card, otherFace: otherFace, turned: turned) { turned.toggle() }
-            if rulesVisible || !state.isEmpty || !attached.isEmpty || reminder != nil {
+            if tabs.count > 1 || rulesVisible || !state.isEmpty || !attached.isEmpty || reminder != nil {
                 ViewThatFits(in: .vertical) {
                     ForEach(CardInspectorFit.textScales, id: \.self) { scale in
                         footer(scale: scale, card: card, rules: rulesVisible ? rules : nil, state: state,
@@ -227,6 +254,7 @@ struct CardInspector: View {
     private func footer(scale: CGFloat, card: ZoneCard, rules: String?, state: [String], reminder: String?,
                         attached: [ZoneCard]) -> some View {
         VStack(alignment: .leading, spacing: 8 * scale) {
+            if tabs.count > 1 { tabStrip }
             if !state.isEmpty {
                 InspectorStateChips(items: state, scale: scale)
             }
@@ -350,6 +378,50 @@ struct CardInspectorLayout: Layout {
 }
 
 /// What is attached to the inspected card: each Aura or Equipment with its rules text.
+struct InspectorTabFrameKey: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) { value.merge(nextValue()) { $1 } }
+}
+
+/// The inspected card and the cards fastened to it as tabs (Caleb, 2026-10-26): tap one, or slide the holding finger
+/// onto it, to read that card without letting go.
+struct InspectorTabStrip: View {
+    let cards: [ZoneCard]
+    /// The card the player held; the others are what it is attached to or carries.
+    let held: String
+    let selected: String
+    let choose: (String) -> Void
+    @Environment(\.arenaBoard) private var arena
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(cards) { tab in
+                let on = tab.instanceId == selected
+                Button { choose(tab.instanceId) } label: {
+                    CardTile(card: tab, selected: false, zoneName: "Inspector tab", width: 34, height: 34 * BattlefieldLayoutMetrics.magicCardHeightToWidth,
+                             ignoreTappedRotation: true)
+                        .allowsHitTesting(false)
+                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(on ? MagicPalette.antiqueGold : .white.opacity(0.25), lineWidth: on ? 2 : 1))
+                        .shadow(color: on ? MagicPalette.antiqueGold.opacity(0.6) : .clear, radius: 6)
+                        .scaleEffect(on ? 1.08 : 1)
+                        .opacity(on ? 1 : 0.75)
+                }
+                .buttonStyle(.plain)
+                .background(GeometryReader { proxy in
+                    Color.clear.preference(key: InspectorTabFrameKey.self, value: [tab.instanceId: proxy.frame(in: .global)])
+                })
+                .accessibilityLabel(tab.instanceId == held ? tab.card.name : "\(tab.card.name), attached")
+                .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+                .accessibilityIdentifier("inspector.tab.\(tab.instanceId)")
+            }
+        }
+        .padding(.vertical, 4)
+        .animation(.easeOut(duration: 0.15), value: selected)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inspector.tabs")
+    }
+}
+
 struct InspectorAttachmentList: View {
     let cards: [ZoneCard]
     var scale: CGFloat = 1
@@ -410,6 +482,9 @@ struct InspectorAttachmentList: View {
 /// Short notes for rules players often read differently than the engine applies them.
 enum CardRulesReminder {
     static func text(for card: ZoneCard) -> String? {
+        if card.card.faceDown == true {
+            return String(localized: "Face down: only you can see it. A card exiled face down is played through the card that exiled it: for Hideaway, use that card's own ability once its condition is met.")
+        }
         let rules = (card.card.oracleText ?? "").lowercased()
         if rules.contains("triggers an additional time") {
             return String(localized: "Only triggered abilities (“when”, “whenever”, “at”) happen again. Effects that say “instead”, like Chatterfang’s extra Squirrels, are not triggers and are not doubled.")

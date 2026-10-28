@@ -29,6 +29,9 @@ class ArenaBoardPresentationTest {
         assertEquals(ArenaGlowTone.TARGET, ArenaCardLook.glow(bear, false, true, true, false)?.first)
         assertEquals(ArenaGlowTone.PAYABLE, ArenaCardLook.glow(bear, false, true, false, true)?.first)
         assertEquals(ArenaGlowTone.PLAYABLE to 0.85f, ArenaCardLook.glow(bear, false, true, false, false))
+        assertEquals("a usable ability glows yellow, apart from a card to cast", ArenaGlowTone.ABILITY to 0.95f,
+            ArenaCardLook.glow(bear, false, true, false, false, ability = true))
+        assertEquals("paying keeps its orange", ArenaGlowTone.PAYABLE, ArenaCardLook.glow(bear, false, true, false, true, ability = true)?.first)
         assertEquals("lands you could tap glow softer", 0.65f, ArenaCardLook.glow(card("f", "Basic Land — Forest"), false, true, false, false)!!.second, 0f)
         assertNull(ArenaCardLook.glow(bear, false, false, false, false))
         assertNull("phased out never glows", ArenaCardLook.glow(bear.copy(phasedIn = false), true, true, true, false))
@@ -169,10 +172,13 @@ class ArenaBoardPresentationTest {
 
     @Test fun captionSaysWhatTheTableWants() {
         assertNull(ArenaCornerText.caption(table("PRECOMBAT_MAIN"), CombatSelectionState()))
-        val target = """{"id":"t","method":"GAME_TARGET","messageId":2,"playerId":"a","responseKind":"target","message":"Select target creature",
+        val attack = """{"id":"t","method":"GAME_SELECT","messageId":2,"playerId":"a","responseKind":"target","message":"Select attackers",
             "responseCommand":{"type":"choose_target","promptId":"t"},"targets":[{"id":"mine","label":"Bear"}]}"""
         val mine = """[{"instanceId":"mine","card":{"name":"Bear","typeLine":"Creature"}}]"""
-        assertEquals("Choose attackers.", ArenaCornerText.caption(table("DECLARE_ATTACKERS", prompt = target, battlefield = mine), CombatSelectionState()))
+        assertEquals("Choose attackers.", ArenaCornerText.caption(table("DECLARE_ATTACKERS", prompt = attack, battlefield = mine), CombatSelectionState()))
+        // A card's own target question in that step (Gogo copying an attack trigger) says what it asks.
+        val target = attack.replace("GAME_SELECT", "GAME_TARGET").replace("Select attackers", "Select target creature")
+        assertEquals("Select target creature", ArenaCornerText.caption(table("DECLARE_ATTACKERS", prompt = target, battlefield = mine), CombatSelectionState()))
     }
 
     @Test fun amountPillStartsXAtWhatYourManaPays() {
@@ -219,5 +225,15 @@ class ArenaBoardPresentationTest {
         assertFalse("nothing of yours touched", threat(spell("Draw two cards.")))
         assertFalse("your own spell", threat(spell("Destroy all creatures.", controller = "a")))
         assertFalse("you have nothing to lose", threat(spell("Destroy all creatures."), battlefield = "[]"))
+    }
+
+    /** The stack card steps aside for the object the player tucked and while they pick on the table (iOS ArenaBoardModelTests). */
+    @Test fun theStackTucksForItsTopObjectAndWhilePicking() {
+        assertFalse(ArenaStackTuck.isTucked("a", null, null, false))
+        assertTrue(ArenaStackTuck.isTucked("a", "a", null, false))
+        assertFalse("the next one shows", ArenaStackTuck.isTucked("b", "a", null, false))
+        assertTrue("picking tucks it", ArenaStackTuck.isTucked("b", null, null, true))
+        assertFalse("brought back while picking", ArenaStackTuck.isTucked("b", null, "b", true))
+        assertTrue(ArenaStackTuck.isTucked("c", null, "b", true))
     }
 }

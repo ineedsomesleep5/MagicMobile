@@ -96,7 +96,7 @@ const checkAmount = (value: number, min: number, max: number) => {
 
 export const OnDevicePromptAdapter = {
   presentation(prompt: EnginePrompt, viewerPlayerID: string, cards: ZoneCard[], players: PlayerGameState[] = [],
-    actingAttackerPlayerID?: string): PromptPresentation {
+    actingAttackerPlayerID?: string, stack: { id: string; sourceName?: string; sourceCardID?: string }[] = []): PromptPresentation {
     validate(prompt, viewerPlayerID);
     const revision = prompt.revision;
     const payload = prompt.payload;
@@ -114,7 +114,10 @@ export const OnDevicePromptAdapter = {
     });
     const targetLabel = (id: string): string => {
       if (id === viewerPlayerID) return "You";
-      return EngineDisplayText.label(players.find((p) => p.playerId === id)?.displayName ?? cards.find((c) => c.instanceId === id)?.card.name ?? id);
+      // An ability on the stack has no card of its own: it goes by its source ("Zur the Enchanter’s ability").
+      const object = stack.find((s) => s.id === id && s.sourceCardID !== id);
+      const ability = object ? `${object.sourceName ?? "Source unavailable"}’s ability` : undefined;
+      return EngineDisplayText.label(players.find((p) => p.playerId === id)?.displayName ?? cards.find((c) => c.instanceId === id)?.card.name ?? ability ?? id);
     };
     const has = (type: string) => prompt.responseTypes.includes(type);
     const selectMode = str(payload.selectMode);
@@ -242,6 +245,11 @@ export const OnDevicePromptAdapter = {
             }
           }
           if (row.sourceCard === undefined) row.sourceUnavailableReason = "Source details unavailable";
+          const card = get(item, "sourceCard");
+          const rules = card === undefined || bool(get(card, "hideInfo")) === true ? []
+            : ((get(card, "rules") as unknown[] | undefined) ?? []).filter((rule): rule is string => typeof rule === "string");
+          const rule = EngineDisplayText.abilityRule(label, rules, typeof row.sourceName === "string" ? row.sourceName : undefined);
+          if (rule !== undefined) row.rulesText = rule;
           return row;
         });
         if (has("boolean") && bool(payload.required) === false) actions.push(action("answer_yes_no", "Cancel", { confirmed: false }));

@@ -21,6 +21,15 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-27 (Claude, stack tab): in `board/ArenaBoardViews.kt` the imported `testTag` is the semantics property
+  (`androidx.compose.ui.semantics.testTag`), so `Modifier.testTag(...)` there fails to compile ("cannot be invoked as a
+  function"). **Rule:** set it inside `.semantics { testTag = ... }` in that file. Where: `ArenaStackTab`.
+
+- 2026-10-24 (Claude, Android freeze log): the app's JVM unit tests (`:app:testDebugUnitTest`) build `OnDeviceSession` without
+  `unitTests.isReturnDefaultValues`, so any `android.*` call the session reaches (`SystemClock`, `Build`, `Debug`) throws there.
+  **Rule:** code the session calls on every poll uses `System.nanoTime()` and wraps device lookups in `runCatching`; keep the
+  pure part in core. The freeze log lives in `OnDeviceDiagnostics.directory` (`noBackupFilesDir/Diagnostics`). Where: core `game/FreezeLog.kt`, app `ondevice/FreezeLog.kt`.
+
 - 2026-10-23 (Claude, deck sync Android): (1) Android's `DeckStore` reads every `*.json` in `filesDir/decks-v1` as a
   deck, so a file put there (the sync record) makes the whole library unreadable; the record lives beside it in
   `filesDir/decks-v1-sync.json`. (2) The saved `Deck` keeps names to 300 characters (validateDraft allows 512 bytes), so
@@ -114,6 +123,57 @@ contradicting one.
 
 ## Gameplay
 
+- 2026-10-27 (Claude): Gogo's "copy which ability?" target, asked in the declare attackers step, showed "Choose attackers."
+  and 1 Attacker and the game could not go on: `ArenaCombatPhase` (iOS, Android, web `combatPhase`) took any target
+  prompt plus a declare-attackers/blockers step name for the attack declaration. **Fix / rule:** combat is the prompt's
+  own marker, `isCombatSelection` (`GAME_SELECT` answered with a target); never infer combat from the step name alone.
+  `MobilePromptPresentation`'s step fallback now also defers to that marker.
+- 2026-10-27 (Claude): Smart pass let your own trigger resolve whatever you held, so Gogo could never copy Zur's attack
+  trigger (no priority with the trigger on the stack). `respondsToStack` is too broad for your own items (any counterspell
+  says yes). **Fix / rule:** on your own top item, stop only for a non-spell, non-mana row with an explicit
+  `respondsToStack: true` (`hasAbilityResponse`, all three platforms + parity/smart-pass-cases.json).
+- 2026-10-27 (Claude): iOS showed the default art first, then swapped to the chosen printing, every game: the view's offline
+  pass fell back to the card's default art when the chosen printing wasn't saved, and live-fetched chosen printings were never
+  saved. **Fix / rule:** save a fetched printing under `printingKey` like default art; the offline pass passes
+  `defaultArtFallback: false` when live images are on; CardArtChoices prefetches the playing deck's printings. Android never
+  had it (one load call, writes its cache file). The web board ignored chosen printings until core/artChoices.ts.
+- 2026-10-27 (Claude): Custom card art is drawn over the art box (8%/14.5%/84%/38.5%, the same window the illustration crop
+  uses) of the real card image, so names and rules stay real and art-only views get the picture for free. Device-local
+  only (CustomCardArt on iOS/Android, IndexedDB on web); nothing is uploaded.
+- 2026-10-27 (Claude, tables): one guest leaving ended the match for everyone. The relay keeps the table; the apps failed it:
+  `beginLobby`'s `onDisconnect` (it replaces `attachRelay`'s once the lobby opens) and an `end` packet from any guest both
+  called `fail`. **Rule:** once the game is on, only the host leaving ends it; a guest's `end` or the relay's `gone` makes
+  the host concede that seat and send `left`, and an away guest can be voted out (TableLeaveRules on all three; PROTOCOL.md,
+  Players who leave). Packets from a player who left are dropped (`gonePeers`).
+
+- 2026-10-27 (Claude, starting roll): the Arena board's roll cover is see-through (black at 0.8), so anything the board draws
+  under it shows: the opening hand appeared behind a three-player roll because XMage asks the mulligan as soon as the host
+  answers the starting player. **Rule:** a board overlay that must wait for the roll checks `startingRollVisible`
+  (`OpeningHandOverlay` on iOS and Android); the web keeps the roll up until its result has shown.
+
+- 2026-10-27 (Claude, freeze log): testers saw "The last game froze" after every launch. `engine-quiet` counted another
+  person thinking for 3 minutes at a table, and every 2 s main-thread hitch was asked about. **Rule:** `FreezeRules.stall`
+  takes `waitingOnPerson`; the launch prompt asks only about stalls and hangs of 8 s or more, at most once in 3 days
+  (parity/freeze-cases.json). TestFlight feedback with screenshots: `asc testflight feedback list --app 6784735182
+  --include-screenshots --output json`, then fetch each screenshot's signed `url` (the bare `origin` link answers 400).
+
+- 2026-10-25 (Claude, hand and discard): two ways a gesture or a multi-card answer died partway. (1) The Arena hand's
+  posture rule rested the hand whenever a card was dragged, so a card carried out of the *spread* hand collapsed the row
+  under the finger and the carry never landed. A spread hand now stays spread while its card is carried (a raised one
+  still tucks). (2) A drafted multi-card choice is sent one native answer at a time; the board ended the plan after 5 s
+  with no prompt, and cancelled at once when the pending answer cleared before the poll showing the next prompt, so a
+  slow engine handed a discard of seven back after a few cards. **Rule:** `CardChoicePlan.expectsMorePrompts` says
+  whether answers are still owed (then wait 30 s, not 5), and an unchanged prompt gets 2 s before the plan stops; real
+  rejections still stop it through the command failure. Never change layout or posture under a live gesture.
+  Where: `ArenaBoardModel` handPosture (all three), `CardChoicePlan`, the boards' card-choice drivers.
+- 2026-10-24 (Claude, deck Power): C3's precon round robin is not the only deck-strength data. Every calibration CSV
+  in `docs/cloud/c3-results` and `c4-results` schedules both deck assignments per pair, so together they are 2,986
+  skill-balanced games on the eleven Core decks, and they reorder the precons: Draconic Destruction wins 62% against
+  precons but 45% overall (15% against The Ur-Dragon). The iOS catalogue has no power/toughness; creature stats come
+  from pinned XMage's `Utils/mtg-cards-data.txt`. And a weight fit on eleven decks overfits: leave-one-out error was
+  0.28 log-odds against 0.37 for "every deck is average". **Rule:** judge a deck rating with `deck_power.py check` (all
+  CSVs, Bradley-Terry with going-first and per-file seat terms) and leave-one-out, not one run's order; rate decks by
+  their own games where they have them. Where: `scripts/ranked/deck_power.py`, docs/DECK_POWER.md.
 - 2026-10-19 (Claude, audio): AVAudioPlayer takes up to ~50 ms to start the first time, and making a player per
   play cost ~40 ms, so a card slam and its colour layer (since retired) started as a smeared flam. **Rule:** sounds meant to land
   together go through `GameAudio.playTogether` (one `play(atTime:)` on the device clock, set `lead` ahead), players are
@@ -325,7 +385,9 @@ contradicting one.
   copy. After that, every question to the human throws "Mobile match stopped", XMage rolls back and asks again, and the
   game ends without the human. Phones run the same code; it showed up as 5 of 92 seeded JVM games in the web harness.
   **Rule:** copies must never close the live seat's channel; look for `GameImpl.end` → `abort` on a copy when a human
-  suddenly can't answer. Where: `MobileHumanPlayer.abort`/copy constructor (not fixed in M1; engine follow-up).
+  suddenly can't answer. Where: `MobileHumanPlayer.abort`/copy constructor. 2026-10-26: it ended Caleb's winning ranked
+  web game ("Too many errors", the AI won on life). Web fixed by a `web_sources.py` rewrite (branch
+  `claude/web-engine-copy-abort`, `test/CopyAbortCheck.java` in CI); phones still need `ccd1365a` in an engine release.
 
 - 2026-10-18 (Claude, release C out-of-memory): interrupting an AI search, upstream's only stop signal
   (`FutureTask.cancel(true)` at the timeout), does not stop code that never checks the flag. `SimulatedPlayer2.triggerAbility`
@@ -448,6 +510,49 @@ contradicting one.
   disagree, restore the package to the library's commit rather than rebuilding.
 
 ## Agent environment
+
+- 2026-10-26 (Claude, voice chat): iPhones write the game's epoch upper case (`UUID().uuidString`), Android and the web
+  lower case, so anything named from the raw epoch splits a mixed table. **Rule:** lowercase it (`VoiceChatRules.channel`).
+  Agora's Android `io.agora.rtc:voice-sdk` pulls every extension (AI noise, spatial audio…); use `voice-rtc-basic` and iOS
+  `RtcBasic`, both 4.6.4 (iOS has 4.7.0, Maven Central stops at 4.6.4). Shared case files live in
+  `apps/android/core/src/test/resources/parity/`, not a root `parity/`. Claude never pastes the Agora certificate: Caleb sets
+  `AGORA_APP_CERTIFICATE` in Supabase. Where: docs/VOICE_CHAT.md.
+- 2026-10-27 (Claude, voice chat): Agora's new console shows only the App ID; the Primary Certificate is in the legacy one
+  (console.agora.io → Realtime Communications Builder → Projects → pencil → Security). A wrong certificate still mints a
+  token; only a join proves it, so check with the web SDK joining a test channel, not the function's 200. The board finds
+  a seat from `seatNames`, which solo games leave empty, so a solo preview of voice needs the seat faked.
+- 2026-10-27 (Claude, Android spread hand): dragging from the spread hand carried the wrong card, two places right of the
+  finger. Two causes. (1) Kotlin 2.0.2x's Compose compiler (strong skipping) remembers `::localFun` references passed to a
+  composable, so ArenaHandTouch kept the first composition's handlers: posture RESTING, the old cards and legal actions.
+  **Rule:** hand a composable fresh `@DontMemoize { … }` lambdas (or state-backed reads), never `::localFun`, when the
+  function reads parameters. (2) `Modifier.place` ends in `requiredSize`, and a surface wider than its parent is centred,
+  shifting every touch; keep touch surfaces on screen. The Oct 25 spread-drag fix had only been checked on iOS: check
+  Android's hand on the emulator (design preview `MAGICMOBILE_DESIGN_PREVIEW=normal-battlefield`, tap the hand's chevron,
+  `input swipe` for a flick, `input motionevent DOWN/MOVE/UP` with a pause for a hold).
+
+- 2026-10-26 (Claude, Android 42): the release build plus the emulator starved the 8 GB Mac into a watchdog kernel panic
+  ("no checkins from watchdogd in 92 seconds", compressor "100% of segments limit (BAD) … LOW swap space"), and the reboot
+  wiped `/private/tmp`, the scratchpad included. **Rule:** wait for idle and normal `memory_pressure` first, cap the Kotlin
+  daemon (`-Xmx1536m`), `gradle --stop` before the emulator, start it with `-memory 1536 -no-window -gpu host`, and run a
+  guard that kills qemu and Gradle if `kern.memorystatus_vm_pressure_level` stays at 4. Keep release scripts and evidence
+  outside `/private/tmp`. Template: `~/Documents/MagicMobile-releases/android-42/android42.sh`.
+
+- 2026-10-27 (Claude, leaderboard champions): `ranked_standings` has one row per player (primary key `user_id`); a finished
+  season moves to `ranked_season_history` when the player next plays. **Rule:** last season's results are history rows plus
+  standings still on that season (`mm_ranked_leaderboard` champions). In the PGlite suite players can't call
+  `mm_current_season`; read season names into a setting before `set local role authenticated`.
+
+- 2026-10-27 (Claude): adding three modifiers to `OnDeviceRootView.lifecycleContent` made Xcode give up on the chain ("unable
+  to type-check this expression in reasonable time"). **Fix:** split the chain (`syncedContent` → `lifecycleContent`).
+  `test/soloFlow.test.ts` on the web is flaky (random D20 ties stretch the roll past its 8 s wait): rerun before blaming a
+  change.
+
+- 2026-10-27 (Claude, Archidekt links): 18 of the 60 most-viewed Archidekt Commander decks lost cards on import. The bundled
+  aliases cover only double-faced cards, and Archidekt sends adventure, omen and prepare cards by their full two-part name
+  ("Brazen Borrower // Petty Theft") and accented names ("Troll of Khazad-dûm") that XMage spells in plain letters.
+  **Rule:** names are tried exact, then plain letters, then the front of a two-part name, never a double-faced front with a
+  different back (`NativeDeckCanonicalNames.candidates`, parity/card-name-cases.json); after that 3 of 60 decks miss only
+  cards the engine doesn't have yet. The server can add fixes (`name_fixes`, docs/SERVER_CONTROLS.md).
 
 - 2026-10-14 (Claude): REA on our own builds: `inspect_binary_layout` handles only Linux x86-64 ELF, and
   `decode_android_resources` / `inspect_android_package` need apktool or JADX, which aren't installed. For
@@ -816,3 +921,104 @@ contradicting one.
   centre sheared cards near the table's edges by about 10°. Caleb wanted the iOS look, so the web lean is now
   `rotateX(22deg)` with no perspective (`leanTransform` in `apps/web/src/ui/arena/layout.ts`). When porting a 3D effect,
   measure the shipped screen rather than trusting the call; a SwiftUI render of the same call on its own does shear.
+- 2026-10-24 (Claude, download site "Hall and Cut"): two quiet traps. (1) A Scroll Craft `pan` act moves its rail by
+  `p` in the engine's frame; correcting that rail from a second layer in your own rAF (to hold at each exhibit) lands a
+  frame apart, so the walk shakes side to side when scrolled. Pin the act instead and set the rail's one transform from
+  the act's own rect (`apps/site/src/hall.ts`). When scripting scroll tests, pass `behavior: 'instant'`: scrollcraft.css
+  sets `scroll-behavior: smooth`, so back-to-back `scrollTo` calls cancel each other and the page barely moves.
+  (2) Three.js r155+ lights are physical: a port of the app's D20 lighting (SceneKit, or three r128's legacy lights)
+  needs `PointLight(color, i * Math.PI, 0, 0)` and `AmbientLight(color, i * Math.PI)` to come out the same
+  (`apps/site/src/barDie.ts`).
+- 2026-10-24 (Claude, freeze logger): a TestFlight "froze in ranked" report came with no crash log
+  (`asc testflight crashes log` said no `betaCrashLogs` resource) and the server had no trace of the game: a freeze
+  leaves nothing behind unless the app records it. The phones now keep a freeze log (docs/FREEZE_LOG.md) and send it
+  only on the player's Send; read sent reports with `select created_at, platform, build, kind, report from
+  diagnostic_reports order by created_at desc`. A hang's frames are binary offsets (MetricKit); symbolicate them with
+  the build's dSYM. The main-thread watchdog pauses when the scene leaves `.active`, or a suspended app reads as a hang.
+
+## Ranked AI wins: judge by turns, show why a win didn't count (2026-10-26)
+
+- Two of Caleb's wins (turns 11 and 13) settled `too_soon` under the old four-minute clock, and the apps never said so:
+  the server's `settlement` was decoded and dropped. Now `mm_ranked_ai_record_check` bounds by turn and bracket, the
+  settle answer carries `change` and `check`, and the apps store both on the match (`settleRanked`).
+- PL/pgSQL reads an `IF` condition up to the first `THEN`, so `if x < case when … then 3 else 5 end then` is a syntax
+  error ("at end of input"). Compute the CASE into a variable first.
+- iOS game records were written with `.completeFileProtection`: a ranked sync while the phone was locked read nothing
+  and sent the win as `no_record` (unverified for good). Records are now readable after first unlock, and a kept but
+  unreadable record waits for the next sync on every platform.
+- Saving an image into the asset store posts `didStoreArtwork`, which empties every decoded image in memory. Live
+  fetches save with `announce: false`, or a game's first hundred cards would flush the cache a hundred times.
+- XMage's AbilityPickerView labels keep `{this}`, while the card's rules name the card: matching the label against the
+  rules failed and the fallback showed a raw `{this}`, drawn as a symbol chip. `abilityRule` now takes `sourceName`.
+- Web board: pointer movement is in window pixels but browser rows scroll in board points, so a drag divides by the
+  board's scale or it moves about twice as far.
+- Ranked AI difficulty is tuned on the server (`ranked_ai_tuning`, docs/DECK_POWER.md): the engine already took a
+  per-seat `aiMistakePercent` (and `aiSearchDepth`) override, so no engine change was needed, only apps that send the
+  ticket's value. The record check must accept both the ticket's chance and the skill's standard one, or wins from
+  apps released before the table settle `ai_settings`. Pick the opponent before opening a ticket: an unplayed ticket is
+  abandoned as a loss after 12 hours.
+- The daily cap of 12 ranked AI wins is gone (Caleb, 2026-10-26, after 254DADDY's 13th and 14th wins settled
+  `capped`); the record check carries the weight now. Still in place: 10 AI tickets an hour (spam) and three counted
+  human matches a day between the same pair (collusion).
+- Seasons are quarterly from November 2026 (`mm_season_for`, applied live). Apps that still count months disagree from
+  December 1, 2026 (they keep their own standing, as `adopting` refuses an older server season), so the iOS and
+  Android releases with `RankLadder.season`'s quarterly rule must go out before then.
+
+- Season badges (2026-10-26): a test fixture's arithmetic was wrong (Nov 2027 is Season 6: Season 1 is October 2026, then
+  quarters 2–5 run Nov 2026 to Oct 2027). Check a parity case by hand before trusting the code that disagrees with it.
+- A Vite config file outside `apps/web` can't resolve `vite/internal` (plugin-react imports it); start scratch pages from
+  a script, or keep the config inside `apps/web`.
+- Compose: inside a `Canvas` block a composable's own `size: Dp` parameter hides the canvas `size`; use `this.size`.
+- Android 3-button navigation (2026-10-26, a tester's Samsung): a Compose `Dialog(decorFitsSystemWindows = false)` window was
+  fitted between the system bars, drawn one status bar low, ran off the bottom, and got no insets at all (keyboard included),
+  so the message box sat under Back/Home/Recents. `EdgeToEdgeDialogWindow()` (ui/SafeInsets.kt) spans the window and lets it
+  take insets; the Arena board keeps clear of `WindowInsets.tappableElement` only, so gesture-nav phones stay full-bleed.
+  Test it with `adb shell cmd overlay enable com.android.internal.systemui.navbar.threebutton` on the emulator.
+- Hand fan (iOS + Android): a slide that sets off upward carries the card it began on; only a sideways start scrubs. Climbing
+  through the fan on a thin card used to scrub onto a neighbour and carry that instead.
+- Web ranked (2026-10-26): wins never counted. The web engine's records name `web-1:sha256:…`, which
+  `ranked_engine_builds`' check refused, so no web build was listed (every web win: `unverified`, engine_build); and New
+  Game after a ranked game reused the setup, so it ran with no ticket and the same seed. A web engine release must list
+  its build (migration web_engine_builds), and a ranked rematch is `startRankedAI()`, a new ticket.
+- Lessons (2026-10-27, docs/LESSONS_TUTORIAL.md): traps met while recording and playing them.
+  - **Deck size.** XMage's test cheat adds staged cards on top of the dealt game, so every library showed 101. The
+    recorder trims each library to 99 minus what it stages in hand, play and graveyard. Check that the zones add to 100.
+  - **XMage picks a sole target itself.** No target question comes, so a coach line written for one ends up on the
+    payment. Read the `LESSON_DEBUG=1` trace before writing `then` lines.
+  - **The Arena board's words.** The corner says Next / To Combat, All Attack, 1 Attacker, 1 Blocker, Auto Pay. Casting a
+    commander is three taps (portrait, Command, Cast), and the commander question's button says Move to command.
+  - **Only the first opponent shows** at a multiplayer Arena table (BoardFocusTracker), so the recorder puts the lesson's
+    focus player first in `players`.
+  - **A turned-down move is an engine rejection.** Each session would show its error panel (Refresh, Leave, error
+    report). Errors with `lesson_wrong_move` and `lesson_not_now` are kept out of every platform's error state.
+  - **No engine in simulator builds.** The app gates everything on the engine. A lesson needs none:
+    `--ondevice-setup-ui-test` with `MAGICMOBILE_UI_TEST_LESSON=<id>` opens one in DEBUG.
+  - **Overlays outside the board miss the Arena look.** Maren's and the guided game's cards are the root's overlays, not
+    the board's, so they never got `arenaBoard` (iOS) or `LocalArenaBoard` (Android) and drew leather tags. Give them
+    the board mode's value. Android's `TavernTag`, `TavernPanelTitle`, `TavernSealButton` and `TavernMenuDivider`, and
+    iOS's `TavernPanelTitle` and `TavernMenuDivider`, had no Arena version at all; the phase stops grid neither.
+  - **A full-screen measuring layer swallows taps (iOS).** A `GeometryReader` around Maren's card blocked every tap on
+    the board. Measure on a `Color.clear` with `allowsHitTesting(false)` and put the card in its overlay.
+  - **A spring overshoots below zero (Android).** `animateDpAsState` with a spring went negative and `padding` threw
+    "Padding must be non-negative". Clamp with `coerceAtLeast(0.dp)`.
+  - **A remembered nudge replayed.** The coach card leaves the table between notes; its "wrong move" effect saw the
+    run's old count when it came back and showed the nudge over the finish text. Compare with the last count seen.
+  - **The lesson recorder trips the release engine check.** `packages/ondevice-engine/engine/tools/LessonCli.java`
+    never ships, but preflight and Android's whole-package engine check count every file under the engine package, so
+    TestFlight 68 first read `different-source`. Release branches (`codex/ios-build-N`, `codex/android-build-N`) leave
+    it out, like the calibration tooling; keep doing that until the next engine release includes it.
+- 2026-10-28 (Claude, targets the table can't show): Gogo copying Zur's attack trigger asks XMage's PICK_TARGET with
+  `targetZone: STACK`; the candidates are stack object IDs (Zur's trigger and Gogo's own ability), which the adapter left
+  as "Card details unavailable" rows the Arena board never draws, and the stack card tucked itself because a target was
+  open. `ArenaTargetReach` (iOS/Android; web `stackChoices`) now sends stack choices to the stack browser in a choose mode,
+  and in four-player games turns the board to the first opponent with choices when the shown one has none (a Doom Blade
+  whose creatures were all on hidden opponents had nothing to tap). Graveyard and exile targets already reach the card
+  browser (the adapter recovers them from the view). Real questions for each case: `scripts/lessons/capture_targets.py`
+  (fixtures `target-*.json`, parity goldens included).
+  - **Android `Modifier.glow` is a filled, blurred shape behind its element.** On an empty overlay Box it tints the card
+    under it (the stack browser's choice ring, and the existing "Resolves next" ring, painted the card blue/gold). Put
+    the glow on the card's own container and only the border on the overlay.
+  - **Test a recorded engine question on the real board without the engine:** write it as a one-frame lesson
+    (`expect` = the answer) over a lesson file temporarily, open it with `MAGICMOBILE_UI_TEST_LESSON` (iOS) or the
+    Lessons list (Android, web), then `git checkout` the lesson file. A simulator build needs ad-hoc signing
+    (`CODE_SIGN_IDENTITY=-`): with `CODE_SIGNING_ALLOWED=NO` dyld refuses the unsigned Agora frameworks at launch.

@@ -380,6 +380,9 @@
 .mbracketgem::before { content: ""; position: absolute; width: 36px; height: 36px; border-radius: 50%; background: rgba(0,0,0,.45); box-shadow: inset 0 0 0 .9px var(--hair); z-index: -1; }
 .mbracketgem { z-index: 0; }
 .mbracketgem.match { font-size: 9.5px; }
+/* Quick Match's Easy / Medium / Hard / Advanced: the same gem as a pill, wide enough for the word. */
+.mbracketgem.level { font-size: 11px; }
+.mbracketgem.level::before { width: calc(100% - 4px); border-radius: 18px; }
 .mbracketgem.on { color: #1c0f08; }
 .mbracketgem.on::before { background: linear-gradient(#ffe08f, #cc8f38); box-shadow: inset 0 0 0 1.4px #fff2c7, 0 0 5px rgba(250,214,133,.5); }
 .mopponent { position: relative; }
@@ -552,11 +555,16 @@
 
 /* Learn */
 .mlearn { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.mlearnchooser { flex: 1; display: flex; gap: 16px; align-items: stretch; justify-content: center; padding: 20px; flex-wrap: wrap; }
-.mlearncard { width: 280px; min-height: 160px; padding: 20px; display: flex; flex-direction: column; gap: 8px; text-align: left; }
-.mlearncard b { font: 700 20px/1.2 var(--serif); }
-.mlearncard small { font: 500 13px/1.3 var(--sans); color: var(--dim); flex: 1; }
-.mlearncard em { align-self: flex-end; font: normal 700 14px/1 var(--serif); color: var(--gold); }
+.mlearnchooser { flex: 1; display: flex; gap: 16px; align-content: center; justify-content: center; padding: 20px; flex-wrap: wrap; }
+.mlearncard { position: relative; width: 280px; height: 158px; padding: 0; overflow: hidden; border-radius: 12px; border: 1px solid var(--hair);
+  background: rgba(0,0,0,.45); box-shadow: 0 4px 8px rgba(0,0,0,.5); text-align: left; cursor: pointer; }
+.mlearncard:hover { filter: brightness(1.06); }
+.mlearncard > .mdeckart { position: absolute; inset: 0; }
+.mlearncard > .mdeckart > img { transform: scale(1.06); }
+.mlearnshade { position: absolute; left: 0; right: 0; bottom: 0; height: 96px; background: linear-gradient(transparent, rgba(0,0,0,.55), rgba(0,0,0,.88)); }
+.mlearntitle { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px; display: flex; align-items: flex-end; gap: 10px; }
+.mlearntitle b { flex: 1; font: 700 19px/1.2 var(--serif); color: var(--text); text-shadow: 0 1px 3px #000; }
+.mlearntitle .mbtn { flex: none; pointer-events: none; }
 .mlearnpage { flex: 1; display: flex; flex-direction: column; padding: 20px 32px 18px; min-height: 0; }
 .mlearntext { flex: 1; display: flex; flex-direction: column; justify-content: center; max-width: 640px; min-height: 220px; margin: 0 auto; animation: mpagein .3s ease-out both; }
 .mlearntext h3 { font-size: 26px; margin-bottom: 12px; }
@@ -729,6 +737,8 @@ button.mtoolcoin:disabled { opacity: .35; }
 .minspect { display: flex; gap: 18px; padding: 18px; border-radius: 16px; max-width: min(760px, 100% - 32px); max-height: calc(100% - 40px); }
 .minspect img { width: 300px; border-radius: 14px; flex: none; align-self: flex-start; }
 .minspect > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mownpicture { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.mownpicture small { flex-basis: 100%; color: var(--warning, #ffbd66); }
 .minspect b { font: 700 20px/1.2 var(--serif); }
 .minspect small { font: 600 12px/1.3 var(--sans); color: var(--gold); }
 .minspect p { margin: 4px 0 8px; white-space: pre-line; font: 500 13px/1.45 var(--sans); overflow-y: auto; }
@@ -789,3 +799,23 @@ button.mtoolcoin:disabled { opacity: .35; }
 .mhostrow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .mtoast { position: absolute; left: 50%; top: calc(var(--bar) + 12px); transform: translateX(-50%); z-index: 50; max-width: min(520px, 100% - 32px); padding: 10px 16px;
   border-radius: 12px; font: 600 13px/1.35 var(--sans); color: var(--text); text-align: center; }
+/* the server's notice on the main menu (appConfig): stays until closed */
+.mappnotice { display: flex; align-items: center; gap: 12px; }
+.mappnotice span { flex: 1; }
+.mappnotice button { flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); color: inherit; cursor: pointer; }
+
+/* Push to talk's key (TalkKeyButton): the label, then the key as a small glass keycap. */
+.mtalkkey { display: flex; align-items: center; gap: 10px; font: 600 14px/1.2 var(--serif, Georgia, serif); color: inherit; }
+.mtalkkey button { min-width: 44px; height: 30px; padding: 0 10px; border-radius: 6px; border: 0; cursor: pointer; color: #fad584;
+  font: 700 13px/1 var(--sans, system-ui); background: linear-gradient(#1a1c24, #0a0b0f); box-shadow: inset 0 0 0 1px rgba(232,190,110,.55); }
+.mtalkkey button.on { color: #fff; box-shadow: inset 0 0 0 1.5px rgba(255,214,150,.9), 0 0 10px 1px rgba(255,120,31,.5); }
+
+/* The lessons list (Learn.tsx; iOS LessonListView). */
+.mlessons { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+.mlesson { display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: 12px; background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(214, 170, 96, 0.35); color: inherit; cursor: pointer; text-align: left; }
+.mlesson i { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(214, 170, 96, 0.35); font: 700 17px/1 "Cormorant SC", serif; font-style: normal; }
+.mlesson.next i { border: 1.5px solid #fad685; }
+.mlesson i.done { color: #fad685; }
+.mlesson b { flex: 1; font: 700 18px/1.1 "Cormorant SC", serif; }

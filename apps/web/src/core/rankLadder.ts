@@ -118,6 +118,34 @@ export const RankChange = {
     if (after.pips !== before.pips) return after.pips > before.pips ? "pipUp" : "pipDown";
     return "none";
   },
+  /** A game's move on the ladder in words (ProfileGame.rankLine): "Gold II: 3 → 5 pips", or "Gold II → Gold I" across a title and in Mythic. */
+  line(change: RankChange): string {
+    const before = RankPosition.title(change.before), after = RankPosition.title(change.after);
+    return before === after && change.after.tier !== "mythic" ? `${after}: ${change.before.pips} → ${change.after.pips} pips` : `${before} → ${after}`;
+  },
+} as const;
+
+/** The server's move on the ladder for a ranked AI result (RankedStanding.Change). */
+export interface ServerRankChange { pointsBefore: number; pointsAfter: number; bonuses?: string[] }
+
+/** The server's word on a ranked AI result (iOS RankSettlement), for the result screen and the game history. */
+export const RankSettlement = {
+  /** A win the server held back from the ladder. */
+  held: (settlement: string | undefined) => ["too_soon", "capped", "unverified"].includes(settlement ?? ""),
+  /** Why a ranked win left the ladder alone, as the player reads it; undefined when it counted. */
+  note(settlement: string | undefined, check: string | undefined, deckBracket: number): string | undefined {
+    switch (settlement) {
+      case "too_soon": return "Not ranked: the game ended too quickly";
+      case "capped": return "Not ranked: 12 ranked wins a day";
+      case "unverified":
+        switch (check) {
+          case "too_short": return `Not ranked: wins before turn ${deckBracket >= 5 ? 3 : 5} don't count`;
+          case "too_fast": return "Not ranked: the game ended too quickly";
+          default: return "Not ranked: this win couldn't be checked";
+        }
+      default: return undefined;
+    }
+  },
 } as const;
 
 export interface SeasonRecord { season: string; final: RankPosition; peak: RankPosition; wins: number; losses: number }
@@ -141,25 +169,67 @@ export const RankState = {
 const DAY = 86_400_000;
 
 export const RankLadder = {
-  /** Seasons are calendar months in UTC: "2026-10". */
+  /**
+   * The first quarterly season (Caleb, 2026-10-26), as year * 12 + month index: October 2026 was a month; from November
+   * 2026 a season is three months, named by its first ("2026-11" runs November to January). RankLadder.swift; mm_season_for.
+   */
+  firstQuarter: 2026 * 12 + 10,
+
+  /** The season holding a date, in UTC: "2026-10", then "2026-11", "2027-02", … */
   season(date: Date | number): string {
     const value = new Date(date);
-    return `${String(value.getUTCFullYear()).padStart(4, "0")}-${String(value.getUTCMonth() + 1).padStart(2, "0")}`;
+    let index = value.getUTCFullYear() * 12 + value.getUTCMonth();
+    if (index >= RankLadder.firstQuarter) index = RankLadder.firstQuarter + Math.floor((index - RankLadder.firstQuarter) / 3) * 3;
+    return `${String(Math.floor(index / 12)).padStart(4, "0")}-${String((index % 12) + 1).padStart(2, "0")}`;
   },
 
-  /** When a season ends (the next month starts, UTC); undefined for a malformed season. */
-  seasonEnd(season: string): Date | undefined {
+  /** How many months a season lasts; undefined for a malformed season. */
+  seasonMonths(season: string): number | undefined {
     // Swift: split on "-" (empty pieces dropped), keep the pieces that read as integers, expect exactly two.
     const parts = season.split("-").filter((piece) => piece.length > 0 && /^[+-]?\d+$/.test(piece)).map(Number);
     if (parts.length !== 2) return undefined;
-    return new Date(Date.UTC(parts[0], parts[1], 1));
+    return parts[0] * 12 + parts[1] - 1 >= RankLadder.firstQuarter ? 3 : 1;
   },
 
-  /** "October 2026" (in `locale`, the browser's by default). */
+  /**
+   * The season's number on its badge: October 2026 is Season 1, the first quarter (November 2026) Season 2, and so on;
+   * undefined before October 2026 or for a malformed season (RankLadder.seasonNumber).
+   */
+  seasonNumber(season: string): number | undefined {
+    const parts = season.split("-").filter((piece) => piece.length > 0 && /^[+-]?\d+$/.test(piece)).map(Number);
+    if (parts.length !== 2) return undefined;
+    const index = parts[0] * 12 + parts[1] - 1;
+    if (index < RankLadder.firstQuarter) return index === RankLadder.firstQuarter - 1 ? 1 : undefined;
+    return 2 + Math.floor((index - RankLadder.firstQuarter) / 3);
+  },
+
+  /** "ends in 34 days", "ends today"; undefined once the season is over (the leaderboard's live strip; iOS seasonCountdown). */
+  seasonCountdown(season: string, now: number = Date.now()): string | undefined {
+    const end = RankLadder.seasonEnd(season);
+    if (end === undefined || end.getTime() <= now) return undefined;
+    const days = Math.ceil((end.getTime() - now) / DAY);
+    return days <= 1 ? "ends today" : `ends in ${days} days`;
+  },
+
+  /** When a season ends (the next season starts, UTC); undefined for a malformed season. */
+  seasonEnd(season: string): Date | undefined {
+    const months = RankLadder.seasonMonths(season);
+    if (months === undefined) return undefined;
+    const [year, month] = season.split("-").filter((piece) => piece.length > 0).map(Number);
+    return new Date(Date.UTC(year, month - 1 + months, 1));
+  },
+
+  /** "October 2026", or a quarter's span: "Nov 2026 – Jan 2027" (in `locale`, the browser's by default). */
   seasonName(season: string, locale?: string): string {
     const end = RankLadder.seasonEnd(season);
     if (end === undefined) return season;
-    return new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(end.getTime() - DAY));
+    const last = new Date(end.getTime() - DAY);
+    if (RankLadder.seasonMonths(season) !== 3) {
+      return new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(last);
+    }
+    const short = new Intl.DateTimeFormat(locale, { month: "short", year: "numeric", timeZone: "UTC" });
+    const [year, month] = season.split("-").map(Number);
+    return `${short.format(new Date(Date.UTC(year, month - 1, 1)))} – ${short.format(last)}`;
   },
 
   /**
@@ -207,5 +277,33 @@ export const RankLadder = {
     next.position = RankPosition.fromPoints(Math.max(RankPosition.points(state.position) + delta, floor));
     next.peak = RankPosition.max(next.peak, next.position);
     return { state: next, change: { outcome, before: state.position, after: next.position, bonuses } };
+  },
+} as const;
+
+/**
+ * A season's badge (Caleb, 2026-10-26): the tier the player peaked at that season. Season 1 (October 2026, the first)
+ * carries a founder ribbon. The season in play shows too, still being earned (RankLadder.swift's SeasonBadge).
+ */
+export interface SeasonBadge { season: string; peak: RankPosition; inProgress: boolean }
+export const SeasonBadge = {
+  foundingSeason: "2026-10",
+  founder: (badge: SeasonBadge) => badge.season === SeasonBadge.foundingSeason,
+  number: (badge: SeasonBadge) => RankLadder.seasonNumber(badge.season),
+
+  /** Newest first: the season in play when ranked games were played in it, then each finished season at its peak. */
+  earned(rank: RankState): SeasonBadge[] {
+    const current: SeasonBadge[] = rank.wins + rank.losses + rank.draws > 0 ? [{ season: rank.season, peak: rank.peak, inProgress: true }] : [];
+    return [...current, ...rank.history.map((past) => ({ season: past.season, peak: past.peak, inProgress: false }))];
+  },
+
+  /** The best finished badge: the highest peak, the newest of equals. */
+  best(badges: readonly SeasonBadge[]): SeasonBadge | undefined {
+    let best: SeasonBadge | undefined;
+    for (const badge of badges) {
+      if (badge.inProgress) continue;
+      const delta = best === undefined ? 1 : RankPosition.compare(badge.peak, best.peak);
+      if (delta > 0 || (delta === 0 && best !== undefined && badge.season > best.season)) best = badge;
+    }
+    return best;
   },
 } as const;

@@ -286,6 +286,46 @@ struct ArenaCanvas: Equatable {
 /// battles and sagas in a section of their own at the table's right edge (planeswalkers and battles outermost); every
 /// other permanent (artifacts, enchantments, an unattached Equipment) in the back row right of the lands, with the mana
 /// rocks and Treasures. An Aura or Equipment goes wherever the permanent it is attached to goes.
+/// The stack card can step aside (Danny, 2026-10-26: sideways, the stack card covered what he wanted to tap). A tab on its
+/// left edge tucks it to the table's edge, a slim tab there brings it back, and it tucks itself while you pick something on
+/// the table. A tuck lasts for the spell or ability on top: the next one shows. Android's ArenaStackTuck matches.
+enum ArenaStackTuck {
+    /// `tuckedTop`: the top object the player tucked; `peekTop`: the one they brought back while picking.
+    static func isTucked(top: String, tuckedTop: String?, peekTop: String?, picking: Bool) -> Bool {
+        guard peekTop != top else { return false }
+        return tuckedTop == top || picking
+    }
+}
+
+/// Where a target question's choices are when the table can't show them (Caleb, 2026-10-28: Gogo copying Zur's attack
+/// trigger offered only abilities on the stack, so nothing could be tapped). Spells and abilities on the stack are chosen
+/// in the stack browser. With four players the board shows one opponent: when it offers nothing to choose and another
+/// opponent's permanents do, the board turns to that opponent. Android's ArenaTargetReach and the web's match.
+struct ArenaTargetReach: Equatable {
+    /// Stack objects that can be chosen, the one that resolves next first.
+    let stack: [String]
+    /// Opponents the board doesn't show whose permanents can be chosen, in seat order.
+    let hiddenOpponents: [String]
+    /// Something on the table as shown can be chosen: a permanent on your side or the shown opponent's, or one of you.
+    let onTable: Bool
+
+    static func of(_ snapshot: GameSnapshot, targetable: Set<String>) -> ArenaTargetReach {
+        guard !targetable.isEmpty else { return ArenaTargetReach(stack: [], hiddenOpponents: [], onTable: false) }
+        func chosen(_ card: ZoneCard) -> Bool { targetable.contains(card.id) || targetable.contains(card.instanceId) }
+        let shown = [snapshot.seat?.playerId, snapshot.opponent?.playerId].compactMap { $0 }
+        let onTable = snapshot.players.contains { player in
+            shown.contains(player.playerId) && (targetable.contains(player.playerId) || player.zones.battlefield.contains(where: chosen))
+        }
+        let hidden = snapshot.players.filter { player in
+            !shown.contains(player.playerId) && !snapshot.isViewer(player.playerId) && player.zones.battlefield.contains(where: chosen)
+        }.map(\.playerId)
+        return ArenaTargetReach(stack: snapshot.stackTopFirst.map(\.id).filter(targetable.contains), hiddenOpponents: hidden, onTable: onTable)
+    }
+
+    /// The opponent to show for this question: the first hidden one with choices, when the table as shown has none.
+    var opponentToShow: String? { onTable || !stack.isEmpty ? nil : hiddenOpponents.first }
+}
+
 enum ArenaFrontSection: Equatable {
     case creatures, side, support
 
@@ -392,8 +432,11 @@ enum ArenaHandPosture: Equatable {
     }
 
     static func resolve(_ situation: Situation) -> ArenaHandPosture {
-        if situation.spectating || situation.dragging || situation.boardDecision { return .resting }
+        if situation.spectating || situation.boardDecision { return .resting }
+        // A card carried out of the spread hand keeps the row under the finger: collapsing it mid-drag cancelled the carry
+        // (Caleb, 2026-10-25). A raised hand still tucks away while its card is carried.
         if situation.spread { return .spread }
+        if situation.dragging { return .resting }
         return situation.opened ? .raised : .resting
     }
 }
@@ -462,8 +505,17 @@ enum ArenaHandFanLayout {
             let rise = max(0, hand.upY + reach - hand.upFloor)
             return ArenaHandSlot(center: CGPoint(x: x, y: hand.upY - rise + drop * offset * offset), rotation: tilt, scale: 1)
         }
-        return ArenaHandSlot(center: CGPoint(x: x, y: hand.downY + offset * offset * hand.downDrop),
-                             rotation: Double(offset) * 1.8, scale: hand.downScale)
+        // A big hand keeps a seven-card hand's gentle edge: the arc flattens past seven so the outer cards neither lean
+        // nor sink further (Caleb, 2026-10-25: fourteen cards curved too steeply to read or pick).
+        let curve = Self.restingCurve(count: count)
+        return ArenaHandSlot(center: CGPoint(x: x, y: hand.downY + offset * offset * hand.downDrop * curve * curve),
+                             rotation: Double(offset * curve) * 1.8, scale: hand.downScale)
+    }
+
+    /// 1 up to seven cards; past that, what keeps the outermost card where a seven-card hand's would be.
+    static func restingCurve(count: Int) -> CGFloat {
+        let edge = CGFloat(count - 1) / 2
+        return edge > 3 ? 3 / edge : 1
     }
 }
 
@@ -815,8 +867,7 @@ enum ArenaCombatPhase: Equatable {
         let actions = snapshot.legalActions ?? []
         if actions.contains(where: { $0.type == "declare_attackers" }) { return .attackers }
         if actions.contains(where: { $0.type == "declare_blockers" }) { return .blockers }
-        guard let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId),
-              prompt.responseKind.lowercased() == "target" || prompt.responseCommand?.type?.lowercased() == "choose_target" else { return nil }
+        guard let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId), prompt.isCombatSelection else { return nil }
         let step = (snapshot.step ?? snapshot.phase).lowercased().replacingOccurrences(of: "_", with: "-")
         if step.contains("declare-attack") { return .attackers }
         if step.contains("declare-block") { return .blockers }

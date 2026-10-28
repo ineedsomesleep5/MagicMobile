@@ -71,7 +71,25 @@ const knownPhases: Record<string, string> = {
   BEGINNING: "Beginning", COMBAT: "Combat", ENDING: "Ending",
 };
 
+const pickerNumber = /^\s*\d+\.\s*/;
+const triggerLine = /^(?:[^—\n]{1,40}—\s*)?(?:When|Whenever|At)\b/;
+
 export const EngineDisplayText = {
+  /** The full rule a trigger or ability choice shows (abilityRule in OnDevicePromptAdapter.swift; parity/ability-rule-cases.json). */
+  abilityRule(label: string, sourceRules: string[], sourceName?: string): string | undefined {
+    // The source's name stands in for the label's {this}, so its line is found and no raw "{this}" is drawn as a symbol.
+    const raw = EngineDisplayText.text(label.replace(pickerNumber, ""));
+    const fragment = sourceName ? raw.replace(/\{this\}/gi, () => sourceName) : raw;
+    const lines = sourceRules.flatMap((rule) => EngineDisplayText.text(rule).split("\n")).filter((line) => line.length > 0);
+    if (fragment.length > 0) {
+      const lower = fragment.toLowerCase();
+      const holding = lines.filter((line) => line.toLowerCase().includes(lower));
+      if (holding.length === 1) return holding[0];
+      return fragment.charAt(0).toUpperCase() + fragment.slice(1);
+    }
+    const triggers = lines.filter((line) => triggerLine.test(line));
+    return triggers.length === 1 ? triggers[0] : undefined;
+  },
   text(source: string): string {
     let current = source;
     // Decode before parsing and reach a fixed point, including nested entities.
@@ -82,6 +100,10 @@ export const EngineDisplayText = {
       if (next === current) return next;
       current = next;
     }
+  },
+  /** Rules as a card shows them: markup cleaned, `{this}` named (the card, else "this"). */
+  rules(source: string, cardName?: string): string {
+    return EngineDisplayText.text(source).replace(/\{this\}/gi, () => cardName ?? "this");
   },
   label(source: string, fallback = ""): string {
     const value = EngineDisplayText.text(source).split(/\s+/).filter((part) => part.length > 0).join(" ");

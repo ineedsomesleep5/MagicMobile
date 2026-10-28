@@ -3,11 +3,13 @@
  * cross-play table by its code, ready up in the match room, take part in the shared D20 roll, then
  * play through the host's engine. The browser never hosts and runs no engine in this milestone.
  */
+import { VoiceChat } from "../core/voiceChat";
 import { EngineError, EngineJson, get, int, type J, keysEqual, obj, sameUuid, str } from "../core/json";
 import type { GameSnapshot } from "../core/models";
 import { loadSmartPass } from "../core/smartPass";
 import { OnDeviceStartingPlayerChoice, OnDeviceStartingRoll, OnDeviceStartingRollProgress } from "../core/startingRoll";
 import { gameEmote, type GameEmote, TableChatText, TableJoinLink } from "../core/tableChat";
+import { parseVote, type TableContinueVote, TableLeaveRules } from "../core/tableLeave";
 import { TurnClockBoard, TurnClockWire } from "../core/turnClock";
 import { type RelayPeer, RelayTransport } from "../relay/relayTransport";
 import type { GameTable } from "./gameTable";
@@ -39,6 +41,10 @@ export interface TableState {
   bubbles: Record<string, { emote: GameEmote; at: number }>;
   /** This browser opened the table (HostTable): it may remove joiners while the table fills and runs the game. */
   isHost?: boolean;
+  /** The vote to go on without a player who is away (TableLeaveRules); undefined while nobody is. */
+  continueVote?: TableContinueVote;
+  /** "Jed left. The game goes on.": a player left for good and the others play on. */
+  tableNotice?: string;
 }
 
 const now = () => performance.now() / 1000;
@@ -53,6 +59,7 @@ export class GuestTable implements GameTable {
   private remote?: RemoteEngineTransport;
   private submission?: J;
   private epoch?: string;
+  get voiceChannel() { return VoiceChat.channel(this.epoch); }
   private localReady = false;
   private reportedReady = new Map<string, string[]>();
   private playerNames = new Map<string, string>();
@@ -60,6 +67,8 @@ export class GuestTable implements GameTable {
   private rollTimer?: ReturnType<typeof setTimeout>;
   private lobbyTimer?: ReturnType<typeof setTimeout>;
   private relayAway = new Set<string>();
+  /** Players who left for good; the host conceded their seats (TableLeaveRules). */
+  private gone = new Set<string>();
   private hostSuspended = false;
   private presenceSequence = 0;
   private hostPresenceSequence = 0;
@@ -104,6 +113,8 @@ export class GuestTable implements GameTable {
       onDisconnect: (peer) => {
         if (token !== this.generation || peer === relay.localPeerID) return;
         const host = this.lobby?.hostID === peer || (!this.lobby && peer.startsWith("p1-"));
+        // Once the game is on, a guest who leaves is conceded by the host and the others play on.
+        if (!host && this.remote) { this.markGone(peer); return; }
         this.fail(host ? "The host left this table." : "A player left. This match cannot continue. Leave and start a new match.");
       },
       onError: (message) => { if (token === this.generation) this.fail(message); },
@@ -133,7 +144,7 @@ export class GuestTable implements GameTable {
       return;
     }
     // A dropped phone pauses the match like a backgrounded app, until it returns or the relay gives up on it.
-    const away = new Set(peers.filter((p) => !p.connected && p.id !== this.lobby!.localPeerID).map((p) => p.id));
+    const away = new Set(peers.filter((p) => !p.connected && p.id !== this.lobby!.localPeerID && !this.gone.has(p.id)).map((p) => p.id));
     if ([...away].sort().join() !== [...this.relayAway].sort().join()) { this.relayAway = away; this.updateSuspension(); }
   }
 
@@ -202,6 +213,7 @@ export class GuestTable implements GameTable {
       return;
     }
     if (!this.epoch || !sameUuid(str(fields.epoch), this.epoch)) throw EngineError.incompatibleBuild();
+    if (this.gone.has(peer)) throw EngineError.unboundPeer();
     const fromHost = peer === lobby.hostID;
     switch (type) {
       case "reply":
@@ -267,8 +279,25 @@ export class GuestTable implements GameTable {
       }
       case "end":
         if (!keysEqual(fields, ["type", "epoch"])) throw EngineError.invalid("Invalid match ending.");
-        this.fail(fromHost ? "The host ended this match." : "A player left. Start a new match to play again.");
+        if (fromHost) this.fail("The host ended this match.");
+        else if (this.remote) this.markGone(peer);
+        else this.fail("A player left. Start a new match to play again.");
         break;
+      case "left": {
+        const seat = str(fields.seat);
+        if (!keysEqual(fields, ["type", "epoch", "seat"]) || !fromHost || seat === undefined) throw EngineError.unboundPeer();
+        if (seat === this.state.localSeatID) { this.fail(TableLeaveRules.LEFT_BEHIND_MESSAGE); return; }
+        const leaver = lobby.peerIDs.find((p) => { try { return lobby.seatID(p) === seat; } catch { return false; } });
+        if (!leaver) throw EngineError.unboundPeer();
+        this.markGone(leaver);
+        break;
+      }
+      case "vote": {
+        if (!fromHost) throw EngineError.unboundPeer();
+        const vote = parseVote(value, this.state.seatNames, this.state.localSeatID);
+        this.set({ continueVote: vote?.seatID === this.state.localSeatID ? undefined : vote });
+        break;
+      }
       case "reject":
         if (!keysEqual(fields, ["type", "epoch", "reason"]) || str(fields.reason) !== "aiSettings" || !fromHost) throw EngineError.unboundPeer();
         this.fail(HandshakeFailure.differentSettings().message);
@@ -282,6 +311,28 @@ export class GuestTable implements GameTable {
     const lobby = this.lobby;
     return (lobby && this.state.seatNames[lobby.seatID(peer)]) ?? this.playerNames.get(peer) ?? "Player";
   }
+
+  /** A player left for good: nothing waits for them, and the table says so once. */
+  private markGone(peer: string) {
+    if (this.gone.has(peer)) return;
+    this.gone.add(peer);
+    this.relayAway.delete(peer);
+    let seat: string | undefined;
+    try { seat = this.lobby?.seatID(peer); } catch { seat = undefined; }
+    this.set({ tableNotice: TableLeaveRules.leftNotice(this.nameOf(peer)),
+      ...(this.state.continueVote && this.state.continueVote.seatID === seat ? { continueVote: undefined } : {}) });
+    this.updateSuspension();
+  }
+
+  /** This seat votes to go on without the player who is away. */
+  voteToContinue() {
+    const vote = this.state.continueVote; const lobby = this.lobby;
+    if (!vote || vote.voted || !lobby || !this.epoch) return;
+    this.trySend({ type: "continue", epoch: this.epoch, seat: vote.seatID }, lobby.hostID);
+    this.set({ continueVote: { ...vote, voted: true } });
+  }
+
+  clearTableNotice() { if (this.state.tableNotice) this.set({ tableNotice: undefined }); }
 
   private addChat(name: string, text: string, isLocal: boolean, emote?: GameEmote) {
     this.chatSequence += 1;
@@ -452,7 +503,7 @@ export class GuestTable implements GameTable {
   private broadcast(value: J) {
     const lobby = this.lobby;
     if (!lobby) return;
-    for (const peer of lobby.peerIDs) if (peer !== lobby.localPeerID) this.trySend(value, peer);
+    for (const peer of lobby.peerIDs) if (peer !== lobby.localPeerID && !this.gone.has(peer)) this.trySend(value, peer);
   }
 
   private trySend(value: J, peer: string) {
@@ -462,7 +513,7 @@ export class GuestTable implements GameTable {
   private fail(message: string) {
     if (this.state.stage === "failed" || this.state.stage === "closed") return;
     this.teardown();
-    this.set({ stage: "failed", status: message, room: undefined, roll: undefined, turnClock: new TurnClockBoard() });
+    this.set({ stage: "failed", status: message, room: undefined, roll: undefined, turnClock: new TurnClockBoard(), continueVote: undefined });
   }
 
   private teardown() {
@@ -479,7 +530,7 @@ export class GuestTable implements GameTable {
     if (this.state.stage !== "failed") this.teardown();
     this.relay = undefined; this.lobby = undefined; this.remote = undefined; this.session = undefined; this.epoch = undefined;
     this.progress = undefined; this.submission = undefined; this.localReady = false; this.reportedReady = new Map();
-    this.relayAway = new Set(); this.hostSuspended = false; this.presenceSequence = 0; this.hostPresenceSequence = 0;
+    this.relayAway = new Set(); this.gone = new Set(); this.hostSuspended = false; this.presenceSequence = 0; this.hostPresenceSequence = 0;
     this.set({ ...this.initial(), stage: "idle", status: "Match closed." });
   }
 }

@@ -1,5 +1,5 @@
 {
-  "_comment": "Profile numbers and public-profile parsing, checked by ProfileAnalyticsTests.swift and ProfileAnalyticsTest.kt. Games are newest first, like the phone's record. Weeks start on Monday 00:00 UTC.",
+  "_comment": "Profile numbers and public-profile parsing, checked by ProfileAnalyticsTests.swift and ProfileAnalyticsTest.kt. Games are newest first, like the phone's record. Weeks start on Monday 00:00 UTC. insights: ProfileInsights from a player's own games, newest first (averages to 4 decimals).",
   "summaries": [
     {
       "name": "mixed history with a draw, an unknown turn count and games older than eight weeks",
@@ -146,5 +146,49 @@
     { "text": "d", "normalized": null }, { "text": "", "normalized": null }, { "text": "da%", "normalized": null },
     { "text": "da x", "normalized": null }, { "text": "dä", "normalized": null }, { "text": "aaaaaaaaaaaaaaaaaaaaa", "normalized": null },
     { "text": "aaaaaaaaaaaaaaaaaaaa", "normalized": "aaaaaaaaaaaaaaaaaaaa" }
+  ],
+  "insights": [
+    {
+      "name": "eleven games across modes, tiers and decks (newest first); a draw, a game without turns and games without a length",
+      "games": [
+        {"result": "win", "mode": "ranked", "deck": "Krenko", "turns": 7, "durationSeconds": 1500, "tier": "gold", "opponents": ["Edgar Markov"]},
+        {"result": "loss", "mode": "ranked", "deck": "Krenko", "turns": 9, "durationSeconds": 1800, "tier": "gold", "opponents": ["Atraxa, Praetors' Voice"]},
+        {"result": "win", "mode": "ranked", "deck": "Krenko", "turns": 6, "durationSeconds": null, "tier": "silver", "opponents": ["Edgar Markov"]},
+        {"result": "win", "mode": "quick", "deck": "Kudo", "turns": 8, "durationSeconds": 1200, "tier": null, "opponents": ["Edgar Markov", "Atraxa, Praetors' Voice"]},
+        {"result": "draw", "mode": "casual", "deck": "Kudo", "turns": null, "durationSeconds": 0, "tier": null, "opponents": []},
+        {"result": "loss", "mode": "quick", "deck": "Kudo", "turns": 5, "durationSeconds": 600, "tier": null, "opponents": ["Miirym, Sentinel Wyrm"]},
+        {"result": "win", "mode": "ranked", "deck": "Ayula", "turns": 10, "durationSeconds": null, "tier": "silver", "opponents": ["Edgar Markov"]},
+        {"result": "loss", "mode": "ranked", "deck": "Ayula", "turns": 12, "durationSeconds": null, "tier": "silver", "opponents": ["Krenko, Mob Boss"]},
+        {"result": "win", "mode": "quick", "deck": "Krenko", "turns": 9, "durationSeconds": null, "tier": null, "opponents": ["Krenko, Mob Boss"]},
+        {"result": "win", "mode": "ranked", "deck": "Ayula", "turns": 11, "durationSeconds": null, "tier": "bronze", "opponents": ["Teysa Karlov"]},
+        {"result": "loss", "mode": "ranked", "deck": "Ayula", "turns": 8, "durationSeconds": null, "tier": "bronze", "opponents": ["Teysa Karlov"]}
+      ],
+      "expect": {
+        "form": ["win", "loss", "win", "win", "draw", "loss", "win", "loss", "win", "win"],
+        "modes": [{"id": "ranked", "games": 7, "wins": 4, "losses": 3}, {"id": "quick", "games": 3, "wins": 2, "losses": 1}, {"id": "casual", "games": 1, "wins": 0, "losses": 0}],
+        "tiers": [{"id": "bronze", "games": 2, "wins": 1, "losses": 1}, {"id": "silver", "games": 3, "wins": 2, "losses": 1}, {"id": "gold", "games": 2, "wins": 1, "losses": 1}],
+        "matchups": [{"id": "Edgar Markov", "games": 4, "wins": 4, "losses": 0}, {"id": "Atraxa, Praetors' Voice", "games": 2, "wins": 1, "losses": 1}, {"id": "Krenko, Mob Boss", "games": 2, "wins": 1, "losses": 1}, {"id": "Teysa Karlov", "games": 2, "wins": 1, "losses": 1}, {"id": "Miirym, Sentinel Wyrm", "games": 1, "wins": 0, "losses": 1}],
+        "fastestWin": 6,
+        "averageTurnsInWins": 8.5,
+        "averageTurnsInLosses": 8.5,
+        "averageMinutes": 21.25,
+        "bestDeck": {"id": "Krenko", "games": 4, "wins": 3, "losses": 1}
+      }
+    },
+    {
+      "name": "no games",
+      "games": [],
+      "expect": {
+        "form": [],
+        "modes": [],
+        "tiers": [],
+        "matchups": [],
+        "fastestWin": null,
+        "averageTurnsInWins": null,
+        "averageTurnsInLosses": null,
+        "averageMinutes": null,
+        "bestDeck": null
+      }
+    }
   ]
 }

@@ -216,6 +216,20 @@
     {
       "situation": {
         "spread": true,
+        "dragging": true
+      },
+      "posture": "spread"
+    },
+    {
+      "situation": {
+        "spread": true,
+        "boardDecision": true
+      },
+      "posture": "resting"
+    },
+    {
+      "situation": {
+        "spread": true,
         "spectating": true
       },
       "posture": "resting"

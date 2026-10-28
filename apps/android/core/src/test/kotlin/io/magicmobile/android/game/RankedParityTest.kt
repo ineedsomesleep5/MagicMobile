@@ -5,6 +5,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -88,6 +90,30 @@ class RankedParityTest {
         }
     }
 
+    /** Season badges (Caleb, 2026-10-26): numbering from October 2026, the season in play first, the best finished peak. */
+    @Test fun seasonBadges() {
+        for (item in rows("seasonNumbers")) {
+            val number = item["number"]!!.jsonPrimitive.takeIf { it !is JsonNull }?.int
+            assertEquals(str(item, "season"), number, RankLadder.seasonNumber(str(item, "season")))
+        }
+        val cases = root["seasonBadges"]!!.jsonObject
+        val rank = cases["rank"]!!.jsonObject
+        val peak = RankPosition.ofPoints(int(rank, "peakPoints"))
+        val state = RankState.fresh(str(rank, "season")).copy(peak = peak,
+            wins = if (rank["played"]?.jsonPrimitive?.content == "true") 1 else 0,
+            history = rank["history"]!!.jsonArray.map { it.jsonObject }.map {
+                val seasonPeak = RankPosition.ofPoints(int(it, "peakPoints"))
+                SeasonRecord(str(it, "season"), seasonPeak, seasonPeak, 1, 0)
+            })
+        val badges = SeasonBadge.earned(state)
+        val expect = cases["expect"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(expect.map { str(it, "season") }, badges.map { it.season })
+        assertEquals(expect.map { str(it, "tier") }, badges.map { it.tier.key })
+        assertEquals(expect.map { str(it, "inProgress") == "true" }, badges.map { it.inProgress })
+        assertEquals(expect.map { str(it, "founder") == "true" }, badges.map { it.founder })
+        assertEquals(str(cases, "best"), SeasonBadge.best(badges)?.season)
+    }
+
     @Test fun brackets() {
         assertEquals("the February 2026 list", 53, rules.gameChangers.size)
         for (item in rows("brackets")) {
@@ -123,7 +149,7 @@ class RankedParityTest {
     }
 
     @Test fun aiDecksAreHundredsAtTheirBrackets() {
-        assertEquals(21, bracketDecks.size)
+        assertEquals(43, bracketDecks.size)
         val basics = setOf("Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes")
         for (deck in bracketDecks) {
             assertEquals(deck.id, 100, deck.deck.entries.sumOf { it.quantity })
@@ -166,7 +192,7 @@ class RankedParityTest {
         assertEquals(null, play(october, PlayMode.QUICK, RankOutcome.WIN))
         assertEquals(RankPosition.make(RankTier.BRONZE, 4, 2), play(october, PlayMode.RANKED, RankOutcome.WIN)!!.after)
         play(december, PlayMode.RANKED, RankOutcome.LOSS)
-        assertEquals("2026-12", file.rank.season)
+        assertEquals("2026-11", file.rank.season) // quarterly from November 2026
         assertEquals("2026-10", file.rank.history.first().season)
         assertEquals(listOf("ai-edgar-markov-core"), file.recentAIDecks)
         // Round trip through the saved file.
@@ -224,5 +250,32 @@ class RankedParityTest {
             assertEquals(preference, PlayMode.QUICK.startingPlayerMode(preference))
             assertEquals(preference, PlayMode.CASUAL.startingPlayerMode(preference))
         }
+    }
+
+    // power-cases.json: Deck Power picking (aiDeckPool.test.ts, RankedParityTests.swift).
+    private val powerCases = Json.parseToJsonElement(File(repo, "apps/android/core/src/test/resources/parity/power-cases.json").readText()).jsonObject
+
+    @Test fun powerPicksAsTheCasesSay() {
+        val decks = powerCases["decks"]!!.jsonArray.map { it.jsonObject }.map {
+            AIDeck(str(it, "id"), str(it, "id"), "", "", str(it, "commander"), CommanderBracket.clamping(int(it, "bracket")),
+                Deck(str(it, "id"), emptyList()), it["power"]!!.jsonPrimitive.doubleOrNull)
+        }
+        for (item in powerCases["picks"]!!.jsonArray.map { it.jsonObject }) {
+            val pick = AIDeckPool.pickByPower(item["target"]!!.jsonPrimitive.double, item["maxBracket"]?.jsonPrimitive?.int,
+                item["avoid"]?.jsonPrimitive?.content, item["recent"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(), decks,
+                int(powerCases, "closest")) { int(item, "roll") }
+            assertEquals(str(item, "name"), str(item, "expect"), pick?.id)
+        }
+        val tiers = powerCases["rankedTiers"]!!.jsonArray.map { val b = it.jsonArray; b[0].jsonPrimitive.double to b[1].jsonPrimitive.double }
+        for (item in powerCases["targets"]!!.jsonArray.map { it.jsonObject }) {
+            assertEquals("$item", item["expect"]!!.jsonPrimitive.double, AIDeckPool.rankedTarget(int(item, "tier"), int(item, "division"), tiers), 1e-9)
+        }
+    }
+
+    @Test fun everyAIDeckShipsAPower() {
+        val power = AIDeckPool.parsePower(File(repo, "apps/ios/MagicMobile/Resources/ai-decks.json").readText())!!
+        for (deck in pool) assertTrue(deck.id, (power.decks[deck.id] ?: 0.0) >= 1.0)
+        assertEquals(6, power.rankedTiers.size)
+        assertEquals(setOf("easy", "medium", "hard"), power.quickMatch.keys)
     }
 }

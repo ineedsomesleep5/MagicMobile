@@ -259,12 +259,19 @@ fun NativeGameView(
             if (prompt != null && !prompt.abilities.isNullOrEmpty() && (prompt.responseCommand?.type ?: "").lowercase() == "choose_ability") return null
             if (!prompt?.modes.isNullOrEmpty() ||
                 io.magicmobile.android.game.ArenaScreens.screenPrompt(snap, io.magicmobile.android.game.ArenaScreenContext(startingRollVisible))) return null
+            // Spells and abilities to choose on the stack, in ArenaStackBrowser.
+            if (io.magicmobile.android.game.ArenaTargetReach.of(snap).stack.isNotEmpty()) return null
         }
         return PortraitInteractionPolicy.detailChoiceKey(snap)
     }
 
+    /** The card browser opens by itself for this question; on the Arena board, choices on the stack go to the stack instead. */
+    fun boardCardChoiceKey(snap: GameSnapshot): String? =
+        if (isArenaBoard && io.magicmobile.android.game.ArenaTargetReach.of(snap).stack.isNotEmpty()) null
+        else PortraitInteractionPolicy.cardChoiceKey(snap)
+
     fun openPromptDetails() {
-        if (PortraitInteractionPolicy.cardChoiceKey(currentSnapshot) != null) isCardChoiceOpen = true else isPromptDetailOpen = true
+        if (boardCardChoiceKey(currentSnapshot) != null) isCardChoiceOpen = true else isPromptDetailOpen = true
     }
 
     fun advanceCommittedCardChoice() {
@@ -273,8 +280,10 @@ fun NativeGameView(
         if (snap.promptEnvelopeV2 == null && currentPending == null && plan.lastPrompt != null) {
             if (cardChoiceCompletionJob == null) {
                 val lastPrompt = plan.lastPrompt
+                // Done after a quiet spell; a selection that still owes answers waits longer for the engine's next prompt.
+                val quiet = if (plan.expectsMorePrompts) 30_000L else 5_000L
                 cardChoiceCompletionJob = scope.launch {
-                    delay(5000)
+                    delay(quiet)
                     if (committedCardChoice?.lastPrompt == lastPrompt && currentSnapshot.promptEnvelopeV2 == null && currentPending == null) committedCardChoice = null
                     cardChoiceCompletionJob = null
                 }
@@ -285,7 +294,7 @@ fun NativeGameView(
         val command = plan.next(snap, currentPending != null)
         committedCardChoice = if (plan.stopped) null else plan
         if (plan.stopped) {
-            isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snap) != null
+            isCardChoiceOpen = boardCardChoiceKey(snap) != null
             isPromptDetailOpen = boardDetailChoiceKey(snap) != null
         }
         if (command != null) runCommand(command, "Apply card choice", "card-plan-${command.promptId ?: ""}-${command.messageId ?: 0}")
@@ -298,7 +307,7 @@ fun NativeGameView(
         if (currentPending != null) {
             reviewCardChoiceAfterPending = true; isCardChoiceOpen = false; isPromptDetailOpen = false
         } else {
-            isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snap) != null
+            isCardChoiceOpen = boardCardChoiceKey(snap) != null
             isPromptDetailOpen = boardDetailChoiceKey(snap) != null
         }
     }
@@ -532,11 +541,16 @@ fun NativeGameView(
     }
     // The tracker starts over by itself when the game changes.
     LaunchedEffect(BoardFocusTracker.observationKey(board, followTurns)) { focusTracker = focusTracker.observe(board, followTurns) }
+    // A lesson's swap step waits for the opponent the player switches to.
+    val lessonFocusReport = LocalLessonFocusReport.current
+    // A target only another opponent's permanents offer turns the board to them (ArenaTargetReach).
+    LaunchedEffect(board.promptEnvelopeV2?.id, board.promptEnvelopeV2?.messageId) { focusTracker = focusTracker.showTargets(board) }
+    LaunchedEffect(focusTracker.focusedID) { focusTracker.focusedID?.let { lessonFocusReport?.invoke(it) } }
     // A card's first arrival, cast or hit plays at once instead of waiting on SoundPool to decode it.
     LaunchedEffect(Unit) { GameAudio.preload(GameAudio.boardSounds) }
     LaunchedEffect(Unit) {
         updateAIWaitStart(board)
-        isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(board) != null
+        isCardChoiceOpen = boardCardChoiceKey(board) != null
         isPromptDetailOpen = boardDetailChoiceKey(board) != null
         interactionMode = GameBoardInteractionState.mode(board, pendingActionId, selection.selectedCard)
         if (board.id == "design-preview-zone-inspection") inspectBoardZone(BoardZoneReference.Player(board.viewerID, BoardZoneReference.PlayerZone.GRAVEYARD))
@@ -572,10 +586,19 @@ fun NativeGameView(
             combatPreviewArrows = emptyList()
             if (reviewCardChoiceAfterPending) {
                 reviewCardChoiceAfterPending = false
-                isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(board) != null
+                isCardChoiceOpen = boardCardChoiceKey(board) != null
                 isPromptDetailOpen = boardDetailChoiceKey(board) != null
-            } else if (old != null && committedCardChoice?.submittedPromptIsUnchanged(board) == true) cancelCommittedCardChoice()
-            else advanceCommittedCardChoice()
+            } else if (old != null && committedCardChoice?.submittedPromptIsUnchanged(board) == true) {
+                // The answer cleared before the poll that shows the next prompt: give that poll a moment (NativeGameView.swift).
+                val lastPrompt = committedCardChoice?.lastPrompt
+                cardChoiceCompletionJob?.cancel()
+                cardChoiceCompletionJob = scope.launch {
+                    delay(2_000)
+                    cardChoiceCompletionJob = null
+                    if (currentPending == null && committedCardChoice?.lastPrompt == lastPrompt &&
+                        committedCardChoice?.submittedPromptIsUnchanged(currentSnapshot) == true) cancelCommittedCardChoice()
+                }
+            } else advanceCommittedCardChoice()
         }
     }
     OnChange(isLogOpen) { _, open -> GameAudio.play(if (open) GameSound.PAGE_FLIP else GameSound.UI_CLOSE) }
@@ -592,7 +615,7 @@ fun NativeGameView(
         // A decision that needs you, not a routine priority pass (the starting roll answers its own).
         if (key != null && !startingRollVisible) GameAudio.play(GameSound.RESPONSE_ALERT)
     }
-    OnChange(PortraitInteractionPolicy.cardChoiceKey(board)) { _, key ->
+    OnChange(boardCardChoiceKey(board)) { _, key ->
         if (key != null && committedCardChoice == null && !startingRollVisible) GameAudio.play(GameSound.RESPONSE_ALERT)
         isCardChoiceOpen = key != null && committedCardChoice == null && !reviewCardChoiceAfterPending
         selection.inspectedCard = null; selection.selectedCard = null
@@ -756,7 +779,7 @@ fun NativeGameView(
             if (hitVignette.value > 0f) BoardHitVignette(hitVignette.value)
 
             // --- Choices (boardChoicePresentation) ---
-            val cardChoiceKey = PortraitInteractionPolicy.cardChoiceKey(board)
+            val cardChoiceKey = boardCardChoiceKey(board)
             val choicePrompt = board.promptEnvelopeV2
             if (isCardChoiceOpen && cardChoiceKey != null && choicePrompt != null) {
                 key(cardChoiceKey) {
@@ -818,7 +841,9 @@ fun NativeGameView(
             // --- Opening hand, spectator bar and the result (above the HUD, dock and choice layers) ---
             val openingChoice = OpeningHandChoice.of(board)
             val hand = board.human?.zones?.hand ?: emptyList()
-            if (openingChoice != null && hand.isNotEmpty()) OpeningHandOverlay(openingChoice, hand, pendingActionId != null, runCommand,
+            // Only after the starting roll: the Arena board's roll is see-through, and the mulligan question can arrive
+            // before the last die lands (Caleb, 2026-10-26: the opening hand showed behind a three-player roll).
+            if (!startingRollVisible && openingChoice != null && hand.isNotEmpty()) OpeningHandOverlay(openingChoice, hand, pendingActionId != null, runCommand,
                 heading = board.startingPlayerHeading)
             AnimatedVisibility(board.isSpectating, Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
                 enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
@@ -843,7 +868,7 @@ fun NativeGameView(
                 io.magicmobile.android.menus.ArenaPanel(isGameMenuOpen, { isGameMenuOpen = false }, maxWidth = 640.dp) {
                     GameManagementMenu(board, board.legalActions?.firstOrNull { it.type == "concede" }, runAction, portraitModeEnabled, setPortraitModeEnabled,
                         { isGameMenuOpen = false; isPromptInspectorOpen = true }, { gameMenuConfirmation = GameMenuConfirmation.START_NEW },
-                        { gameMenuConfirmation = GameMenuConfirmation.QUIT }) { isGameMenuOpen = false }
+                        { gameMenuConfirmation = GameMenuConfirmation.QUIT }, showsFreezeReport = false) { isGameMenuOpen = false }
                 }
                 io.magicmobile.android.menus.ArenaPanel(isPromptInspectorOpen, { isPromptInspectorOpen = false }, maxWidth = 640.dp) {
                     PromptDebugInspector(board, liveUpdateStatus)

@@ -27,6 +27,13 @@ describe("combat", () => {
     // Leaving the declare attackers step ends the queue.
     expect(new AttackQueue(["x"]).step(fixture("2p-priority"), false)).toEqual({ kind: "end" });
   });
+  it("reads Gogo's target question during declare attackers as a target, not the attack", () => {
+    const attackers = fixture("2p-attackers");
+    const prompt = attackers.promptEnvelopeV2!;
+    expect(combatPhase({ ...attackers, legalActions: [], promptEnvelopeV2: { ...prompt, method: "GAME_PICK_TARGET" } })).toBeUndefined();
+    expect(combatPhase({ ...attackers, legalActions: [],
+      promptEnvelopeV2: { ...prompt, method: "GAME_CHOOSE_CARD", responseKind: "choose_card", responseCommand: { type: "choose_card" } } })).toBeUndefined();
+  });
   it("names the finish by what was declared", () => {
     expect([finishTitle("attackers", 0), finishTitle("attackers", 1), finishTitle("attackers", 3)]).toEqual(["No Attacks", "1 Attacker", "3 Attackers"]);
     expect([finishTitle("blockers", 0), finishTitle("blockers", 1), finishTitle("blockers", 2)]).toEqual(["No Blocks", "1 Blocker", "2 Blockers"]);

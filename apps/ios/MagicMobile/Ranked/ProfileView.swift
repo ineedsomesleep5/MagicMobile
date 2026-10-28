@@ -130,8 +130,10 @@ struct PlayerProfileView: View {
     /// charts, trophies, games, then the account and who can see it all.
     @ViewBuilder private func playerStory(_ summary: ProfileSummary, scoped: [MatchRecord]) -> some View {
         seasonCard(summary)
+        seasonBadgesCard
         if record.stats.decks.count > 1 { deckFilterRow }
         recordCard(summary, scoped: scoped)
+        insightCards(ProfileInsights(games: scoped.map(ProfileGame.init)))
         weeksCard(summary)
         if !summary.commanders.isEmpty { commandersCard(summary) }
         if !summary.colors.isEmpty { colorsCard(summary) }
@@ -490,6 +492,22 @@ struct PlayerProfileView: View {
         .accessibilityIdentifier("profile.season")
     }
 
+    /// The badge each season earned at its peak, the season in play still being earned (Caleb, 2026-10-26).
+    private var seasonBadgesCard: some View {
+        let badges = SeasonBadge.earned(rank: record.rank)
+        return VStack(alignment: .leading, spacing: 12) {
+            ProfileSectionTitle(text: String(localized: "Season badges"))
+            if badges.isEmpty {
+                ProfileEmptyNote(text: String(localized: "Play ranked to earn this season's badge."), systemImage: "rosette")
+            } else {
+                SeasonBadgeShelf(badges: badges)
+            }
+        }
+        .modifier(TavernLeatherCard())
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("profile.seasonBadges")
+    }
+
     // MARK: Filters
 
     /// All decks, or one: the totals, charts and games below follow it.
@@ -530,11 +548,94 @@ struct PlayerProfileView: View {
                     }
                 }
                 StreakRow(current: summary.currentStreak, best: summary.bestStreak)
+                let form = ProfileInsights(games: scoped.prefix(ProfileInsights.formCount).map(ProfileGame.init)).form
+                if form.count >= 3 {
+                    HStack(spacing: 10) {
+                        Text(String(localized: "Recent form").uppercased()).font(ArenaMenuStyle.font(9, .heavy)).tracking(1).opacity(0.7)
+                        FormStrip(results: form)
+                    }
+                    .accessibilityIdentifier("profile.form")
+                }
             }
         }
         .modifier(TavernLeatherCard())
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("profile.stats")
+    }
+
+    // MARK: Insights
+
+    /// Highlights, records by mode and by ranked tier, and how the player does against each commander (ProfileInsights).
+    @ViewBuilder private func insightCards(_ insights: ProfileInsights) -> some View {
+        if insights.fastestWin != nil || insights.averageMinutes != nil || insights.bestDeck != nil {
+            VStack(alignment: .leading, spacing: 12) {
+                ProfileSectionTitle(text: String(localized: "Highlights"))
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                    if let fastest = insights.fastestWin {
+                        ProfileStatTile(title: String(localized: "Fastest win"), value: String(localized: "Turn \(fastest)"), icon: "bolt.fill", tint: ProfilePalette.win)
+                    }
+                    if let minutes = insights.averageMinutes {
+                        ProfileStatTile(title: String(localized: "Avg. game"), value: String(localized: "\(Int(minutes.rounded())) min"), icon: "clock.fill")
+                    }
+                    if let wins = insights.averageTurnsInWins {
+                        ProfileStatTile(title: String(localized: "Turns in wins"), value: String(format: "%.1f", wins))
+                    }
+                    if let losses = insights.averageTurnsInLosses {
+                        ProfileStatTile(title: String(localized: "Turns in losses"), value: String(format: "%.1f", losses))
+                    }
+                }
+                if let best = insights.bestDeck {
+                    ProfileRecordLine(title: String(localized: "Best deck: \(best.id)"), line: best) {
+                        Image(systemName: "star.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(ProfilePalette.win).frame(width: 28)
+                    }
+                }
+            }
+            .modifier(TavernLeatherCard())
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("profile.highlights")
+        }
+        if insights.modes.count > 1 || !insights.tiers.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                ProfileSectionTitle(text: String(localized: "Records"))
+                ForEach(insights.modes) { line in
+                    ProfileRecordLine(title: Self.modeName(line.id), line: line) {
+                        Image(systemName: line.id == "ranked" ? "shield.lefthalf.filled" : line.id == "quick" ? "bolt.fill" : "person.3.fill")
+                            .font(.system(size: 14, weight: .bold)).foregroundStyle(ArenaMenuStyle.gold).frame(width: 28)
+                    }
+                }
+                if !insights.tiers.isEmpty {
+                    ArenaCaps(text: String(localized: "Ranked by tier")).padding(.top, 2)
+                    ForEach(insights.tiers) { line in
+                        let tier = RankTier.allCases.first { String(describing: $0) == line.id } ?? .bronze
+                        ProfileRecordLine(title: tier.name, line: line) { RankEmblem(tier: tier, size: 26).frame(width: 28) }
+                    }
+                }
+            }
+            .modifier(TavernLeatherCard())
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("profile.records")
+        }
+        if !insights.matchups.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                ProfileSectionTitle(text: String(localized: "Matchups"), trailing: String(localized: "most faced"))
+                ForEach(insights.matchups) { line in
+                    ProfileRecordLine(title: String(localized: "vs \(line.id)"), line: line) {
+                        CommanderArtMedallion(name: line.id, diameter: 28).frame(width: 28, height: 28)
+                    }
+                }
+            }
+            .modifier(TavernLeatherCard())
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("profile.matchups")
+        }
+    }
+
+    static func modeName(_ mode: String) -> String {
+        switch mode {
+        case "ranked": return String(localized: "Ranked")
+        case "quick": return String(localized: "Quick Match")
+        default: return String(localized: "Casual")
+        }
     }
 
     private func weeksCard(_ summary: ProfileSummary) -> some View {

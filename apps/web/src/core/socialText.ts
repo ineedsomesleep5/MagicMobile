@@ -14,6 +14,10 @@ import { GameEmotes } from "./tableChat";
 export const TIER_TINT: Record<RankTier, string> = {
   bronze: "204,128,69", silver: "204,212,224", gold: "255,204,92", platinum: "140,230,219", diamond: "128,191,255", mythic: "255,115,56",
 };
+/** Each tier's dark metal (RankTier.shade), as "r,g,b". */
+export const TIER_SHADE: Record<RankTier, string> = {
+  bronze: "92,46,18", silver: "82,87,102", gold: "122,77,15", platinum: "26,87,92", diamond: "20,51,122", mythic: "115,18,8",
+};
 
 /** The name field keeps letters, digits and underscores (ASCII only), at most 20. */
 export const usernameDraft = (value: string) => [...value].filter((ch) => /^[A-Za-z0-9_]$/.test(ch)).slice(0, 20).join("");

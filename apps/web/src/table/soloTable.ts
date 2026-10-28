@@ -27,6 +27,8 @@ export interface SoloSetup {
   aiDecks: J[];
   /** 1–10, the phones' AI skill control (PROTOCOL.md). */
   aiSkill: number;
+  /** A ranked game's deliberate-mistake chance from its server ticket (ranked_ai_tuning); undefined keeps the skill's own. */
+  aiMistakePercent?: number;
   startingPlayerMode: StartingPlayerMode;
   /** A ranked game's server seed (its ticket), sent when the engine keeps game records (PROTOCOL.md "Game record"). */
   seed?: bigint;
@@ -44,7 +46,8 @@ export function soloConfiguration(setup: SoloSetup, keepsRecords = false): JObje
   return {
     seats: [
       { seatId: SOLO_SEAT, name: setup.name, controller: "human", deck: setup.deck },
-      ...setup.aiDecks.map((deck, index) => ({ seatId: `player${index + 2}`, name: `AI ${index + 1}`, controller: "ai", deck, aiSkill: setup.aiSkill })),
+      ...setup.aiDecks.map((deck, index) => ({ seatId: `player${index + 2}`, name: `AI ${index + 1}`, controller: "ai", deck, aiSkill: setup.aiSkill,
+        ...(setup.aiMistakePercent !== undefined ? { aiMistakePercent: setup.aiMistakePercent } : {}) })),
     ],
     ...(setup.seed !== undefined && keepsRecords ? { seed: EngineJson.integer(setup.seed) } : {}),
   };

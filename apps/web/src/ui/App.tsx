@@ -4,6 +4,7 @@ import { DeckResolver } from "../core/deckResolver";
 import { TableJoinLink } from "../core/tableChat";
 import type { GameTable } from "../table/gameTable";
 import { setArtResolver } from "./cardArt";
+import { customArtVersion, loadCustomArt, subscribeCustomArt } from "./customArt";
 import { BrandMark } from "./menus/BrandMark";
 import { type MenuData, MenuShell } from "./menus/MenuShell";
 import "./menus/menus.css";
@@ -33,6 +34,9 @@ export function App() {
       setData({ resolver, precons: precons.decks, pool: new AIDeckPool(aiDecks, precons) });
     }).catch((error) => setLoadError(error instanceof Error ? error.message : String(error)));
   }, []);
+  // Your own card pictures (customArt.ts): read once, and every card redraws when one is set, removed or composed.
+  useEffect(() => { void loadCustomArt(); }, []);
+  useSyncExternalStore(subscribeCustomArt, customArtVersion);
   if (!data) return <Loading error={loadError} />;
   return <Root data={data} />;
 }

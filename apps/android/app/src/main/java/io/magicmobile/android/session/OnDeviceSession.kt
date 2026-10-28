@@ -1,5 +1,6 @@
 package io.magicmobile.android.session
 
+import io.magicmobile.android.game.isLessonNudge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -15,6 +16,7 @@ import io.magicmobile.android.game.ComboStep
 import io.magicmobile.android.game.EngineClient
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.EnginePrompt
+import io.magicmobile.android.game.FreezeStallTracker
 import io.magicmobile.android.game.GameCommand
 import io.magicmobile.android.game.GameSnapshot
 import io.magicmobile.android.game.J
@@ -33,6 +35,7 @@ import io.magicmobile.android.game.jsonObject
 import io.magicmobile.android.game.obj
 import io.magicmobile.android.game.string
 import io.magicmobile.android.game.withoutPrompts
+import io.magicmobile.android.ondevice.FreezeLog
 import io.magicmobile.android.ondevice.OnDeviceHostUnavailable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -180,7 +183,11 @@ class OnDeviceSession(private val scope: CoroutineScope) {
     var isWorking by mutableStateOf(false); private set
     var isClosing by mutableStateOf(false); private set
     var status by mutableStateOf("Ready"); private set
-    var errorMessage by mutableStateOf<String?>(null); private set
+    private var errorState by mutableStateOf<String?>(null)
+    /** Each new error is a freeze-log breadcrumb. */
+    var errorMessage: String?
+        get() = errorState
+        private set(value) { if (value != null && value != errorState) FreezeLog.crumb("Error: $value"); errorState = value }
     var isAutoPassing by mutableStateOf(false); private set
     var autoPassStatus by mutableStateOf(""); private set
     /** Answer actions this game's engine accepts (its `answerActions` capability); empty on older engines. */
@@ -242,6 +249,10 @@ class OnDeviceSession(private val scope: CoroutineScope) {
     var fullControlTurn by mutableStateOf<Long?>(null); private set
     /** A local log line was added since the last snapshot: the next poll republishes even if the game didn't change. */
     private var logChanged = false
+    /** The freeze log's stall watch (docs/FREEZE_LOG.md): checked every 5 s while a game is on. */
+    private val stall = FreezeStallTracker()
+    private var stallJob: Job? = null
+    private var lastSnapshotCrumb: String? = null
 
     /** The stack is resolving shortly after this seat's own answer (OnDeviceLocalPollSchedule.CHAIN_MILLIS). */
     private val inStackChain: Boolean get() {
@@ -273,6 +284,9 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         refreshSequence = 0; appliedRefreshSequence = 0; isClosing = false
         messageLog = OnDeviceMessageLog()
         status = "Starting game"
+        stall.restart(uptime()); lastSnapshotCrumb = null
+        FreezeLog.crumb("Game attached (${table?.role?.name?.lowercase() ?: "solo"})"); FreezeLog.gameChanged()
+        if (autoPoll) beginStallWatch()
         try { refresh() } catch (error: Exception) {
             if (table != null && table.role == OnDeviceTableLink.Role.GUEST && error is OnDeviceHostUnavailable) {
                 // The poll loop retries the host a few times before giving up.
@@ -338,6 +352,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
                     snapshot = adapted
                 }
             }
+            if (!unchanged) noteProgress(next)
             messageLog = publishedLog
             poll = next
             observer?.invoke(next)
@@ -346,7 +361,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             table?.applied(next.revision)
             pending?.let { current ->
                 if (next.prompt?.id != current.prompt.id || next.prompt?.revision != current.prompt.revision) {
-                    pending = null
+                    pending = null; stall.answerLanded()
                     if (autoAbility == null) { pendingActionID = null; pendingCardID = null }
                 }
             }
@@ -410,7 +425,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         val owner = view["players"].array?.firstOrNull { it["playerId"].string == context.viewerID } ?: return null
         return OnDeviceSmartPass.Situation(context, view["step"].string, OnDeviceSmartPass.hasPlay(view), OnDeviceSmartPass.manaFloating(owner),
             OnDeviceSmartPass.topStackIsMine(poll?.snapshot, context.viewerID), OnDeviceSmartPass.hasResponse(view),
-            !context.emptyStack && (snapshot?.let(OnDeviceSmartPass::threatensViewer) ?: false))
+            !context.emptyStack && (snapshot?.let(OnDeviceSmartPass::threatensViewer) ?: false), OnDeviceSmartPass.hasAbilityResponse(view))
     }
 
     private fun smartPassPrompt(): OnDeviceYieldPolicy.Prompt? {
@@ -884,6 +899,8 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             responding = true
             waitingForPolls = false
             noteAction()
+            stall.answerSent(uptime())
+            FreezeLog.crumb("Sent ${pending.label} (${pending.prompt.kind})")
             client.respond(matchID, seatID, pending.prompt, pending.answer, pending.requestID)
             acknowledged = true
             responding = false
@@ -893,10 +910,10 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         } catch (error: Exception) {
             responding = false
             if (epoch == token && error !is CancellationException) {
-                errorMessage = error.message
+                if (!error.isLessonNudge) errorMessage = error.message
                 // An engine rejection is certain; a timeout or busy RPC is not: keep the exact request for retry.
                 if (!acknowledged && error is EngineError.Rejected && error.code != "rpc_busy") {
-                    this.pending = null; pendingActionID = null; pendingCardID = null
+                    this.pending = null; pendingActionID = null; pendingCardID = null; stall.answerLanded()
                     try { refresh() } catch (_: Exception) {}
                 }
             }
@@ -962,6 +979,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         smartPassJob?.cancel(); smartPassJob = null
         chosenAbility = null; heldAbilitySnapshot = null
         noteAction()
+        FreezeLog.crumb("Conceded")
         client.concede(matchID, seatID)
         // The engine retracted this seat's open question; nothing sent earlier can still apply.
         pending = null; pendingActionID = null; pendingCardID = null
@@ -991,6 +1009,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             refreshSequence = 0; appliedRefreshSequence = 0
             epoch = UUID.randomUUID(); client = null; matchID = null; seatID = null; poll = null; snapshot = null
             table = null; lastActionAt = null; observer = null
+            stallJob?.cancel(); stallJob = null; FreezeLog.gameEnded(); FreezeLog.crumb("Game closed")
             messageLog = OnDeviceMessageLog()
             this.closeEndpoint = null; pending = null; pendingActionID = null; pendingCardID = null; errorMessage = null; status = "Ready"
         } finally {
@@ -1000,6 +1019,8 @@ class OnDeviceSession(private val scope: CoroutineScope) {
 
     fun setForeground(value: Boolean) {
         if (isForeground != value) visibilityEpoch = UUID.randomUUID()
+        // Nothing polls in the background, so the game can't look stalled from time spent there.
+        if (value && !isForeground) stall.resumed(uptime())
         if (!value) { stopAutoPass(); smartPassJob?.cancel(); smartPassJob = null }
         isForeground = value
         if (value) beginPolling() else {
@@ -1102,6 +1123,56 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             return table == null && pending == null && abilityAutoAnswer?.isActive != true && !isAutoPassing && !responding &&
                 !reconnectsAutomatically && !prompt.submitted && poll?.phase != "starting"
         }
+
+    // MARK: Freeze log (docs/FREEZE_LOG.md)
+
+    /** The game moved: a new stall episode, and a breadcrumb when the turn, step or your prompt differs. */
+    private fun noteProgress(next: MatchPoll) {
+        stall.changed(uptime()); FreezeLog.gameChanged()
+        val shown = snapshot
+        val prompt = next.prompt?.takeIf { !it.submitted }?.kind ?: "none"
+        val line = "Snapshot: round ${shown?.displayTurn ?: 0} · ${shown?.step ?: shown?.phase ?: next.phase} · prompt $prompt"
+        if (line != lastSnapshotCrumb) { lastSnapshotCrumb = line; FreezeLog.crumb(line) }
+        FreezeLog.game = freezeContext()
+    }
+
+    private fun beginStallWatch() {
+        stallJob?.cancel()
+        stallJob = scope.launch {
+            while (isActive) {
+                delay(5_000)
+                if (client == null) break
+                FreezeLog.game = freezeContext()
+                if (!isForeground || isClosing) continue
+                val over = poll?.phase in setOf("ended", "failed", "closed") || snapshot?.isCompleted == true
+                val waitingOnYou = poll?.prompt?.submitted == false
+                val waitingOnPerson = table != null && snapshot?.waitingOnPersonID != null
+                stall.check(uptime(), true, over, waitingOnYou, table != null, waitingOnPerson)?.let { kind -> FreezeLog.record(kind) }
+            }
+        }
+    }
+
+    /** The game's lines for a freeze report: no names, deck lists or account details; prompt messages may name cards. */
+    fun freezeContext(): List<Pair<String, String>> = buildList {
+        val shown = snapshot
+        val prompt = poll?.prompt
+        val now = uptime()
+        add("Table" to (table?.role?.name?.lowercase() ?: "solo"))
+        add("Match" to "${poll?.phase ?: "none"} · revision ${poll?.revision ?: 0}")
+        if (shown != null) {
+            add("Round" to "${shown.displayTurn} (turn ${shown.turn}) · ${shown.phase}${shown.step?.let { " / $it" } ?: ""}")
+            add("Whose turn" to when { shown.activePlayerId == null -> "nobody"; shown.isViewer(shown.activePlayerId) -> "you"; else -> "opponent" })
+        }
+        add("Waiting on you" to if (prompt != null && !prompt.submitted)
+            "yes · ${prompt.kind} · ${(prompt.payload["message"].string ?: "").replace('\n', ' ').take(300)}" else "no")
+        add("Pending answer" to (pending?.label ?: "none"))
+        stall.answerPendingSeconds(now)?.let { add("Answer pending" to "${it.toInt()} s") }
+        add("Busy" to "working $isWorking · responding $responding · auto-pass ${if (isAutoPassing) autoPassStatus.ifEmpty { "on" } else "off"}" +
+            " · smart pass ${if (smartPass?.enabled == true) "on" else "off"}${if (fullControlTurn != null) " · full control" else ""}")
+        add("Status" to status.take(200))
+        errorMessage?.let { add("Error" to it.take(300)) }
+        add("Quiet" to "${stall.quietSeconds(now).toInt()} s")
+    }
 
     /** An answer or concede is on its way: a waiting guest polls promptly until it lands. */
     private fun noteAction() {

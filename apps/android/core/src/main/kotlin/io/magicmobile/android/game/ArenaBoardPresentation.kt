@@ -12,12 +12,14 @@ import kotlin.math.min
  */
 
 /** The glow border's tones (ArenaOutlineGlow.Tone): the web board's colours, the prototype's orange and gold, a shadow. */
-enum class ArenaGlowTone { PLAYABLE, PAYABLE, TARGET, SELECTED, ATTACKING, BLOCKING, SOURCE, SHADOW }
+enum class ArenaGlowTone { PLAYABLE, ABILITY, PAYABLE, TARGET, SELECTED, ATTACKING, BLOCKING, SOURCE, SHADOW }
 
 object ArenaCardLook {
     /** The Arena board's glow on a battlefield card: what you're choosing, attackers and blockers, then what you can use,
      *  orange while paying. Lands you could tap glow softer, so a full mana row doesn't shout. */
-    fun glow(card: ZoneCard, selected: Boolean, legal: Boolean, targetable: Boolean, paying: Boolean): Pair<ArenaGlowTone, Float>? {
+    fun glow(card: ZoneCard, selected: Boolean, legal: Boolean, targetable: Boolean, paying: Boolean,
+             /** A non-mana ability XMage would let you activate now (its canPlayObjects): the yellow glow. */
+             ability: Boolean = false): Pair<ArenaGlowTone, Float>? {
         if (card.isPhasedOut) return null
         if (selected) return ArenaGlowTone.SELECTED to 1f
         if (card.isAttacking == true) return ArenaGlowTone.ATTACKING to 1f
@@ -25,6 +27,7 @@ object ArenaCardLook {
         if (targetable) return ArenaGlowTone.TARGET to 1f
         if (!legal) return null
         if (paying) return ArenaGlowTone.PAYABLE to 1f
+        if (ability) return ArenaGlowTone.ABILITY to 0.95f
         return ArenaGlowTone.PLAYABLE to if (card.card.isLand) 0.65f else 0.85f
     }
 
@@ -301,6 +304,50 @@ object ArenaCornerText {
 }
 
 /** The Arena table's smaller readers. */
+/**
+ * The stack card can step aside (iOS ArenaStackTuck; Danny, 2026-10-26: sideways, the stack card covered what he wanted to
+ * tap). A tab on its left edge tucks it to the table's edge, a slim tab there brings it back, and it tucks itself while you
+ * pick something on the table. A tuck lasts for the spell or ability on top: the next one shows.
+ */
+object ArenaStackTuck {
+    /** [tuckedTop]: the top object the player tucked; [peekTop]: the one they brought back while picking. */
+    fun isTucked(top: String, tuckedTop: String?, peekTop: String?, picking: Boolean): Boolean =
+        peekTop != top && (tuckedTop == top || picking)
+}
+
+/**
+ * Where a target question's choices are when the table can't show them (iOS ArenaTargetReach; Caleb, 2026-10-28: Gogo
+ * copying Zur's attack trigger offered only abilities on the stack, so nothing could be tapped). Spells and abilities on
+ * the stack are chosen in the stack browser. With four players the board shows one opponent: when it offers nothing to
+ * choose and another opponent's permanents do, the board turns to that opponent.
+ */
+data class ArenaTargetReach(
+    /** Stack objects that can be chosen, the one that resolves next first. */
+    val stack: List<String>,
+    /** Opponents the board doesn't show whose permanents can be chosen, in seat order. */
+    val hiddenOpponents: List<String>,
+    /** Something on the table as shown can be chosen: a permanent on your side or the shown opponent's, or one of you. */
+    val onTable: Boolean,
+) {
+    /** The opponent to show for this question: the first hidden one with choices, when the table as shown has none. */
+    val opponentToShow: String? get() = if (onTable || stack.isNotEmpty()) null else hiddenOpponents.firstOrNull()
+
+    companion object {
+        fun of(snapshot: GameSnapshot, targetable: Set<String> = GameBoardInteractionState.boardTargetableIds(snapshot)): ArenaTargetReach {
+            if (targetable.isEmpty()) return ArenaTargetReach(emptyList(), emptyList(), false)
+            fun chosen(card: ZoneCard) = card.id in targetable || card.instanceId in targetable
+            val shown = listOfNotNull(snapshot.seat?.playerId, snapshot.opponent?.playerId)
+            val onTable = snapshot.players.any { player ->
+                player.playerId in shown && (player.playerId in targetable || player.zones.battlefield.any(::chosen))
+            }
+            val hidden = snapshot.players.filter { player ->
+                player.playerId !in shown && !snapshot.isViewer(player.playerId) && player.zones.battlefield.any(::chosen)
+            }.map { it.playerId }
+            return ArenaTargetReach(snapshot.stackTopFirst.map { it.id }.filter { it in targetable }, hidden, onTable)
+        }
+    }
+}
+
 object ArenaTableRules {
     /** The library's top card when it is revealed; the design fixtures' "Hidden card" placeholders stay face down. */
     fun revealedTop(player: PlayerGameState): ZoneCard? = player.zones.library.firstOrNull()?.takeIf { it.card.name != "Hidden card" }
