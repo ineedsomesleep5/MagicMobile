@@ -189,7 +189,7 @@ enum UpdateNews {
     static let messages: [UpdateNewsMessage] = [
         UpdateNewsMessage(id: "own-art", title: String(localized: "Your own card art"), day: 27,
                           art: "Zur the Enchanter", colors: ["W", "U", "B"],
-                          lede: String(localized: "Put your own picture on any card in Deck Studio. It fills the card's art box, and only you see it."),
+                          lede: String(localized: "Put your own picture on any card in Deck Studio. It becomes the whole card, follows you to every phone and browser you sign in on, and only you see it."),
                           notes: [
                             String(localized: "The art you chose shows from a game's first moment, without the default art swapping in."),
                             String(localized: "Smart Auto-Pass waits on your own trigger when you have an ability that can use it, like Gogo copying Zur's attack trigger."),
