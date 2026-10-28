@@ -269,7 +269,10 @@ fun MultiplayerD20View(roll: OnDeviceStartingRoll, seatNames: Map<String, String
                     // Header: leather in brass, the skip plaque riveted at its corner.
                     val headline = when {
                         playbackFinished && winnerName != null -> if (isLocalWinner) "You go first" else "$winnerName goes first"
-                        activeSeatID != null -> "${seatNames[activeSeatID] ?: "Player"} rolls"
+                        // The viewer's own seat (an AI table names it "You") reads "You roll", as on iOS.
+                        activeSeatID != null -> (seatNames[activeSeatID] ?: "Player").let { name ->
+                            if (activeSeatID == localSeatID || name == "You") "You roll" else "$name rolls"
+                        }
                         nextWaitingSeatID != null -> if (nextWaitingSeatID == localSeatID) "Your roll" else "${seatNames[nextWaitingSeatID] ?: "Player"}'s roll"
                         (shownRoundIndex ?: 0) > 0 -> "Tie. Roll again."
                         else -> "Who goes first?"
