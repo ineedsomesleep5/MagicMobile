@@ -341,7 +341,7 @@ fun CardArtwork(name: String, modifier: Modifier = Modifier, token:Boolean=false
     val context = LocalContext.current
     val consent = remember(Artwork.consentRevision){Artwork.enabled(context)}
     val choice = remember(name, token, art, ArtChoices.revision) { ArtChoices.resolve(name, art, token) }
-    // The player's own picture for this card (CustomCardArt) lies over the art box of whatever printing loads.
+    // The player's own picture for this card (CustomCardArt) is the whole card, at the size of whatever printing loads.
     val custom = CustomCardArt.revision
     var bitmap by remember(name, token, tokenIdentity, choice, custom) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(name, consent, token, tokenIdentity, choice, custom) {

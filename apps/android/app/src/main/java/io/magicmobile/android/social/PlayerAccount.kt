@@ -189,6 +189,8 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
     val rankedQueue: RankedQueueService? get() = if (phase == Phase.READY && username != null) SupabaseRankedQueue(api) else null
     /** Deck sync's server functions (docs/DECK_SYNC.md). */
     internal val deckSyncAPI: io.magicmobile.android.studio.DeckSyncAPI get() = SupabaseDeckSync(api)
+    /** Card picture sync's server calls (docs/CARD_ART_SYNC.md). */
+    internal val cardArtSyncAPI: io.magicmobile.android.studio.CardArtSyncAPI get() = SupabaseCardArtSync(api)
 
     /** The signed-in profile's id (the access token's `sub`) for deck sync; null until the profile is ready, and in fixtures and UI tests. */
     suspend fun profileID(): String? {
@@ -583,6 +585,36 @@ internal class SupabaseLite(context: Context) {
 
     suspend fun rpc(function: String, params: Map<String, JsonElement> = emptyMap()): String = call("$BASE/rest/v1/rpc/$function", params)
 
+    /**
+     * One file in Storage as the player (storage/v1/object/<bucket>/<path>): PUT uploads (replacing), GET answers the
+     * file, DELETE removes it. Card pictures (CardArtSync) are the only use.
+     */
+    suspend fun storage(method: String, objectPath: String, body: ByteArray? = null): ByteArray {
+        val token = accessToken()
+        val (status, bytes) = withContext(Dispatchers.IO) {
+            val connection = (URL("$BASE/storage/v1/object/$objectPath").openConnection() as HttpURLConnection).apply {
+                requestMethod = method; connectTimeout = 15_000; readTimeout = 30_000; useCaches = false
+                instanceFollowRedirects = false
+                setRequestProperty("apikey", PUBLISHABLE_KEY)
+                setRequestProperty("Authorization", "Bearer $token")
+                if (body != null) { doOutput = true; setRequestProperty("Content-Type", "image/jpeg"); setRequestProperty("x-upsert", "true") }
+            }
+            try {
+                body?.let { bytes -> connection.outputStream.use { it.write(bytes) } }
+                val status = connection.responseCode
+                val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+                status to (stream?.use { it.readBytes() } ?: ByteArray(0))
+            } finally { connection.disconnect() }
+        }
+        if (status == 401) session = session?.copy(expiresAt = 0)
+        if (status !in 200..299) {
+            val text = String(bytes)
+            val error = runCatching { ((Json.parseToJsonElement(text) as JsonObject)["error"] as? JsonPrimitive)?.contentOrNull }.getOrNull()
+            throw Failure(if (status == 413) "Payload too large" else error ?: errorCode(text) ?: if (status == 404) "not_found" else "error")
+        }
+        return bytes
+    }
+
     /** Calls the edge function functions/v1/[function] as the player (agora-token). */
     suspend fun invoke(function: String, params: Map<String, JsonElement> = emptyMap()): String = call("$BASE/functions/v1/$function", params)
 
@@ -761,6 +793,33 @@ internal class SupabaseDeckSync(private val api: SupabaseLite) : io.magicmobile.
         return io.magicmobile.android.studio.DeckSyncAPI.Deleted((answer["status"] as? JsonPrimitive)?.contentOrNull == "conflict",
             answer["deck"]?.takeIf { it !is JsonNull }?.let(::view))
     }
+}
+
+/** Card picture sync over mm_card_art_since / mm_card_art_set and the player's picture folder (supabaseCardArtSync in the web's cardArtSync.ts). */
+internal class SupabaseCardArtSync(private val api: SupabaseLite) : io.magicmobile.android.studio.CardArtSyncAPI {
+    private fun long(value: JsonElement?) = (value as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull
+    private fun art(value: JsonElement?): io.magicmobile.android.studio.ServerCardArt {
+        val row = value as? JsonObject ?: JsonObject(emptyMap())
+        return io.magicmobile.android.studio.ServerCardArt((row["cardKey"] as? JsonPrimitive)?.contentOrNull ?: "",
+            (row["picture"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull, long(row["changeSeq"]) ?: 0)
+    }
+    private suspend fun file(picture: String): String {
+        val user = api.userID() ?: throw SupabaseLite.Failure("not_signed_in")
+        return "custom-card-art/$user/$picture.jpg"
+    }
+
+    override suspend fun since(cursor: Long): io.magicmobile.android.studio.CardArtSyncAPI.Page {
+        val answer = Json.parseToJsonElement(api.rpc("mm_card_art_since", mapOf("p_cursor" to JsonPrimitive(cursor)))) as? JsonObject ?: JsonObject(emptyMap())
+        return io.magicmobile.android.studio.CardArtSyncAPI.Page((answer["arts"] as? JsonArray).orEmpty().map(::art),
+            long(answer["cursor"]) ?: cursor, (answer["more"] as? JsonPrimitive)?.booleanOrNull == true)
+    }
+
+    override suspend fun set(cardKey: String, picture: String?) =
+        art(Json.parseToJsonElement(api.rpc("mm_card_art_set", mapOf("p_card_key" to JsonPrimitive(cardKey), "p_picture" to (picture?.let(::JsonPrimitive) ?: JsonNull)))))
+
+    override suspend fun upload(picture: String, bytes: ByteArray) { api.storage("PUT", file(picture), bytes) }
+    override suspend fun download(picture: String): ByteArray = api.storage("GET", file(picture))
+    override suspend fun removeFile(picture: String) { api.storage("DELETE", file(picture)) }
 }
 
 internal class SupabaseFriendChallenges(private val api: SupabaseLite) : io.magicmobile.android.game.FriendChallengeService {

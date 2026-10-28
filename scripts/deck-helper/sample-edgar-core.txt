@@ -1,0 +1,90 @@
+Commander
+1 Edgar Markov
+
+Deck
+1 Anguished Unmaking
+1 Anointed Procession
+1 Anowon, the Ruin Sage
+1 Arcane Signet
+1 Baron Bertram Graywater
+1 Black Market Connections
+1 Blade of the Bloodchief
+1 Blood Artist
+1 Blood Crypt
+1 Blood Tribute
+1 Bloodletter of Aclazotz
+1 Bloodline Keeper
+1 Bojuka Bog
+1 Boros Charm
+1 Butcher of Malakir
+1 Captivating Vampire
+1 Caves of Koilos
+1 Champion of Dusk
+1 Charismatic Conqueror
+1 Clifftop Retreat
+1 Command Tower
+1 Cordial Vampire
+1 Crossway Troublemakers
+1 Cruel Celebrant
+1 Damn
+1 Dark Ritual
+1 Dragonskull Summit
+1 Drana, Liberator of Malakir
+1 Edgar, Charmed Groom
+1 Elenda, the Dusk Rose
+1 Evolving Wilds
+1 Exotic Orchard
+1 Exquisite Blood
+1 Forerunner of the Legion
+1 Godless Shrine
+1 Herald's Horn
+1 Indulgent Aristocrat
+1 Isolated Chapel
+1 Legion Lieutenant
+1 Legion's Landing
+1 Malakir Bloodwitch
+1 Markov Baron
+1 Master of Dark Rites
+1 Mavren Fein, Dusk Apostle
+1 Mortify
+1 New Blood
+1 Nomad Outpost
+1 Olivia's Wrath
+1 Orzhov Basilica
+1 Orzhov Signet
+1 Pact of the Serpent
+1 Path of Ancestry
+1 Path to Exile
+1 Patron of the Vein
+1 Phyrexian Arena
+1 Rakdos Signet
+1 Rakish Heir
+1 Ruinous Ultimatum
+1 Sacred Foundry
+1 Sanctum Seeker
+1 Secluded Courtyard
+1 Shared Animosity
+1 Shattered Sanctum
+1 Skullclamp
+1 Smoldering Marsh
+1 Sol Ring
+1 Sorin, Imperious Bloodlord
+1 Stensia Masquerade
+1 Stromkirk Captain
+1 Swords to Plowshares
+1 Talisman of Hierarchy
+1 Twilight Prophet
+1 Unclaimed Territory
+1 Vampire Nighthawk
+1 Vampire Socialite
+1 Vampire of the Dire Moon
+1 Vault of the Archangel
+1 Vengeful Bloodwitch
+1 Village Rites
+1 Viscera Seer
+1 Voldaren Estate
+1 Welcoming Vampire
+1 Yahenni, Undying Partisan
+3 Mountain
+5 Plains
+8 Swamp

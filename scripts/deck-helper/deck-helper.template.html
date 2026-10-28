@@ -1,0 +1,297 @@
+<title>MagicMobile Deck Helper</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Layout: one column; a sticky tab bar; screens of card images on Arena's dark glass. Single dark theme on purpose (Arena mode is dark glass). */
+:root {
+  color-scheme: dark;
+  --table: #120e0b;
+  --table-2: #1f1813;
+  --glass: rgba(24, 19, 16, 0.78);
+  --glass-2: rgba(38, 30, 25, 0.9);
+  --hair: rgba(250, 214, 134, 0.32);
+  --hair-strong: rgba(250, 214, 134, 0.6);
+  --ink: #f3ebdc;
+  --ink-2: rgba(243, 235, 220, 0.72);
+  --ink-3: rgba(243, 235, 220, 0.5);
+  --gold: #fad686;
+  --ember: #f47a1c;
+  --ember-hi: #ffb24a;
+  --ember-lo: #c9420d;
+  --cyan: #7ff0ff;
+  --good: #7fe0a6;
+  --warn: #ffd38a;
+  --bad: #ff5a2e;
+  --display: "Cormorant Garamond", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --sans: "Source Sans 3", "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+  background: radial-gradient(1200px 600px at 50% -10%, var(--table-2), var(--table) 70%) fixed, var(--table);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 14px 64px;
+}
+h1, h2, h3 { font-family: var(--display); font-weight: 700; margin: 0; text-wrap: balance; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
+h1 { font-size: 2.1rem; line-height: 1.05; }
+h2 { font-size: 1.5rem; color: var(--gold); }
+h3 { font-size: 1.2rem; }
+p { margin: 0; }
+a { color: var(--gold); }
+button { font: inherit; }
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 16px; }
+.lede { color: var(--ink-2); max-width: 64ch; margin-top: 4px; }
+.panel { background: var(--glass); border: 1px solid var(--hair); border-radius: 14px; padding: 16px 18px; box-shadow: 0 10px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.04); min-width: 0; }
+.eyebrow { display: block; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); margin-bottom: 6px; }
+.note { color: var(--ink-3); font-size: 12.5px; }
+.sub { color: var(--ink-2); font-size: 13.5px; }
+textarea, input[type=text], input[type=number], select { width: 100%; background: rgba(0,0,0,.35); color: var(--ink); border: 1px solid var(--hair); border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 14px; }
+textarea { min-height: 200px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.35; resize: vertical; }
+textarea:focus, input:focus, select:focus, button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.field { display: grid; gap: 4px; min-width: 0; flex: 1 1 160px; }
+.field.narrow { flex: 0 1 140px; }
+.btn { font-weight: 700; border-radius: 999px; padding: 9px 16px; cursor: pointer; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.06); color: var(--ink); }
+.btn.primary { font-family: var(--display); font-size: 1.15rem; padding: 9px 24px; color: #1a0d04; border: 1px solid rgba(255,196,120,.75); background: linear-gradient(180deg, var(--ember-hi), var(--ember) 55%, var(--ember-lo)); box-shadow: 0 0 18px rgba(244,122,28,.35), inset 0 1px 0 rgba(255,255,255,.45); }
+.btn.small { padding: 5px 12px; font-size: 13px; }
+.btn.tiny { padding: 3px 10px; font-size: 12px; }
+.btn.cut { border-color: rgba(255,90,46,.6); color: #ffb39e; }
+.btn.keep { border-color: rgba(127,240,255,.5); color: var(--cyan); }
+.btn.add { border-color: rgba(127,224,166,.6); color: var(--good); }
+.btn.on.cut { background: rgba(255,90,46,.25); } .btn.on.keep { background: rgba(127,240,255,.18); } .btn.on.add { background: rgba(127,224,166,.2); }
+.btn:disabled { opacity: .5; cursor: default; }
+.status { color: var(--ink-2); font-size: 13px; min-height: 1.3em; }
+.status.err { color: var(--bad); }
+details summary { cursor: pointer; color: var(--gold); font-weight: 600; }
+/* Intake */
+.intake-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 820px) { .intake-grid { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: start; } }
+.examples { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+/* Deck bar and tabs */
+.deckbar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.deckbar img { width: 64px; height: 64px; object-fit: cover; object-position: 50% 20%; border-radius: 50%; border: 2px solid var(--hair-strong); background: #2a221c; }
+.deckbar .who { min-width: 0; flex: 1 1 200px; }
+.deckbar .who h2 { font-size: 1.6rem; color: var(--ink); }
+.deckbar .read { color: var(--ink-2); font-size: 13.5px; }
+.tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; display: flex; gap: 8px; flex-wrap: wrap; padding: 8px 0; background: linear-gradient(180deg, var(--table) 70%, transparent); }
+.tab { border-radius: 999px; padding: 7px 16px; font-weight: 700; border: 1px solid rgba(255,255,255,.2); background: rgba(24,19,16,.9); color: var(--ink-2); cursor: pointer; }
+.tab[aria-selected="true"] { color: #1a0d04; border-color: rgba(255,196,120,.75); background: linear-gradient(180deg, var(--ember-hi), var(--ember) 55%, var(--ember-lo)); }
+.tab .n { font-variant-numeric: tabular-nums; opacity: .8; margin-left: 4px; }
+/* Overview */
+.hero { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 760px) { .hero { grid-template-columns: 200px minmax(0, 1fr); } }
+.hero .art { width: 100%; max-width: 200px; aspect-ratio: 63 / 88; border-radius: 4.75% / 3.5%; background: #2a221c; display: block; box-shadow: 0 10px 24px rgba(0,0,0,.5); }
+.headline { font-family: var(--display); font-size: 1.55rem; line-height: 1.2; }
+.numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+.num { background: var(--glass-2); border: 1px solid var(--hair); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.num .big { font-family: var(--display); font-size: 1.9rem; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; }
+.num .cap { color: var(--ink-2); font-size: 12.5px; margin-top: 4px; }
+.todo { display: grid; gap: 8px; }
+.todo .item { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--hair); border-radius: 12px; background: rgba(0,0,0,.22); }
+.todo .item .k { font-family: var(--display); font-size: 1.4rem; color: var(--gold); text-align: center; }
+.bars { display: grid; gap: 8px; }
+.bar { display: grid; grid-template-columns: 120px minmax(0,1fr) auto; gap: 10px; align-items: center; font-size: 14px; }
+.bar .track { height: 10px; background: rgba(255,255,255,.07); border-radius: 999px; position: relative; overflow: hidden; }
+.bar .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--gold); }
+.bar .fill.under { background: var(--warn); } .bar .fill.over { background: var(--bad); } .bar .fill.ok { background: var(--good); }
+.bar .target { position: absolute; top: -2px; bottom: -2px; width: 2px; background: rgba(255,255,255,.55); }
+.bar .num2 { font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 13px; white-space: nowrap; }
+.two { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.two > * { min-width: 0; }
+.curve { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; align-items: end; height: 110px; }
+.curve .col { display: grid; grid-template-rows: 1fr auto auto; height: 100%; gap: 3px; text-align: center; font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.curve .stick { align-self: end; background: linear-gradient(180deg, var(--gold), #b78b3a); border-radius: 4px 4px 0 0; min-height: 2px; }
+.pips { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px,1fr)); gap: 8px; }
+.pip { border: 1px solid var(--hair); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+.pip b { font-family: var(--display); font-size: 1.25rem; }
+.kv { display: grid; grid-template-columns: minmax(90px, auto) 1fr; gap: 4px 12px; font-size: 13.5px; }
+.kv dt { color: var(--ink-2); } .kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.chip { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--hair); color: var(--ink-2); margin: 2px 3px 2px 0; white-space: nowrap; }
+.chip.role { color: var(--gold); }
+.chip.gc { color: #1a0d04; background: var(--gold); border-color: var(--gold); }
+.chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); border-color: rgba(255,90,46,.5); } .chip.good { color: var(--good); border-color: rgba(127,224,166,.5); } .chip.keep { color: var(--cyan); border-color: rgba(127,240,255,.45); }
+/* Card grids */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 14px 12px; }
+.grid.small { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px 8px; }
+.cardc { min-width: 0; }
+.cardc .pic { position: relative; cursor: zoom-in; }
+.cardc img { width: 100%; aspect-ratio: 63 / 88; object-fit: cover; border-radius: 4.75% / 3.5%; display: block; background: #2a221c; box-shadow: 0 6px 16px rgba(0,0,0,.45); }
+.cardc.noimg img { display: none; }
+.cardc .ph { display: none; aspect-ratio: 63 / 88; border-radius: 4.75% / 3.5%; border: 1px solid var(--hair); background: linear-gradient(180deg, #2a221c, #1a1410); padding: 10px; font-family: var(--display); font-weight: 700; font-size: 1rem; line-height: 1.15; color: var(--ink); text-align: center; align-content: center; }
+.cardc.noimg .ph { display: grid; }
+.cardc .badge { position: absolute; bottom: 6px; left: 6px; font-family: var(--display); font-weight: 700; font-size: 1.05rem; line-height: 1; padding: 5px 8px; border-radius: 999px; background: rgba(0,0,0,.72); border: 1px solid var(--hair-strong); color: var(--gold); }
+.cardc .badge.bad { color: var(--bad); border-color: rgba(255,90,46,.6); } .cardc .badge.good { color: var(--good); border-color: rgba(127,224,166,.6); } .cardc .badge.keep { color: var(--cyan); border-color: rgba(127,240,255,.5); }
+.cardc .pill { position: absolute; right: 6px; bottom: 6px; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: rgba(0,0,0,.75); border: 1px solid var(--hair); color: var(--ink); }
+.cardc .name { font-weight: 700; font-size: 13.5px; margin-top: 6px; line-height: 1.2; }
+.cardc .why { font-size: 12px; color: var(--ink-2); line-height: 1.3; margin-top: 3px; }
+.cardc .why.edh { color: var(--ink-3); font-style: italic; }
+.cardc .acts { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.cardc.is-cut img { outline: 3px solid var(--bad); filter: saturate(.5) brightness(.8); }
+.cardc.is-keep img { outline: 3px solid var(--cyan); }
+.cardc.is-add img { outline: 3px solid var(--good); }
+.swap { display: grid; grid-template-columns: 120px 24px minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 0; border-top: 1px solid rgba(255,255,255,.08); }
+.swap .arrow { font-size: 22px; color: var(--gold); text-align: center; padding-top: 50px; }
+.swap .grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
+.strip .cardc { flex: 0 0 96px; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.08); vertical-align: middle; }
+th { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--gold); font-weight: 700; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+td img.thumb { width: 34px; height: 47px; object-fit: cover; border-radius: 3px; vertical-align: middle; margin-right: 8px; background: #2a221c; cursor: zoom-in; }
+tr.clickable:hover td { background: rgba(255,255,255,.04); }
+.lever { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.08); font-size: 14px; }
+.lever .d { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--good); white-space: nowrap; }
+.hand { display: flex; flex-wrap: wrap; gap: 8px; }
+.hand .cardc { width: 92px; }
+/* Zoom overlay */
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); z-index: 20; }
+.overlay .box { background: var(--glass-2); border: 1px solid var(--hair-strong); border-radius: 16px; padding: 16px; max-width: 720px; width: 100%; max-height: 100%; overflow: auto; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 640px) { .overlay .box { grid-template-columns: 260px minmax(0, 1fr); } }
+.overlay img { width: 100%; aspect-ratio: 63 / 88; border-radius: 4.75% / 3.5%; background: #2a221c; display: block; }
+.overlay .roles { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 8px; font-size: 13.5px; }
+.overlay .roles label { display: inline-flex; gap: 5px; align-items: center; }
+.copybox { width: 100%; min-height: 220px; }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: no-preference) { .btn.primary:hover { filter: brightness(1.06); } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Deck Helper</h1>
+    <p class="lede">Paste a Commander list and get a plain read on it: what it is, what to cut, what to add, and a better mana base. Rules and data only, no AI.</p>
+  </header>
+
+  <section class="panel" id="intake">
+    <div class="intake-grid">
+      <div>
+        <span class="eyebrow">Your list</span>
+        <textarea id="decklist" spellcheck="false" placeholder="1 Sol Ring&#10;1 Arcane Signet&#10;…&#10;&#10;Archidekt and Moxfield exports work. Put the commander under a “Commander” line or mark it *CMDR*."></textarea>
+      </div>
+      <div class="row" style="align-content:start">
+        <div class="field"><span class="eyebrow">Commander</span><input id="commander" type="text" placeholder="found from the list"></div>
+        <div class="field"><span class="eyebrow">Table</span>
+          <select id="mode"><option value="duel">MagicMobile (1 opponent)</option><option value="pod">Pod (3 opponents)</option></select></div>
+        <details style="flex:1 1 100%"><summary>More options</summary>
+          <div class="row" style="margin-top:8px">
+            <div class="field narrow"><span class="eyebrow">Cuts to suggest</span><input id="cutCount" type="number" min="1" max="40" placeholder="auto"></div>
+            <div class="field narrow"><span class="eyebrow">Commander strength</span><input id="cmdStrength" type="number" min="0" max="1" step="0.05" value="0.5"></div>
+            <div class="field"><span class="eyebrow">EDHREC</span><select id="edhMode"><option value="tie">Tie-breaker only</option><option value="off">Off: judge by my deck alone</option></select></div>
+          </div>
+          <p class="note" style="margin-top:6px">Cuts default to whatever gets the list to 100, or five ideas when it is already there. Commander strength is Deck Power's hand-set 0–1 for the "app AI" read.</p>
+        </details>
+        <div class="row" style="flex:1 1 100%">
+          <button class="btn primary" id="analyze">Read my deck</button>
+          <span class="examples"><span class="note">Try:</span><button class="btn small" id="exKrenko">Krenko</button><button class="btn small" id="exEdgar">Edgar</button></span>
+        </div>
+        <p class="status" id="status" style="flex:1 1 100%"></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel deckbar" id="deckbar" hidden>
+    <img id="deckArt" alt="" hidden>
+    <div class="who"><h2 id="deckName"></h2><p class="read" id="deckRead"></p></div>
+    <div class="row">
+      <button class="btn small" id="editList">Edit list</button>
+      <button class="btn small" id="copyList">Copy new list</button>
+      <span class="note" id="decisionNote"></span>
+    </div>
+  </section>
+
+  <nav class="tabs" id="tabs" role="tablist" hidden>
+    <button class="tab" role="tab" data-tab="overview" aria-selected="true">Overview</button>
+    <button class="tab" role="tab" data-tab="cuts">Cuts<span class="n" id="nCuts"></span></button>
+    <button class="tab" role="tab" data-tab="adds">Adds<span class="n" id="nAdds"></span></button>
+    <button class="tab" role="tab" data-tab="lands">Lands</button>
+    <button class="tab" role="tab" data-tab="cards">All cards</button>
+  </nav>
+
+  <main id="results" hidden>
+    <section data-screen="overview" class="wrap" style="gap:14px">
+      <div class="panel">
+        <div class="hero">
+          <div><img class="art" id="heroArt" alt=""></div>
+          <div>
+            <p class="headline" id="headline"></p>
+            <p class="sub" id="headlineSub" style="margin-top:6px"></p>
+            <div class="numbers" id="numbers"></div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Do this first</h2>
+        <div class="todo" id="todo" style="margin-top:10px"></div>
+      </div>
+      <div class="panel">
+        <h2>The shape of the deck</h2>
+        <p class="note" id="templateNote"></p>
+        <div class="bars" id="templateBars" style="margin-top:10px"></div>
+      </div>
+      <div class="two">
+        <div class="panel"><h2>Curve</h2><p class="note" id="curveNote"></p><div class="curve" id="curve" style="margin-top:10px"></div></div>
+        <div class="panel"><h2>Colors</h2><p class="note" id="manaNote"></p><div class="pips" id="pips" style="margin-top:10px"></div></div>
+      </div>
+      <div class="two">
+        <div class="panel"><h2>Fastest ways to get stronger</h2><p class="note">What one change would do to the Power read.</p><div id="levers" style="margin-top:6px"></div></div>
+        <div class="panel"><h2>What EDHREC knows</h2><dl class="kv" id="edhrec" style="margin-top:8px"></dl></div>
+      </div>
+      <div class="panel">
+        <h2>Sample hand</h2>
+        <div class="row" style="margin-top:8px"><button class="btn small" id="drawHand">Draw 7</button><button class="btn small" id="drawOne" disabled>Draw one</button><span class="status" id="handNote"></span></div>
+        <div class="hand" id="hand" style="margin-top:10px"></div>
+      </div>
+      <details class="panel"><summary>How the reads are made</summary><div id="howto" style="margin-top:8px"></div></details>
+    </section>
+
+    <section data-screen="cuts" class="wrap" style="gap:14px" hidden>
+      <div class="panel">
+        <h2 id="cutsTitle">Cuts</h2>
+        <p class="sub" id="cutNote" style="margin-top:4px"></p>
+        <div class="grid" id="cuts" style="margin-top:14px"></div>
+        <details style="margin-top:14px"><summary id="protectedSummary">Safe cards</summary><p class="note" style="margin:6px 0">Lands, and ramp, draw and removal while their counts are at or under target. Tap one to mark it anyway.</p><div class="strip" id="protected"></div></details>
+      </div>
+    </section>
+
+    <section data-screen="adds" class="wrap" style="gap:14px" hidden>
+      <div class="panel">
+        <h2>Adds</h2>
+        <p class="sub" id="upgradeNote" style="margin-top:4px"></p>
+        <div id="upgrades" style="margin-top:8px"></div>
+      </div>
+    </section>
+
+    <section data-screen="lands" class="wrap" style="gap:14px" hidden>
+      <div class="panel">
+        <h2>Lands</h2>
+        <p class="sub" id="landsNote" style="margin-top:4px"></p>
+        <h3 style="margin-top:16px">Tapped lands to swap</h3>
+        <div id="landsSwap"></div>
+      </div>
+      <div class="two">
+        <div class="panel"><h3>Untapped lands you don't run</h3><div class="grid small" id="landsAdd" style="margin-top:10px"></div></div>
+        <div class="panel"><h3>Utility lands for this plan</h3><div class="grid small" id="landsUtility" style="margin-top:10px"></div></div>
+      </div>
+      <div class="panel"><h3>Basics</h3><div id="landsBasics" style="margin-top:8px"></div></div>
+    </section>
+
+    <section data-screen="cards" class="wrap" style="gap:14px" hidden>
+      <div class="panel">
+        <h2>All cards</h2>
+        <p class="sub" style="margin-top:4px">Tap a card to see it big and fix its roles. Corrections rerun the read and stay in this browser.</p>
+        <div class="table-wrap" style="margin-top:8px"><table id="allCards"></table></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="overlay" id="overlay" hidden></div>
+
+<script>
+__SCRIPT__
+</script>

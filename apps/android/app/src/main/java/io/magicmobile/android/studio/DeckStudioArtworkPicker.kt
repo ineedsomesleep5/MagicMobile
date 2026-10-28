@@ -153,7 +153,7 @@ private fun Header(name: String, current: CardPrinting?, choose: (CardPrinting?)
         Text("The art you pick is saved with this card in this deck. It shows in the deck, on the board and in exports, and never changes the card's rules.",
             color = DeckStudioPalette.secondaryInk, style = sf(13f, design = SfDesign.SERIF))
         if (current != null) BinderPlaque(Modifier.testTag("deckStudio.artwork.default"), title = "Use the default artwork") { if (choose(null)) dismiss() }
-        // Your own picture fills this card's art box everywhere, on this device only; its rules stay the card's.
+        // Your own picture is this card's whole face everywhere, on every device signed in to your profile (CARD_ART_SYNC.md).
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             BinderPlaque(Modifier.testTag("deckStudio.artwork.custom"), title = if (custom) "Change my picture" else "Use my own picture") {
                 pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))

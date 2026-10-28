@@ -48,23 +48,28 @@ final class CardArtChoicesTests: XCTestCase {
         XCTAssertEqual(fetched.calls.last, ["Sol Ring \(c21.label)"])
     }
 
-    /// Your own picture fills the card's art box and leaves the rest of the card (its name, text and frame) alone.
-    func testACustomPictureFillsOnlyTheArtBox() throws {
-        func solid(_ width: Int, _ height: Int, _ red: CGFloat) -> CGImage {
+    /// Your own picture is the whole card face: a card-shaped picture covers every pixel, and a wider one keeps its middle.
+    func testACustomPictureCoversTheWholeCard() throws {
+        func image(_ width: Int, _ height: Int, middle: CGFloat, sides: CGFloat, sideWidth: Int = 0) -> CGImage {
             let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                                     space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-            context.setFillColor(red: red, green: 0, blue: 0, alpha: 1); context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            context.setFillColor(red: sides, green: 0, blue: 0, alpha: 1); context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            context.setFillColor(red: middle, green: 0, blue: 0, alpha: 1)
+            context.fill(CGRect(x: sideWidth, y: 0, width: width - 2 * sideWidth, height: height))
             return context.makeImage()!
         }
-        let card = try XCTUnwrap(CustomCardArt.compose(solid(100, 140, 0), picture: solid(30, 10, 1)))
-        func red(_ x: Int, _ y: Int) -> UInt8 {
-            let data = CFDataGetBytePtr(card.dataProvider!.data)!
-            return data[y * card.bytesPerRow + x * 4]
+        func red(_ card: CGImage, _ x: Int, _ y: Int) -> UInt8 {
+            CFDataGetBytePtr(card.dataProvider!.data)![y * card.bytesPerRow + x * 4]
         }
-        XCTAssertEqual(red(50, 50), 255, "inside the art box (y from the top)")
-        XCTAssertEqual(red(50, 10), 0, "the name line stays the card's")
-        XCTAssertEqual(red(50, 120), 0, "the rules text stays the card's")
-        XCTAssertEqual(red(3, 50), 0, "the frame stays the card's")
+        let printed = image(100, 140, middle: 0, sides: 0)
+        let card = try XCTUnwrap(CustomCardArt.compose(printed, picture: image(63, 88, middle: 1, sides: 1)))
+        for (x, y) in [(1, 1), (50, 10), (50, 50), (50, 120), (98, 138)] {
+            XCTAssertEqual(red(card, x, y), 255, "the picture covers (\(x), \(y)): name, art, rules and frame")
+        }
+        // 163 × 88: a card-shaped middle 63 wide, with 50 of something else on each side that must not show.
+        let wide = try XCTUnwrap(CustomCardArt.compose(printed, picture: image(163, 88, middle: 1, sides: 0, sideWidth: 50)))
+        XCTAssertEqual(red(wide, 2, 70), 255, "the card's left edge is the picture's middle")
+        XCTAssertEqual(red(wide, 97, 70), 255, "and so is its right edge")
     }
 
     func testWithoutAPlayingSavedDeckTheMostRecentlySavedDeckWinsAndNamesIgnoreCase() {

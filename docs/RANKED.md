@@ -32,7 +32,7 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 - Bronze, Silver, Gold, Platinum, Diamond in divisions IV–I, then Mythic. Four pips win a division.
 - Ladder option B (Caleb, 2026-10-15; docs/cloud/ladder-options.md): a win earns 2 pips in Bronze, Silver and Gold
   and 1 from Platinum; a loss costs nothing in Bronze and 1 pip elsewhere. A crushing loss against the AI (it still
-  had 30 of its 40 life, read from the game record) costs 2 (Caleb, 2026-10-26). A loss never takes you out of your
+  had 30 of its 40 life, read from the game record) costs 2 (Caleb, 2026-10-26), except in Platinum, where a win earns 1 and so does every loss cost (2026-10-28). A loss never takes you out of your
   tier (Mythic can fall back to Diamond, never below Diamond IV).
 - Bonus: +1 for a win with a deck below the tier's opponent brackets ("underdog"). The old third-win streak bonus is
   gone (two-pip wins replace it). Draws change nothing and end the streak.
@@ -44,9 +44,9 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 |---|---|---|---|
 | Bronze | 3–4 | 2 | 1 |
 | Silver | 4–5 | 2 | 2 |
-| Gold | 5–6 | 3 | 3 |
-| Platinum | 6–7 | 3 | 4 |
-| Diamond | 7–8 | 4 | 5 |
+| Gold | 6–7 | 3 | 3 |
+| Platinum | 6.75–7.75 | 3 | 4 |
+| Diamond | 7.5–8.5 | 4 | 5 |
 | Mythic | 8.5 | 4 | 6 |
 
 Since 2026-10-25 (docs/DECK_POWER.md) the AI brings the deck whose hidden Power is nearest the division's target, at

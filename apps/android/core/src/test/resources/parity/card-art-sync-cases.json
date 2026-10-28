@@ -1,0 +1,359 @@
+{
+  "about": "Card picture sync (docs/CARD_ART_SYNC.md), run by iOS CardArtSyncTests, Android CardArtSyncTest and web cardArtSync.test.ts against a fake server. A picture is named by its hash; the fake's bytes are that name. `server` lists rows in change order (null is a removed picture); `files` are the pictures uploaded to the player's folder. After one sync the device, the server rows and the files must match `expect`. The device syncs as account \"me\"; a record without an account is taken as \"me\". The server starts with the files its rows point at; `refuse` names a card whose set the server refuses with too_many_pictures.",
+  "cases": [
+    {
+      "name": "a picture set here goes up",
+      "record": {
+        "cursor": 0,
+        "synced": {},
+        "removed": []
+      },
+      "local": {
+        "gojo": "p1"
+      },
+      "server": [],
+      "expect": {
+        "local": {
+          "gojo": "p1"
+        },
+        "server": {
+          "gojo": "p1"
+        },
+        "files": [
+          "p1"
+        ],
+        "synced": {
+          "gojo": "p1"
+        }
+      }
+    },
+    {
+      "name": "a picture set on another device comes down",
+      "record": {
+        "cursor": 0,
+        "synced": {},
+        "removed": []
+      },
+      "local": {},
+      "server": [
+        {
+          "cardKey": "gojo",
+          "picture": "p2"
+        }
+      ],
+      "expect": {
+        "local": {
+          "gojo": "p2"
+        },
+        "server": {
+          "gojo": "p2"
+        },
+        "files": [
+          "p2"
+        ],
+        "synced": {
+          "gojo": "p2"
+        }
+      }
+    },
+    {
+      "name": "removed on another device, unchanged here: removed here too",
+      "record": {
+        "cursor": 0,
+        "synced": {
+          "gojo": "p1"
+        },
+        "removed": []
+      },
+      "local": {
+        "gojo": "p1"
+      },
+      "server": [
+        {
+          "cardKey": "gojo",
+          "picture": null
+        }
+      ],
+      "expect": {
+        "local": {},
+        "server": {
+          "gojo": null
+        },
+        "files": [],
+        "synced": {}
+      }
+    },
+    {
+      "name": "removed on another device, changed here: this device's picture wins",
+      "record": {
+        "cursor": 0,
+        "synced": {
+          "gojo": "p1"
+        },
+        "removed": []
+      },
+      "local": {
+        "gojo": "p3"
+      },
+      "server": [
+        {
+          "cardKey": "gojo",
+          "picture": null
+        }
+      ],
+      "expect": {
+        "local": {
+          "gojo": "p3"
+        },
+        "server": {
+          "gojo": "p3"
+        },
+        "files": [
+          "p3"
+        ],
+        "synced": {
+          "gojo": "p3"
+        }
+      }
+    },
+    {
+      "name": "changed on another device, unchanged here: takes the new picture",
+      "record": {
+        "cursor": 0,
+        "synced": {
+          "gojo": "p1"
+        },
+        "removed": []
+      },
+      "local": {
+        "gojo": "p1"
+      },
+      "server": [
+        {
+          "cardKey": "gojo",
+          "picture": "p2"
+        }
+      ],
+      "expect": {
+        "local": {
+          "gojo": "p2"
+        },
+        "server": {
+          "gojo": "p2"
+        },
+        "files": [
+          "p2"
+        ],
+        "synced": {
+          "gojo": "p2"
+        }
+      }
+    },
+    {
+      "name": "changed on both: this device's picture wins and the other's file goes",
+      "record": {
+        "cursor": 0,
+        "synced": {
+          "gojo": "p1"
+        },
+        "removed": []
+      },
+      "local": {
+        "gojo": "p3"
+      },
+      "server": [
+        {
+          "cardKey": "gojo",
+          "picture": "p2"
+        }
+      ],
+      "expect": {
+        "local": {
+          "gojo": "p3"
+        },
+        "server": {
+          "gojo": "p3"
+        },
+        "files": [
+          "p3"
+        ],
+        "synced": {
+          "gojo": "p3"
+        }
+      }
+    },
+    {
+      "name": "a picture removed here goes, with its file",
+      "record": {
+        "cursor": 0,
+        "synced": {},
+        "removed": [
+          {
+            "cardKey": "gojo",
+            "picture": "p1"
+          }
+        ]
+      },
+      "local": {},
+      "server": [
+        {
+          "cardKey": "gojo",
+          "picture": "p1"
+        }
+      ],
+      "expect": {
+        "local": {},
+        "server": {
+          "gojo": null
+        },
+        "files": [],
+        "synced": {}
+      }
+    },
+    {
+      "name": "removed here but changed on another device meanwhile: the new picture comes back",
+      "record": {
+        "cursor": 0,
+        "synced": {},
+        "removed": [
+          {
+            "cardKey": "gojo",
+            "picture": "p1"
+          }
+        ]
+      },
+      "local": {},
+      "server": [
+        {
+          "cardKey": "gojo",
+          "picture": "p2"
+        }
+      ],
+      "expect": {
+        "local": {
+          "gojo": "p2"
+        },
+        "server": {
+          "gojo": "p2"
+        },
+        "files": [
+          "p2"
+        ],
+        "synced": {
+          "gojo": "p2"
+        }
+      }
+    },
+    {
+      "name": "another profile starts over: every picture here joins it, nothing is deleted",
+      "record": {
+        "account": "someone-else",
+        "cursor": 9,
+        "synced": {
+          "gojo": "p1"
+        },
+        "removed": [
+          {
+            "cardKey": "zur",
+            "picture": "p9"
+          }
+        ]
+      },
+      "local": {
+        "gojo": "p1",
+        "zur the enchanter": "p5"
+      },
+      "server": [],
+      "expect": {
+        "local": {
+          "gojo": "p1",
+          "zur the enchanter": "p5"
+        },
+        "server": {
+          "gojo": "p1",
+          "zur the enchanter": "p5"
+        },
+        "files": [
+          "p1",
+          "p5"
+        ],
+        "synced": {
+          "gojo": "p1",
+          "zur the enchanter": "p5"
+        }
+      }
+    },
+    {
+      "name": "a picture the server refuses stays here and the rest still go up",
+      "record": {
+        "cursor": 0,
+        "synced": {},
+        "removed": []
+      },
+      "local": {
+        "refused": "p7",
+        "gojo": "p1"
+      },
+      "server": [],
+      "refuse": "refused",
+      "expect": {
+        "local": {
+          "refused": "p7",
+          "gojo": "p1"
+        },
+        "server": {
+          "gojo": "p1"
+        },
+        "files": [
+          "p1"
+        ],
+        "synced": {
+          "gojo": "p1"
+        }
+      }
+    },
+    {
+      "name": "removing one of two cards with the same picture keeps the file",
+      "record": {
+        "cursor": 0,
+        "synced": {
+          "gojo": "p1"
+        },
+        "removed": [
+          {
+            "cardKey": "zur",
+            "picture": "p1"
+          }
+        ]
+      },
+      "local": {
+        "gojo": "p1"
+      },
+      "server": [
+        {
+          "cardKey": "gojo",
+          "picture": "p1"
+        },
+        {
+          "cardKey": "zur",
+          "picture": "p1"
+        }
+      ],
+      "expect": {
+        "local": {
+          "gojo": "p1"
+        },
+        "server": {
+          "gojo": "p1",
+          "zur": null
+        },
+        "files": [
+          "p1"
+        ],
+        "synced": {
+          "gojo": "p1"
+        }
+      }
+    }
+  ]
+}

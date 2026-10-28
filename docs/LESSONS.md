@@ -21,6 +21,12 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-28 (Claude, card picture sync): the phones named custom card pictures by a hash of the card key, so the
+  files alone can't say which cards have pictures, and iOS hashed `"card:" + full name` while Android hashed the name
+  and the web keyed by front face. **Rule:** the card key is the front face, trimmed, lower case on every platform
+  (`CustomCardArt.cardKey`, web `artKey`); the phones keep `index.json` of keys beside the files. A new Supabase
+  Storage bucket needs its own `storage.objects` policies (none exist by default). Where: docs/CARD_ART_SYNC.md.
+
 - 2026-10-27 (Claude, stack tab): in `board/ArenaBoardViews.kt` the imported `testTag` is the semantics property
   (`androidx.compose.ui.semantics.testTag`), so `Modifier.testTag(...)` there fails to compile ("cannot be invoked as a
   function"). **Rule:** set it inside `.semantics { testTag = ... }` in that file. Where: `ArenaStackTab`.
@@ -915,6 +921,12 @@ contradicting one.
   backs and mana symbols are served from the site (`public/arena/card-back.jpg`, `public/symbols`) because filtered
   networks block `backs.scryfall.io`/`svgs.scryfall.io`, and Recent games read every device's games through
   `mm_my_games` (the record of each device was local only).
+- 2026-10-24 (Claude, web board lean): `ArenaTableLeanEffect` on iOS asks for a perspective lean converging on the
+  screen's centre, but the iPhone draws every battlefield tile as an exact rectangle, only shorter by cos 22° (row-by-row
+  edge scans of a 3× capture). The web copied the code, not the picture: `perspective()` with the origin under the board's
+  centre sheared cards near the table's edges by about 10°. Caleb wanted the iOS look, so the web lean is now
+  `rotateX(22deg)` with no perspective (`leanTransform` in `apps/web/src/ui/arena/layout.ts`). When porting a 3D effect,
+  measure the shipped screen rather than trusting the call; a SwiftUI render of the same call on its own does shear.
 - 2026-10-24 (Claude, download site "Hall and Cut"): two quiet traps. (1) A Scroll Craft `pan` act moves its rail by
   `p` in the engine's frame; correcting that rail from a second layer in your own rAF (to hold at each exhibit) lands a
   frame apart, so the walk shakes side to side when scrolled. Pin the act instead and set the rail's one transform from
@@ -1016,3 +1028,43 @@ contradicting one.
     (`expect` = the answer) over a lesson file temporarily, open it with `MAGICMOBILE_UI_TEST_LESSON` (iOS) or the
     Lessons list (Android, web), then `git checkout` the lesson file. A simulator build needs ad-hoc signing
     (`CODE_SIGN_IDENTITY=-`): with `CODE_SIGNING_ALLOWED=NO` dyld refuses the unsigned Agora frameworks at launch.
+- 2026-10-20 (Claude, web engine research): GraalVM Web Image (Oracle GraalVM 25.4, `--tool:svm-wasm`) runs Java on
+  one thread and fails quietly. `Thread.start()` returns without running anything, and `Object.wait`/`Thread.sleep`
+  return at once, so a wait loop spins forever. A task on a thread pool fails with `IllegalThreadStateException`. Java
+  serialization prints "Detected off-heap memory access" and hits a Wasm `unreachable` trap that kills the instance;
+  it is not a catchable exception. Reflection on final fields and Gson work. **Rule:** a web engine build makes thread
+  starts fail loudly and keeps checkpoint code out, including the `capabilities` save/resume self-test. Also, GitHub
+  release assets send no CORS headers, so a web page cannot fetch them. Oracle's `latest/…tar.gz.sha256` links return
+  404; check the download's Developer ID signature instead. Where: docs/WEB_ENGINE_OPTIONS.md.
+- 2026-10-26 (Claude, deck helper): Deck Power (`docs/DECK_POWER.md`, `scripts/ranked/deck_power.py`,
+  `deck-power-weights.json`) lives on `main`; feature branches cut before 2026-10-25 (`claude/arena-mode`) have none
+  of it, so read it with `git show origin/main:…` instead of concluding it is unbuilt. A claude.ai artifact page
+  cannot call Scryfall (or any host) at run time: the sandbox's CSP blocks `fetch` with a bare "Failed to fetch",
+  even though Scryfall itself allows CORS. **Rule:** build card data ahead of time and publish it as files beside
+  the page (`files:`), fetched by relative URL; the bulk endpoint now gives `jsonl_download_uri` (gzipped JSONL, no
+  `download_uri`), and Node scripts calling Scryfall must send a `User-Agent` or get 400. The `youtube-watch`
+  skill's "cloud can't reach YouTube" note does not apply to a desktop session on the Mac: `yt-dlp` and
+  `youtube_transcript_api` run straight from Bash. Where: `docs/DECK_HELPER.md`, the Deck Helper artifact.
+- 2026-10-26 (Claude, EDHREC data): `json.edhrec.com/pages/commanders.json` answers 403, but
+  `commanders/year.json` (past two years) works and paginates through `more` → `commanders/year-past2years-N.json`,
+  whose pages are a bare `{cardviews, more, total_pages}` object instead of the first page's
+  `container.json_dict.cardlists`. Commander pages (`commanders/<slug>.json`) give `num_decks`/`potential_decks`
+  and `synergy` per card by category, plus average type counts and `tag_counts`. About 2 s per page with the 0.6 s
+  pause, so 1,700 commanders is an hour: cache everything (`fetch-edhrec.py` resumes). Scryfall's new oracle
+  templating says "this land"/"this creature", not the card's name: patterns anchored on the name miss shock lands
+  ("As this land enters, you may pay 2 life") and read "land enters" as landfall. Where: `scripts/deck-helper/`.
+- 2026-10-26 (Claude, deck helper UI): the artifact sandbox also blocks outside images, so card art from
+  `cards.scryfall.io` (URL from the Scryfall id: `/small/front/<a>/<b>/<id>.jpg`) only shows when the same page is
+  served locally; `.claude/launch.json` + `preview_start` does that in the desktop app's browser pane, but a
+  `runtimeArgs` port is not rewritten when the configured port is busy (the pane picks another and sets `$PORT`), so
+  the server script must read `PORT` (`scripts/deck-helper/serve.py`). Where: docs/DECK_HELPER.md.
+- 2026-10-26 (Claude, Arena promo capture): (1) Simulator builds have no rules engine (`XMAGE_NATIVE_LINKED` is
+  device-only), so promo footage comes from design-preview fixtures: `board-fx` walkthrough (autoplay, 3.6 s steps),
+  `opening-hand`, `victory`, and `MAGICMOBILE_STARTING_ROLL_FIXTURE=1`, which needs a tap for each seat. The Arena board
+  draws its own "DEVELOPMENT FIXTURE · NO ENGINE" pill (`NativeGameView`), and two-seat fixtures have no commanders, so
+  both medallions show "?". The local capture patch (worktree `MagicMobile-promo-arena`, never committed) hides the
+  pill, adds commanders and auto-rolls. (2) `simctl launch --stdout=<file>` stays block-buffered until the app exits,
+  so the MMSTEP/MMSOUND log came out empty. Use `--console-pty` in the background. (3) After a simulator cold boot,
+  `recordVideo` starts about 2 s late and the first card art can flash a placeholder. Warm the simulator with one run
+  first. (4) Real AI games title the roll "You rolls" (`MultiplayerD20View` appends "rolls" to the seat name "You"). The
+  scripts and sync tool live in the private repo ineedsomesleep5/magicmobile-promo (`capture/`). (4) is fixed on PR 247.

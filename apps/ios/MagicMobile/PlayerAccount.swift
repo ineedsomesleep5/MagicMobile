@@ -320,6 +320,9 @@ final class PlayerAccount: ObservableObject {
     /// Deck sync's server calls (docs/DECK_SYNC.md) over this account's client.
     var deckSyncAPI: DeckSyncAPI { SupabaseDeckSync(api: api) }
 
+    /// Card picture sync's server calls (docs/CARD_ART_SYNC.md) over this account's client.
+    var cardArtSyncAPI: CardArtSyncAPI { SupabaseCardArtSync(api: api) }
+
     /// The signed-in profile's id that deck sync keeps its record for; nil until the account is ready, and on fixtures.
     func deckSyncProfile() async -> String? {
         guard phase == .ready else { return nil }
@@ -765,6 +768,29 @@ final class SupabaseLite: @unchecked Sendable {
 
     func rpc(_ function: String, _ params: [String: Any] = [:]) async throws -> Data {
         try await post("rest/v1/rpc/\(function)", params)
+    }
+
+    /// One file in Storage as the player (storage/v1/object/<bucket>/<path>): PUT uploads (replacing), GET answers the
+    /// file, DELETE removes it. Card pictures (CardArtSync) are the only use.
+    func storage(_ method: String, _ objectPath: String, body: Data? = nil) async throws -> Data {
+        var request = URLRequest(url: Self.baseURL.appendingPathComponent("storage/v1/object/" + objectPath))
+        request.httpMethod = method
+        request.timeoutInterval = 30
+        request.setValue(Self.publishableKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+        if let body {
+            request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+            request.setValue("true", forHTTPHeaderField: "x-upsert")
+            request.httpBody = body
+        }
+        let (data, response) = try await urlSession.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 401 { lock.withLock { session?.expiresAt = .distantPast } }
+        guard (200..<300).contains(status) else {
+            let error = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+            throw Failure(code: status == 413 ? "Payload too large" : error ?? Self.errorCode(data) ?? (status == 404 ? "not_found" : "error"))
+        }
+        return data
     }
 
     /// A voice chat token for one seat of one game (the agora-token edge function; VoiceRoom).

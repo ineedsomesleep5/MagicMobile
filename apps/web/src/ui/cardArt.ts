@@ -5,7 +5,7 @@
  */
 import { createElement, useEffect, useState } from "react";
 import { artKey, type ChosenPrinting } from "../core/artChoices";
-import { composedCardURL, customPictureURL, hasCustomArt } from "./customArt";
+import { composedCardURL, customArtCropURL, hasCustomArt } from "./customArt";
 import type { DeckResolver } from "../core/deckResolver";
 import { tokenArtworkName } from "../core/gameStats";
 import type { CardIdentity, TokenArtworkIdentity, ZoneCard } from "../core/models";
@@ -34,12 +34,11 @@ const printedImageURL = (name: string, version: ArtVersion): string => {
   return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(front)}&format=image&version=${version}`;
 };
 
-/** A card's picture: with your own picture (customArt.ts) the art crop is that picture, and the full card wears it. */
+/** A card's picture: with your own picture (customArt.ts) the whole card is that picture, and the art crop its art box. */
 export const cardImageURL = (name: string, version: ArtVersion): string => {
   const printed = printedImageURL(name, version);
   if (!hasCustomArt(name)) return printed;
-  if (version === "art_crop") return customPictureURL(name) ?? printed;
-  return composedCardURL(name, version, printed) ?? printed;
+  return (version === "art_crop" ? customArtCropURL(name) : composedCardURL(name, version)) ?? printed;
 };
 
 /**
