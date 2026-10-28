@@ -301,8 +301,9 @@ function App() {
               <details>
                 <summary>What to expect from the alpha</summary>
                 <p>
-                  Android build 45 lets you put your own picture on any card in Deck Studio, and has voice chat at online tables:
-                  tap the mic under the gear to talk with the other players, with Push to Talk in the audio settings. Tables keep going when a player leaves, and the leaderboard and profile show
+                  Android build 46 adds five short lessons with Maren that teach Commander on the real board, from How to Play.
+                  You can put your own picture on any card in Deck Studio, and talk with the other players at online tables
+                  with the mic under the gear. Tables keep going when a player leaves, and the leaderboard and profile show
                   more of your games. AI opponents match your rank, and your decks stay in
                   sync across every phone signed in to the same profile. Arena stays the default board, with Hearth in Options. It keeps the lighter engine from
                   build 31. Android is an early alpha; physical-phone acceptance is still pending.
