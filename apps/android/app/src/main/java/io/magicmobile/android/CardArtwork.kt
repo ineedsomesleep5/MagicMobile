@@ -341,11 +341,17 @@ fun CardArtwork(name: String, modifier: Modifier = Modifier, token:Boolean=false
     val context = LocalContext.current
     val consent = remember(Artwork.consentRevision){Artwork.enabled(context)}
     val choice = remember(name, token, art, ArtChoices.revision) { ArtChoices.resolve(name, art, token) }
-    var bitmap by remember(name, token, tokenIdentity, choice) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(name, consent, token, tokenIdentity, choice) {
+    // The player's own picture for this card (CustomCardArt) lies over the art box of whatever printing loads.
+    val custom = CustomCardArt.revision
+    var bitmap by remember(name, token, tokenIdentity, choice, custom) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(name, consent, token, tokenIdentity, choice, custom) {
         val chosenKey = choice?.let(::printingArtKey)
+        fun own(card: Bitmap) = if (token) card else CustomCardArt.overlay(context, name, card)
         Artwork.downloadChanges.onStart{emit("")}.filter{it.isEmpty()||Artwork.matchesDownload(context,it,name,token,tokenIdentity,chosenKey)}.collectLatest{
-            bitmap = try { Artwork.load(context, name, token, tokenIdentity, choice){cached->withContext(Dispatchers.Main){bitmap=cached}} } catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){bitmap}
+            bitmap = try {
+                Artwork.load(context, name, token, tokenIdentity, choice){cached->val shown=withContext(Dispatchers.IO){own(cached)};withContext(Dispatchers.Main){bitmap=shown}}
+                    ?.let { withContext(Dispatchers.IO) { own(it) } }
+            } catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){bitmap}
         }
     }
     Box(modifier.background(Color(0xFFEDE7DC)), contentAlignment = Alignment.Center) {

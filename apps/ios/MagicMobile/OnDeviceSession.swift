@@ -461,7 +461,8 @@ final class OnDeviceSession: ObservableObject {
         return .init(context: context, step: view["step"]?.string, hasPlay: OnDeviceSmartPass.hasPlay(view), manaFloating: floating,
                      topStackIsMine: OnDeviceSmartPass.topStackIsMine(root, viewer: context.viewerID),
                      hasResponse: OnDeviceSmartPass.hasResponse(view),
-                     threatensMe: !context.emptyStack && (snapshot.map(OnDeviceSmartPass.threatensViewer) ?? false))
+                     threatensMe: !context.emptyStack && (snapshot.map(OnDeviceSmartPass.threatensViewer) ?? false),
+                     hasAbilityResponse: OnDeviceSmartPass.hasAbilityResponse(view))
     }
 
     /// Passes this seat's ordinary priority when it has nothing to play, or nothing it stops for.

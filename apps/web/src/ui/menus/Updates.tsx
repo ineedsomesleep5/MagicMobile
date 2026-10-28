@@ -12,6 +12,12 @@ import { Caps, PanelHeader } from "./kit";
 interface Message { id: string; title: string; day: number; art: string; colors: string[]; lede: string; notes: string[] }
 
 const MESSAGES: Message[] = [
+  { id: "own-art", title: "Your own card art", day: 27, art: "Zur the Enchanter", colors: ["W", "U", "B"],
+    lede: "Put your own picture on any card: open it in Deck Studio and choose Use my own picture. It fills the card's art box, and only you see it.",
+    notes: ["The art chosen for each card in your decks now shows on the web board too.",
+      "The art you chose shows from a game's first moment, without the default art swapping in.",
+      "Smart Auto-Pass waits on your own trigger when you have an ability that can use it, like Gogo copying Zur's attack trigger.",
+      "The starting roll says \"You roll\" when it's your turn to roll."] },
   { id: "web-arena", title: "MagicMobile on your desktop", day: 23, art: "The Ur-Dragon", colors: ["W", "U", "B", "R", "G"],
     lede: "The browser game now opens on Arena's menus: Play, your deck boxes, the Custom Table, Ranked and Options, over the tavern room.",
     notes: ["Quick Match picks an AI at your deck's bracket, or the bracket, deck and skill you choose.", "Ranked against the AI moves your rank in this browser, from Bronze to Mythic.",

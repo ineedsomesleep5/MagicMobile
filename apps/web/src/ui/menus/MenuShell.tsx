@@ -6,6 +6,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AIDeckPool, type AIDeck, playerDeckID } from "../../core/aiDeckPool";
+import { chosenPrintings } from "../../core/artChoices";
+import { setChosenArt } from "../cardArt";
 import { appConfig } from "../../core/appConfig";
 import { BracketRules, type BracketRulesFile, CommanderBracket, DeckBracketPreference } from "../../core/brackets";
 import { loadCatalogue } from "../../core/deckStudio/catalogue";
@@ -198,6 +200,11 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
     return saved && deckFor(saved) ? saved : firstPreconID;
   });
   const deck = deckFor(selectedDeckID);
+  // The board draws the art chosen in Deck Studio: the playing deck's first, then the other saved decks'.
+  useEffect(() => {
+    const playing = library.decks.find((r) => DeckLibraryRecord.selectionID(r) === selectedDeckID)?.id;
+    setChosenArt(chosenPrintings(library.decks, playing));
+  }, [library, libraryVersion, selectedDeckID]);
   const deckBracket = deck?.bracket;
   const [mode, setMode] = useStored<ArenaPlayMode>("mm.web.play.mode", () => (["quick", "ranked", "custom"].includes(read("mm.web.play.mode", "")) ? read("mm.web.play.mode", "") : "quick") as ArenaPlayMode);
   const [tab, setTab] = useState<PlayTab>("find");

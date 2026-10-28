@@ -65,6 +65,7 @@
 		21269569794F06AAB3815571 /* DeckStudioPlaytestStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49FED4AF9E62808A6FB79605 /* DeckStudioPlaytestStore.swift */; };
 		23F08D3028443E6C6DD8E4CF /* RankCeremonyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0CC72F335BF135375487C /* RankCeremonyView.swift */; };
 		2569C98BD1FBA5565C1A6372 /* OnDeviceBoardIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1280DE929C3D03FB11B33A1C /* OnDeviceBoardIdentityTests.swift */; };
+		26D2C479D3FB951658732610 /* CustomCardArt.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00998378645AD569E1BF645 /* CustomCardArt.swift */; };
 		279961B648C10EF650644D7A /* OnDeviceSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F134EEE83531B994E0FDA7CB /* OnDeviceSessionTests.swift */; };
 		27D62C6B1AB91780257B99E3 /* PerformanceAwarenessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 405350A3E38F3BC129AFE39D /* PerformanceAwarenessTests.swift */; };
 		280938894FB608D6BDB0A1B6 /* FreezeLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC507E0496BEEFB0615ABBF2 /* FreezeLog.swift */; };
@@ -707,6 +708,7 @@
 		AF04C728E3FDD4D863CF1E8F /* menu-play.m4a */ = {isa = PBXFileReference; path = "menu-play.m4a"; sourceTree = "<group>"; };
 		AF2BF576C58D03A13D3B9371 /* OnDeviceStartingPlayerChoiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceStartingPlayerChoiceTests.swift; sourceTree = "<group>"; };
 		AF6412CDA51E55EFA3FAE3AF /* DeckStudioAnalysisView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioAnalysisView.swift; sourceTree = "<group>"; };
+		B00998378645AD569E1BF645 /* CustomCardArt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomCardArt.swift; sourceTree = "<group>"; };
 		B027E570ED728E99BAF998FC /* GameEmotes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameEmotes.swift; sourceTree = "<group>"; };
 		B09B222AF98E5CB01A89C03F /* creature-rat.m4a */ = {isa = PBXFileReference; path = "creature-rat.m4a"; sourceTree = "<group>"; };
 		B185C53A91B6851F26E4D1CD /* DeckStudioPreflightTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioPreflightTests.swift; sourceTree = "<group>"; };
@@ -1007,6 +1009,7 @@
 				DB256B23D97ABD7E060D8B13 /* ComboLoop.swift */,
 				E612F0AA91F51A9F427C3B5F /* ComboLoopViews.swift */,
 				E170200DA8F0A65EBA233D74 /* CommanderPresentation.swift */,
+				B00998378645AD569E1BF645 /* CustomCardArt.swift */,
 				E13EC4CC09BB14F446DB7424 /* DeckLibrary.swift */,
 				BC507E0496BEEFB0615ABBF2 /* FreezeLog.swift */,
 				ABCDF573C9C2AF26B8ED8BFC /* FriendsView.swift */,
@@ -1759,6 +1762,7 @@
 				F7F09CF11D0ACCA5A4E5E57E /* CommanderSpellbookModels.swift in Sources */,
 				00D040BACBE56F8EE6F1A08A /* CompactPromptPopup.swift in Sources */,
 				03CDFCBECD5FE428AFFF8861 /* CompactZoneInspectorOverlay.swift in Sources */,
+				26D2C479D3FB951658732610 /* CustomCardArt.swift in Sources */,
 				B9C204367A644D4365AAA00C /* DeckLibrary.swift in Sources */,
 				4DDC3E8EBCED049E85292D37 /* DeckStudioAnalysisView.swift in Sources */,
 				1C1269B025E643AA447AA0FB /* DeckStudioArtworkPicker.swift in Sources */,

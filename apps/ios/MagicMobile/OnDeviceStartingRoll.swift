@@ -26,6 +26,13 @@ struct OnDeviceStartingRoll: Equatable {
         }
     }
 
+    /// The headline while a seat's die is in the air: "You roll" for the viewer's own seat (an AI table names it
+    /// "You"), "<name> rolls" for everyone else.
+    static func rollingTitle(seatID: String, localSeatID: String?, seatNames: [String: String]) -> String {
+        let name = seatNames[seatID] ?? "Player"
+        return seatID == localSeatID || name == "You" ? "You roll" : "\(name) rolls"
+    }
+
     private init(rounds: [Round], winnerSeatID: String, seatOrder: [String]) {
         self.rounds = rounds
         self.winnerSeatID = winnerSeatID

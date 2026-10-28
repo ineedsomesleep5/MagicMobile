@@ -123,6 +123,18 @@ contradicting one.
 
 ## Gameplay
 
+- 2026-10-27 (Claude): Smart pass let your own trigger resolve whatever you held, so Gogo could never copy Zur's attack
+  trigger (no priority with the trigger on the stack). `respondsToStack` is too broad for your own items (any counterspell
+  says yes). **Fix / rule:** on your own top item, stop only for a non-spell, non-mana row with an explicit
+  `respondsToStack: true` (`hasAbilityResponse`, all three platforms + parity/smart-pass-cases.json).
+- 2026-10-27 (Claude): iOS showed the default art first, then swapped to the chosen printing, every game: the view's offline
+  pass fell back to the card's default art when the chosen printing wasn't saved, and live-fetched chosen printings were never
+  saved. **Fix / rule:** save a fetched printing under `printingKey` like default art; the offline pass passes
+  `defaultArtFallback: false` when live images are on; CardArtChoices prefetches the playing deck's printings. Android never
+  had it (one load call, writes its cache file). The web board ignored chosen printings until core/artChoices.ts.
+- 2026-10-27 (Claude): Custom card art is drawn over the art box (8%/14.5%/84%/38.5%, the same window the illustration crop
+  uses) of the real card image, so names and rules stay real and art-only views get the picture for free. Device-local
+  only (CustomCardArt on iOS/Android, IndexedDB on web); nothing is uploaded.
 - 2026-10-27 (Claude, tables): one guest leaving ended the match for everyone. The relay keeps the table; the apps failed it:
   `beginLobby`'s `onDisconnect` (it replaces `attachRelay`'s once the lobby opens) and an `end` packet from any guest both
   called `fail`. **Rule:** once the game is on, only the host leaving ends it; a guest's `end` or the relay's `gone` makes

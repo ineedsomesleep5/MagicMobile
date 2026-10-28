@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { J } from "../src/core/json";
 import { OnDeviceMessageLog } from "../src/core/messageLog";
 import {
-  defaultSmartPass, defaultStops, hasPlay, hasResponse, manaFloating, passPrompt, type Situation, Step, stepFromEngine, stopKey, topStackIsMine,
+  defaultSmartPass, defaultStops, hasAbilityResponse, hasPlay, hasResponse, manaFloating, passPrompt, type Situation, Step, stepFromEngine, stopKey, topStackIsMine,
   type YieldContext,
 } from "../src/core/smartPass";
 
@@ -89,6 +89,10 @@ describe("smart pass", () => {
     expect(hasResponse(view([{ respondsToStack: false }, { respondsToStack: true }]))).toBe(true);
     expect(hasResponse(view([{}]))).toBe(true); // a missing flag counts as a response
     expect(hasResponse(view([{ manaAbility: true }]))).toBe(false); // mana abilities never count
+    // Gogo: an activated ability that can answer your own trigger; a counterspell (a spell) doesn't count.
+    expect(hasAbilityResponse(view([{ spellAbility: true, respondsToStack: true }, { spellAbility: false, respondsToStack: true }]))).toBe(true);
+    expect(hasAbilityResponse(view([{ spellAbility: true, respondsToStack: true }]))).toBe(false);
+    expect(hasAbilityResponse(view([{ spellAbility: false }]))).toBe(false); // only an explicit flag counts
   });
 
   it("notes a run of automatic passes on one log line", () => {
@@ -147,6 +151,7 @@ describe("smart-pass-cases.json", () => {
       const value: Situation = {
         context: patched(item.context), step: s.step, hasPlay: s.hasPlay ?? false, manaFloating: s.manaFloating ?? false,
         topStackIsMine: s.topStackIsMine, hasResponse: s.hasResponse ?? true, threatensMe: s.threatensMe ?? false,
+        hasAbilityResponse: s.hasAbilityResponse ?? false,
       };
       expect(passPrompt(value, caseSettings(item.settings)) !== undefined, item.name).toBe(item.pass);
     }

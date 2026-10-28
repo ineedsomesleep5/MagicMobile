@@ -234,6 +234,8 @@ enum OnDeviceSmartPass {
         var hasResponse = true
         /// The top of the stack is an opponent's and threatens what you control (`threatensViewer`).
         var threatensMe = false
+        /// An activated ability (not a spell, not mana) could answer the stack: Gogo copying your own trigger.
+        var hasAbilityResponse = false
     }
 
     /// The prompt to pass, or nil when the player should decide.
@@ -250,7 +252,9 @@ enum OnDeviceSmartPass {
         // Something on the stack: your own spell or trigger resolves (unless you asked to stop for those);
         // otherwise stop only when you hold a play that actually answers it.
         if !context.emptyStack {
-            if value.topStackIsMine == true && !settings.stopForOwnSpells { return prompt }
+            // Your own trigger still stops when an ability of yours could use it (Caleb, 2026-10-27: Gogo copying Zur's
+            // attack trigger never got the chance); a counterspell in hand doesn't stop it.
+            if value.topStackIsMine == true && !settings.stopForOwnSpells { return value.hasAbilityResponse ? nil : prompt }
             return value.hasResponse ? nil : prompt
         }
         guard let step = Step(engine: value.step) else { return nil }
@@ -285,6 +289,20 @@ enum OnDeviceSmartPass {
             for (category, rows) in stats.object ?? [:] {
                 for row in rows.array ?? [] where !(row["manaAbility"]?.bool ?? (category == "basicManaAbilities")) {
                     if row["respondsToStack"]?.bool != false { return true }
+                }
+            }
+        }
+        return false
+    }
+
+    /// Whether an activated ability (engine `spellAbility` false, not a mana ability) could answer the stack. Only an
+    /// explicit `respondsToStack` counts, so older engines keep passing on your own triggers.
+    static func hasAbilityResponse(_ gameView: MagicMobileOnDevice.JSONValue?) -> Bool {
+        let objects = gameView?["canPlayObjects"]?["objects"]?.object ?? [:]
+        for stats in objects.values {
+            for (category, rows) in stats.object ?? [:] {
+                for row in rows.array ?? [] where !(row["manaAbility"]?.bool ?? (category == "basicManaAbilities")) {
+                    if row["spellAbility"]?.bool == false && row["respondsToStack"]?.bool == true { return true }
                 }
             }
         }
