@@ -758,10 +758,17 @@ enum ArenaAutoPay {
                         }
                     }
                 }
-                guard let pick = (short...cap).compactMap({ reached in dp[reached].map { (reached, $0) } })
-                    .min(by: { ($0.1.cost + 3 * ($0.0 - short)) < ($1.1.cost + 3 * ($1.0 - short)) }) else { return }
-                cost += pick.1.cost + 3 * (pick.0 - short)
-                fill = pick.1.picks
+                // The cheapest reach, counting 3 per unit of mana left over (a plain loop: the one-expression form
+                // times out Xcode 26.6's type checker, which the native gate builds with).
+                var pick: (cost: Int, picks: [(index: Int, yield: Int)])?
+                for reached in short...cap {
+                    guard let entry = dp[reached] else { continue }
+                    let weighted = entry.cost + 3 * (reached - short)
+                    if pick == nil || weighted < pick!.cost { pick = (weighted, entry.picks) }
+                }
+                guard let pick else { return }
+                cost += pick.cost
+                fill = pick.picks
             } else {
                 cost += 3 * (leftover - owed)
             }
