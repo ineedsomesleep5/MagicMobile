@@ -32,6 +32,7 @@ import { gameAudio } from "../audio";
 import { GameScreen } from "../GameScreen";
 import { storage } from "../storage";
 import { AccountSignInCard, PrivacyCard } from "./AccountCards";
+import { NameGate } from "./NameGate";
 import { account, challenges, completeGoogleSignIn, connectRecord, rankedQueue, useAccount, useWatched } from "./accountSession";
 import type { VoiceTokenSource } from "../../table/voiceRoom";
 
@@ -735,6 +736,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   return (
     <div className="mroot" style={{ zoom }}>
       <MetalDefs />
+      <NameGate />
       <RoomBackdrop dim={studio ? 0.72 : playPanel ? 0 : page === "home" ? (covered ? 0.55 : 0) : page === "decks" ? 0.72 : 0.55} still={covered || playPanel} />
       <div className="mpage" style={{ opacity: playPanel || studio ? 0 : 1 }}>
         {page === "custom" && (

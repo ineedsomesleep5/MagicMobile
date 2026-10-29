@@ -99,6 +99,11 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
     private val api = SupabaseLite(context.applicationContext)
     private var heartbeatJob: Job? = null
 
+    /**
+     * The profile is reachable but has no name yet: the app asks for one before the menus (menus/NameGate.kt). False
+     * offline, while loading and with the profile server unavailable, so a player is never locked out of playing.
+     */
+    val needsName: Boolean get() = phase == Phase.READY && username == null
     val onlineFriendCount: Int get() = friends.count { it.isFriend && it.online }
     val incomingCount: Int get() = friends.count { it.isIncoming }
 
