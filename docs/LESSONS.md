@@ -123,6 +123,17 @@ contradicting one.
 
 ## Gameplay
 
+- 2026-10-28 (Claude, "won't let me tap mana to pay propaganda cost", TestFlight feedback): a mana payment asked
+  while someone else holds priority (Propaganda or Ghostly Prison's attack tax, paid while attackers are declared and
+  before anyone has priority in that step; Rhystic Study; ward) came with an empty `canPlayObjects`, so the apps let
+  nothing be tapped and Auto Pay was dimmed. Upstream XMage lists playables for the priority player only, and
+  `PlayerImpl.SILENT_PHASES_STEPS` lists none at all in DECLARE_ATTACKERS/PRE; its desktop client lets you click any
+  card regardless. **Fix / rule:** `ViewProjector.project(game, seats, query)` takes the question being published;
+  for PLAY_MANA / PLAY_X_MANA the paying seat gets its activatable mana abilities (`getAvailableActivatedManaAbilities`,
+  the same test a tap gets from `HumanPlayer.playManaAbilities`) instead of upstream's priority-only list. Engine
+  change: a new native build for every platform. Test: `RealStackResponseTests attack-tax`; probe:
+  `scripts/lessons/capture_targets.py`-style replay of an attack into Propaganda.
+
 - 2026-10-27 (Claude): Gogo's "copy which ability?" target, asked in the declare attackers step, showed "Choose attackers."
   and 1 Attacker and the game could not go on: `ArenaCombatPhase` (iOS, Android, web `combatPhase`) took any target
   prompt plus a declare-attackers/blockers step name for the attack declaration. **Fix / rule:** combat is the prompt's
