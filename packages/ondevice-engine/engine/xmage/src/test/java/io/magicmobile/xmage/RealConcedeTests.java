@@ -20,9 +20,10 @@ public final class RealConcedeTests {
             duel(engine,true);
             pod(engine);
             otherHumanConcedesWhileAsked(engine);
+            endedCopyKeepsHumanAnswerable(engine);
             service(engine);
         } finally { engine.close(); }
-        System.out.println("PASS real XMage concede: duel (opening and mid-game), pod spectating, second human, service envelope");
+        System.out.println("PASS real XMage concede: duel (opening and mid-game), pod spectating, second human, ended game copy, service envelope");
     }
 
     private static void duel(XmageEngine engine,boolean midGame) throws Exception {
@@ -96,6 +97,31 @@ public final class RealConcedeTests {
             },20);
             check("running".equals(next.get("phase")),"the game continues for the remaining human and AI");
             System.out.println("PASS second human concedes while the first is asked; the first keeps playing");
+        } finally { destroy(engine,id); }
+    }
+
+    /**
+     * A game copy that ends (as the AI's block simulation, CombatUtil.willItSurviveSimple, runs
+     * state-based actions on a copy where a player loses) aborts the copy's players. The live
+     * human shares their input channel and must still be asked and answered afterwards.
+     */
+    private static void endedCopyKeepsHumanAnswerable(XmageEngine engine) throws Exception {
+        String id=Json.requiredString(engine.create(config("human","ai")),"matchId");
+        try {
+            Map<String,Object> asked=driveUntil(engine,id,List.of("human"),state->turn(state)>=1 && prompt(state)!=null);
+            mage.game.Game live=game(engine,id);
+            mage.game.Game copy=live.copy();
+            copy.getPlayer(UUID.fromString(playerId(Json.object(asked.get("snapshot")),"ai"))).lost(copy);
+            copy.checkStateAndTriggered();
+            check(copy.hasEnded(),"the copy ends when its only opponent loses");
+            check(!live.hasEnded(),"ending a copy leaves the live game running");
+            Map<String,Object> prompt=prompt(asked);
+            engine.respond(id,"human",Json.map("requestId",UUID.randomUUID().toString(),"promptId",prompt.get("promptId"),
+                "promptRevision",prompt.get("revision"),"answer",answer(prompt,asked)));
+            Map<String,Object> next=awaitPoll(engine,id,"human",state->prompt(state)!=null
+                && !prompt.get("promptId").equals(prompt(state).get("promptId")),20);
+            check("running".equals(next.get("phase")),"the human is asked again after a copy ended: "+next.get("failure"));
+            System.out.println("PASS an ended game copy leaves the live human answerable");
         } finally { destroy(engine,id); }
     }
 
@@ -179,6 +205,12 @@ public final class RealConcedeTests {
         Object running=((Map<?,?>)matches.get(engine)).get(id);
         java.lang.reflect.Field field=running.getClass().getDeclaredField("cancellation");field.setAccessible(true);
         return (MobileAICancellation)field.get(running);
+    }
+    private static mage.game.Game game(XmageEngine engine,String id) throws Exception {
+        java.lang.reflect.Field matches=XmageEngine.class.getDeclaredField("matches");matches.setAccessible(true);
+        Object running=((Map<?,?>)matches.get(engine)).get(id);
+        java.lang.reflect.Field field=running.getClass().getDeclaredField("game");field.setAccessible(true);
+        return (mage.game.Game)field.get(running);
     }
     private static void destroy(XmageEngine engine,String id) throws InterruptedException {
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(20);

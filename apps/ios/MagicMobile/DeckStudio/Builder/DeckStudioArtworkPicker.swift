@@ -61,7 +61,7 @@ struct DeckStudioArtworkPicker: View {
                     .buttonStyle(BinderPlaqueButtonStyle()).fixedSize(horizontal: true, vertical: false)
                     .accessibilityIdentifier("deckStudio.artwork.default")
             }
-            // Your own picture fills this card's art box everywhere, on this device only; its rules stay the card's.
+            // Your own picture is this card's whole face everywhere, on every device signed in to your profile (CARD_ART_SYNC.md).
             HStack(spacing: 10) {
                 PhotosPicker(selection: $photo, matching: .images) { Text(custom == nil ? "Use my own picture" : "Change my picture") }
                     .buttonStyle(BinderPlaqueButtonStyle()).fixedSize(horizontal: true, vertical: false)

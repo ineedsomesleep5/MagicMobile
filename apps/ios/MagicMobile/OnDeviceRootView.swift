@@ -1513,6 +1513,8 @@ struct OnDeviceRootView: View {
         let sync = deckSyncer()
         guard let profile = await account.deckSyncProfile() else { return }
         try? await sync.sync(account: profile)
+        // Your own card pictures travel on the same schedule (docs/CARD_ART_SYNC.md).
+        await CardArtSyncCoordinator.shared.sync()
         // A deck changed elsewhere may bring a commander whose colours this phone hasn't remembered yet.
         await rememberDeckColors()
     }

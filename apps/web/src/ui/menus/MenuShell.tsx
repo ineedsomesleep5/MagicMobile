@@ -14,6 +14,8 @@ import { loadCatalogue } from "../../core/deckStudio/catalogue";
 import { draftFromDeck, DraftPresentation } from "../../core/deckStudio/draft";
 import { DeckLibrary, DeckLibraryRecord } from "../../core/deckStudio/library";
 import { DeckSync, supabaseDeckSync, SyncState } from "../../core/deckStudio/sync";
+import { CardArtSync, CardArtSyncState, supabaseCardArtSync } from "../../core/cardArtSync";
+import { loadCustomArt, localCardArt, setCustomArtListeners } from "../customArt";
 import type { DeckList, DeckResolver } from "../../core/deckResolver";
 import { type MatchRecord, type PlayMode, PlayerRecordStore, rankNote, startingPlayerMode } from "../../core/playerRecord";
 import { type RankChange, RankLadder, RankPosition, RankTier } from "../../core/rankLadder";
@@ -148,6 +150,23 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
       libraryChanged();
     }
   }, [deckSync, library, libraryChanged]);
+  // Your own card pictures on every phone and browser signed in to this profile (docs/CARD_ART_SYNC.md).
+  const cardArtSync = useMemo(() => new CardArtSync(localCardArt, new CardArtSyncState(storage),
+    supabaseCardArtSync(account.api, () => account.api.userID())), []);
+  const syncCardArt = useCallback(async () => {
+    if (account.state.phase !== "ready") return;
+    const profile = await account.api.userID().catch(() => undefined);
+    if (!profile) return;
+    await loadCustomArt();
+    try { await cardArtSync.sync(profile); } catch { /* offline or refused: the next sync tries again */ }
+  }, [cardArtSync]);
+  useEffect(() => {
+    let timer: number | undefined;
+    // A picture set or removed here goes up a few seconds later.
+    const soon = () => { window.clearTimeout(timer); timer = window.setTimeout(() => { void syncCardArt(); }, 3000); };
+    setCustomArtListeners((cardKey) => { cardArtSync.noteRemoved(cardKey); soon(); }, soon);
+    return () => { window.clearTimeout(timer); setCustomArtListeners(); };
+  }, [cardArtSync, syncCardArt]);
   const accountReady = player.state.phase === "ready";
   // The server's settings for the web (appConfig): the menu's notice, name fixes, feature switches.
   useEffect(() => { if (accountReady) void player.refreshAppConfig(); }, [accountReady, player]);
@@ -155,11 +174,12 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   useEffect(() => {
     if (!accountReady) return;
     void syncDecks();
-    const every = window.setInterval(() => { if (document.visibilityState === "visible") void syncDecks(); }, 5 * 60_000);
-    const back = () => { if (document.visibilityState === "visible") void syncDecks(); };
+    void syncCardArt();
+    const every = window.setInterval(() => { if (document.visibilityState === "visible") { void syncDecks(); void syncCardArt(); } }, 5 * 60_000);
+    const back = () => { if (document.visibilityState === "visible") { void syncDecks(); void syncCardArt(); } };
     document.addEventListener("visibilitychange", back);
     return () => { window.clearInterval(every); document.removeEventListener("visibilitychange", back); };
-  }, [accountReady, player.state.username, syncDecks]);
+  }, [accountReady, player.state.username, syncDecks, syncCardArt]);
   // A change here goes up a few seconds after the last one (only when something is waiting to go up).
   useEffect(() => {
     if (!accountReady || !(library.decks.some((record) => deckSync.isDirty(record)) || deckSync.record.tombstones.length > 0)) return;
