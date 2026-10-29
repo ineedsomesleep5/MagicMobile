@@ -398,17 +398,9 @@ contradicting one.
   **Rule:** copies must never close the live seat's channel; look for `GameImpl.end` → `abort` on a copy when a human
   suddenly can't answer. Where: `MobileHumanPlayer.abort`/copy constructor. 2026-10-26: it ended Caleb's winning ranked
   web game ("Too many errors", the AI won on life). Web fixed by a `web_sources.py` rewrite (branch
-  `claude/web-engine-copy-abort`, `test/CopyAbortCheck.java` in CI); phones still need `ccd1365a` in an engine release.
-- 2026-10-20 (Claude, web engine M1; fixed in the engine follow-up): a game copy that ends (a player loses inside it)
-  calls `GameImpl.end()`, which aborts the copy's players, and a `MobileHumanPlayer` copy shares the live player's input
-  channel, so the live human's channel closed. Upstream `CombatUtil.willItSurviveSimple` (the AI choosing blocks) runs
-  state-based actions on such a copy. After that, every question to the human threw "Mobile match stopped", XMage rolled
-  back and asked again, and the game ended without the human. Phones ran the same code; it showed up as 5 of 92 seeded JVM
-  games in the web harness. **Fix / rule:** only the live seat (constructed, or restored from a checkpoint) closes the
-  channel on `abort()`; copies and control proxies never do, and match teardown still closes it through
-  `Running.close` → `closeChannel`. Look for `GameImpl.end` → `abort` on a copy when a human suddenly can't answer.
-  Where: `MobileHumanPlayer.abort`/`ownsChannel`, regression `RealConcedeTests.endedCopyKeepsHumanAnswerable`. An engine
-  change: ship it in its own engine release, never bundled with app features.
+  `claude/web-engine-copy-abort`, `test/CopyAbortCheck.java` in CI). Phones: engine release D (2026-10-28, `ccd1365a`): only the
+  live seat (constructed, or restored from a checkpoint) closes the channel on `abort()`; copies and control proxies never
+  do (`MobileHumanPlayer.abort`/`ownsChannel`, regression `RealConcedeTests.endedCopyKeepsHumanAnswerable`).
 
 - 2026-10-18 (Claude, release C out-of-memory): interrupting an AI search, upstream's only stop signal
   (`FutureTask.cancel(true)` at the timeout), does not stop code that never checks the flag. `SimulatedPlayer2.triggerAbility`
