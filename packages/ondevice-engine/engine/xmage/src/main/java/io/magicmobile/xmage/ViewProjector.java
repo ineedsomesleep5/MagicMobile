@@ -12,6 +12,10 @@ import mage.game.permanent.token.Token;
 import mage.game.stack.StackObject;
 import mage.players.Player;
 import mage.players.PlayerImpl;
+import mage.players.PlayableObjectsList;
+import mage.abilities.ActivatedAbility;
+import mage.game.events.PlayerQueryEvent;
+import mage.game.permanent.Permanent;
 import mage.abilities.mana.ActivatedManaAbilityImpl;
 import mage.abilities.SpellAbility;
 import mage.abilities.keyword.MenaceAbility;
@@ -27,6 +31,10 @@ import java.util.*;
 public final class ViewProjector {
     private ViewProjector() {}
     public static Map<String,Map<String,Object>> project(Game game,Map<String,MobileHumanPlayer> players) {
+        return project(game,players,null);
+    }
+    /** `query` is the question being published with these views, if any: a payment names whose mana sources to offer. */
+    public static Map<String,Map<String,Object>> project(Game game,Map<String,MobileHumanPlayer> players,PlayerQueryEvent query) {
         Map<String,Map<String,Object>> out=new LinkedHashMap<>();
         // Match upstream GameSessionPlayer's projection boundary. Playability checks
         // may simulate actions, so they must not mutate the authoritative game.
@@ -40,8 +48,17 @@ public final class ViewProjector {
             UUID viewer=seat.getValue().getId();
             GameView view=new GameView(source.getState(),source,viewer,null);
             Player priority=source.getPlayer(source.getPriorityPlayerId());
-            if(priority!=null && viewer.equals(priority.getTurnControlledBy()))
-                view.setCanPlayObjects(priority.getPlayableObjects(source,Zone.ALL));
+            // Whose plays this seat may make: the priority player's, or, while a player this seat controls pays
+            // mana (an attack tax, a spell's cost, ward), that player's mana sources. Upstream lists playables for
+            // the priority player only, and none at all while attackers are declared, so a Propaganda payment
+            // (asked before anyone has priority in that step) offered nothing to tap.
+            Player payer=paying(query,source);
+            Player plays=payer!=null && viewer.equals(payer.getTurnControlledBy())?payer
+                :priority!=null && viewer.equals(priority.getTurnControlledBy())?priority:null;
+            List<? extends ActivatedAbility> abilities=plays==null?List.of()
+                :plays==payer?manaAbilities(payer,source):((PlayerImpl)plays).getPlayable(source,true,Zone.ALL,false);
+            if(plays==payer && payer!=null) view.setCanPlayObjects(manaSources(abilities));
+            else if(plays!=null) view.setCanPlayObjects(plays.getPlayableObjects(source,Zone.ALL));
             // Match GameSessionPlayer.processControlledPlayers, using only seat-scoped client DTOs.
             // A replaced controller can remain in upstream's reverse set until reset, so also
             // require the acted player's current controller before disclosing their hand.
@@ -64,12 +81,12 @@ public final class ViewProjector {
             // PlayableObjectStats places non-basic mana and modal spell abilities in `other`.
             // Preserve its authoritative choices and add only type
             // information, from the current ability objects (never rule-text parsing).
-            if(priority!=null && viewer.equals(priority.getTurnControlledBy())) {
+            if(plays!=null) {
                 Set<String> manaIds=new HashSet<>();
                 Set<String> spellIds=new HashSet<>();
                 Map<String,Boolean> responses=new HashMap<>();
                 StackResponses.Pending pending=StackResponses.pending(source);
-                for(var ability:((PlayerImpl)priority).getPlayable(source,true,Zone.ALL,false)) {
+                for(var ability:abilities) {
                     if(ability instanceof ActivatedManaAbilityImpl) manaIds.add(ability.getId().toString());
                     if(ability instanceof SpellAbility) spellIds.add(ability.getId().toString());
                     responses.put(ability.getId().toString(),StackResponses.responds(ability,source,pending));
@@ -210,5 +227,34 @@ public final class ViewProjector {
             }
         }
         return commanders;
+    }
+
+    /** The player a published mana payment asks (PLAY_MANA, PLAY_X_MANA); null for any other question or none. */
+    private static Player paying(PlayerQueryEvent query,Game game) {
+        if(query==null) return null;
+        PlayerQueryEvent.QueryType kind=query.getQueryType();
+        if(kind!=PlayerQueryEvent.QueryType.PLAY_MANA && kind!=PlayerQueryEvent.QueryType.PLAY_X_MANA) return null;
+        return game.getPlayer(query.getPlayerId());
+    }
+    /**
+     * The mana abilities `player` can activate now, from the battlefield and hand: the test a tap on each object
+     * would get from upstream HumanPlayer.playManaAbilities, independent of priority and of the step.
+     */
+    private static List<ActivatedManaAbilityImpl> manaAbilities(Player player,Game source) {
+        List<ActivatedManaAbilityImpl> out=new ArrayList<>();
+        // The same playable-check simulation PlayerImpl.getPlayable asks these questions in.
+        Game game=source.createSimulationForPlayableCalc();
+        for(Permanent permanent:game.getBattlefield().getAllActivePermanents(player.getId())) {
+            if(!permanent.canUseActivatedAbilities(game)) continue;
+            out.addAll(permanent.getAbilities(game).getAvailableActivatedManaAbilities(Zone.BATTLEFIELD,player.getId(),game));
+        }
+        for(Card card:player.getHand().getCards(game))
+            out.addAll(card.getAbilities(game).getAvailableActivatedManaAbilities(Zone.HAND,player.getId(),game));
+        return out;
+    }
+    private static PlayableObjectsList manaSources(List<? extends ActivatedAbility> abilities) {
+        Map<UUID,List<ActivatedAbility>> objects=new LinkedHashMap<>();
+        for(ActivatedAbility ability:abilities) objects.computeIfAbsent(ability.getSourceId(),id->new ArrayList<>()).add(ability);
+        return new PlayableObjectsList(objects);
     }
 }

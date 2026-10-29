@@ -85,9 +85,11 @@ public final class XmageEngine implements EnginePort {
             for(Map.Entry<String,MobileHumanPlayer> s:seats.entrySet()) if(s.getValue().getId().equals(engineId))return s.getKey();
             throw new BridgeException("unbound_player","Engine asked an unbound player for input");
         }
-        void snapshot() {
+        void snapshot() { snapshot(null); }
+        /** `query`: the question these views are published with, so a paying seat gets its mana sources. */
+        void snapshot(PlayerQueryEvent query) {
             if(cancellation.isClosing()) return;
-            Map<String,Map<String,Object>> views=recorder.presenting(()->ViewProjector.project(game,seats));
+            Map<String,Map<String,Object>> views=recorder.presenting(()->ViewProjector.project(game,seats,query));
             // A seat whose player left (conceded or lost in a pod) only watches from here on.
             List<String> left=new ArrayList<>();
             for(Map.Entry<String,MobileHumanPlayer> s:seats.entrySet()) {
@@ -130,7 +132,7 @@ public final class XmageEngine implements EnginePort {
                 // so the file always matches a published decision.
                 checkpoint();
             }
-            snapshot();
+            snapshot(e);
             DecisionSpec spec=recorder.presenting(()->QueryEncoder.encode(e,game));
             cancellation.runIfOpen(()->mailbox.ask(seat,spec,
                 answer->cancellation.runIfOpen(()->seats.get(seat).offer(answer))));
