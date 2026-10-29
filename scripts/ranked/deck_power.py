@@ -6,7 +6,8 @@ between the norms in deck-power-weights.json, and the weighted mix maps to 1-10.
 catalogue (types, oracle text, mana value, Scryfall role tags); creature power and toughness, which the
 catalogue lacks, come from card-stats.tsv (pinned XMage's Utils/mtg-cards-data.txt, see `stats`).
 
-  rate    each deck's Power from its own games, the formula filling in (--write saves deck-power-ratings.json)
+  rate    each deck's Power from its AI-vs-AI games and its games against people, the formula filling in
+          (--write saves deck-power-ratings.json and the apps' power block)
   ladder  the decks each Ranked division and Quick Match level would bring at those ratings
   table   Markdown table of every AI deck's formula parts and formula Power (--json for the numbers)
   check   formula Power against AI-vs-AI results (docs/cloud/*-results CSVs): a Bradley-Terry strength per deck
@@ -24,6 +25,8 @@ STATS = HERE / 'card-stats.tsv'
 RATINGS = HERE / 'deck-power-ratings.json'
 RESOURCES = REPO / 'apps/ios/MagicMobile/Resources'
 RESULTS = [REPO / 'docs/cloud/c3-results', REPO / 'docs/cloud/c4-results', REPO / 'docs/cloud/power-results']
+# People against the AI: per-player, per-commander records against each AI deck, exported from player_games (DECK_POWER.md).
+HUMAN_RESULTS = REPO / 'docs/cloud/ranked-results'
 PARTS = ('speed', 'mana', 'interaction', 'consistency', 'threats', 'synergy', 'commander', 'combos', 'resilience')
 
 # Cheating big cards out (Caleb): what makes a high curve play faster than it looks.
@@ -257,6 +260,52 @@ def bradley_terry(games: list[dict], iterations: int = 400) -> dict:
     return {'strength': s, 'se': {d: 1 / math.sqrt(info[d]) for d in decks}, 'games': dict(count), 'first': first}
 
 
+def read_human_games(decks: list[dict], root: Path = HUMAN_RESULTS) -> tuple[list[tuple[str, str, int]], set[str]]:
+    """Games people played against one AI deck: (person, deck id, 1 if the person won). A person is one player with one
+    commander, since a player's decks differ more than players do. Draws are left out, as in the AI-vs-AI games."""
+    by_name = {d['name']: d['id'] for d in decks}
+    games, unknown = [], set()
+    for path in sorted(root.glob('*.csv')) if root.exists() else []:
+        with path.open() as stream:
+            for row in csv.DictReader(stream):
+                deck = by_name.get(row['ai_deck'])
+                if deck is None:
+                    unknown.add(row['ai_deck'])
+                    continue
+                person = f"{row['player']}:{row['human_commander']}"
+                games += [(person, deck, 1)] * int(row['human_wins']) + [(person, deck, 0)] * int(row['ai_wins'])
+    return games, unknown
+
+
+def human_fit(rated: list[dict], games: list[tuple[str, str, int]], shift: float, iterations: int = 300) -> dict:
+    """Each deck's strength against people. Its AI-vs-AI strength (with the formula) is the starting point, widened by
+    `shift`, how far a deck's strength against people may stand from its strength against the AI (log-odds); its games
+    against people then move it. People get their own strengths, so a strong player's wins don't mark a deck down.
+    Returns the posterior strength, standard error and record against people for each deck."""
+    prior = {r['id']: (r['strength'], 1 / (r['strengthSE'] ** 2 + shift ** 2)) for r in rated}
+    level = sum(m for m, _ in prior.values()) / len(prior)
+    people = sorted({p for p, _, _ in games})
+    x = {d: m for d, (m, _) in prior.items()} | {p: level for p in people}
+    pull = {d: w for d, (_, w) in prior.items()} | {p: 0.01 for p in people}
+    centre = {d: m for d, (m, _) in prior.items()} | {p: level for p in people}
+    for _ in range(iterations):
+        grad = {k: -pull[k] * (x[k] - centre[k]) for k in x}
+        hess = dict(pull)
+        for person, deck, won in games:
+            p = 1 / (1 + math.exp(-(x[person] - x[deck])))
+            w = p * (1 - p)
+            grad[person] += won - p
+            grad[deck] -= won - p
+            hess[person] += w
+            hess[deck] += w
+        for k in x:
+            x[k] += max(-1.0, min(1.0, grad[k] / hess[k]))  # a capped Newton step on the diagonal stays stable
+    record = collections.defaultdict(lambda: {'aiWins': 0, 'aiLosses': 0})
+    for _, deck, won in games:
+        record[deck]['aiLosses' if won else 'aiWins'] += 1
+    return {'strength': {d: x[d] for d in prior}, 'se': {d: hess[d] ** -0.5 for d in prior}, 'record': dict(record)}
+
+
 def slope_fit(rated: list[dict], observed: dict) -> tuple[float, float]:
     """Least-squares line from Power to observed strength, weighted by precision."""
     points = [(r['power'], observed['strength'][r['id']], observed['se'][r['id']]) for r in rated if r['id'] in observed['strength']]
@@ -386,7 +435,9 @@ def rate(config: dict) -> list[dict]:
     The formula's line (slope_fit) turns its 1-10 into an expected strength; that estimate counts with the formula's
     out-of-sample error (`scale.formulaErrorLogOdds`), each deck's games with their own standard error, and the two are
     combined by precision. A deck without games keeps the formula's estimate and its full error. Power is then
-    `scale.referencePower` plus the strength above the reference decks' average, in units of `scale.pointLogOdds`."""
+    `scale.referencePower` plus the strength above the reference decks' average, in units of `scale.pointLogOdds`.
+    Games against people come last (human_fit): the AI-vs-AI estimate is their starting point, so a deck people beat
+    far more often than its AI games predict moves down, and one with few such games stays near its AI rating."""
     scale = config['scale']
     rated = rate_all(config)
     observed = bradley_terry(read_games())
@@ -399,6 +450,14 @@ def rate(config: dict) -> list[dict]:
             estimate = (estimate * prior + observed['strength'][r['id']] * measured) / (prior + measured)
             precision += measured
         r['strength'], r['strengthSE'], r['games'] = estimate, precision ** -0.5, observed['games'].get(r['id'], 0)
+    games, unknown = read_human_games(load_decks())
+    if unknown:
+        print(f"ignored games against decks not in the pool: {', '.join(sorted(unknown))}", file=sys.stderr)
+    people = human_fit(rated, games, scale['humanShiftLogOdds'])
+    for r in rated:
+        r['aiStrength'] = r['strength']
+        r['strength'], r['strengthSE'] = people['strength'][r['id']], people['se'][r['id']]
+        r['humanRecord'] = people['record'].get(r['id'], {'aiWins': 0, 'aiLosses': 0})
     references = [r['strength'] for r in rated if r['id'] in scale['referenceDecks']]
     anchor = sum(references) / len(references)
     to_power = lambda s: max(1.0, min(10.0, scale['referencePower'] + (s - anchor) / scale['pointLogOdds']))
@@ -521,12 +580,14 @@ def main():
         check(config)
     elif args.command == 'rate':
         rated = rate(config)
-        print('| Deck | Bracket | Power (95% CI) | Formula | Games |\n|---|---|---|---|---|')
+        print('| Deck | Bracket | Power (95% CI) | Formula | AI-vs-AI games | Against people (won–lost) |\n|---|---|---|---|---|---|')
         for d in rated:
+            hr = d['humanRecord']
+            people = f"{hr['aiWins']}–{hr['aiLosses']}" if hr['aiWins'] + hr['aiLosses'] else ''
             print(f"| {d['id']} | {d['bracket']} | **{d['power']:.1f}** ({d['powerRange'][0]:.1f}–{d['powerRange'][1]:.1f}) | "
-                  f"{d['formulaPower']:.1f} | {d['games']} |")
+                  f"{d['formulaPower']:.1f} | {d['games']} | {people} |")
         if args.write:
-            keep = ('id', 'bracket', 'power', 'powerRange', 'formulaPower', 'games')
+            keep = ('id', 'bracket', 'power', 'powerRange', 'formulaPower', 'games', 'humanRecord')
             RATINGS.write_text(json.dumps({'schemaVersion': 1, 'scale': config['scale'],
                                            'decks': [{k: d[k] for k in keep} for d in rated]}, indent=1) + '\n')
             print(f'\nwrote {RATINGS.relative_to(REPO)}')

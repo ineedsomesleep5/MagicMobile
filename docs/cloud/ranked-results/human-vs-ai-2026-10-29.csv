@@ -1,0 +1,181 @@
+player,mode,human_commander,ai_deck,human_wins,ai_wins,draws
+player1,quick,Queen Marchesa,Vampire Lords,0,1,0
+player1,ranked,"Arthur, Marigold Knight",Draconic Destruction,0,1,0
+player1,ranked,"Arthur, Marigold Knight",Elven Blades,1,0,0
+player1,ranked,"Arthur, Marigold Knight",Elven Patrol,1,0,0
+player1,ranked,"Arthur, Marigold Knight",Goblin Mob,0,1,0
+player1,ranked,"Arthur, Marigold Knight",Rotting Dead,1,0,0
+player1,ranked,Edgar Markov,Elven Patrol,1,1,0
+player1,ranked,"Frodo, Adventurous Hobbit",Elven Blades,1,0,0
+player1,ranked,"Frodo, Adventurous Hobbit",Sun's Avatar,0,1,0
+player1,ranked,"Ghyrson Starn, Kelermorph",Ashvale Knights,0,1,0
+player1,ranked,"Ghyrson Starn, Kelermorph",Elven Blades,1,0,0
+player1,ranked,"Ghyrson Starn, Kelermorph",Elven Patrol,0,1,0
+player1,ranked,"Ghyrson Starn, Kelermorph",First Flight,1,0,0
+player1,ranked,"Ghyrson Starn, Kelermorph",Goblin Rabble,0,1,0
+player1,ranked,"Ghyrson Starn, Kelermorph",Grave Danger,1,0,0
+player1,ranked,"Ghyrson Starn, Kelermorph",Nel Toth Rites,1,0,0
+player1,ranked,"Ghyrson Starn, Kelermorph",Nel Toth Wake,1,0,0
+player1,ranked,"Ghyrson Starn, Kelermorph",Pride of Arahbo,0,1,0
+player1,ranked,"Ghyrson Starn, Kelermorph",Surging Soul,1,0,0
+player1,ranked,"Ghyrson Starn, Kelermorph",Zombie Tide,1,0,0
+player1,ranked,"Krenko, Mob Boss",Dinosaur Stampede,1,1,0
+player1,ranked,"Krenko, Mob Boss",Elven Patrol,1,0,0
+player1,ranked,Kresh the Bloodbraided,Dinosaur Stampede,0,2,0
+player1,ranked,Kresh the Bloodbraided,Elven Patrol,0,2,0
+player1,ranked,Kresh the Bloodbraided,Goblin Rabble,0,1,0
+player1,ranked,"Sauron, the Dark Lord",Blood Court,1,0,0
+player1,ranked,"Sephiroth, Fabled SOLDIER",Chaos Incarnate,4,0,0
+player1,ranked,"Sephiroth, Fabled SOLDIER",Draconic Destruction,0,1,0
+player1,ranked,"Sephiroth, Fabled SOLDIER",Dragon Hoard,1,0,0
+player1,ranked,"Sephiroth, Fabled SOLDIER",Elven Blades,1,0,0
+player1,ranked,"Sephiroth, Fabled SOLDIER",First Flight,1,0,0
+player1,ranked,"Sephiroth, Fabled SOLDIER",Goblin Mob,1,0,0
+player1,ranked,"Sephiroth, Fabled SOLDIER",Goblin Rabble,0,1,0
+player1,ranked,"Sephiroth, Fabled SOLDIER",Grave Danger,4,2,0
+player1,ranked,"Sephiroth, Fabled SOLDIER",Rotting Dead,2,0,0
+player1,ranked,"Sephiroth, Fabled SOLDIER",Token Triumph,2,0,0
+player1,ranked,The Ur-Dragon,Dinosaur Stampede,2,0,0
+player1,ranked,The Ur-Dragon,Elven Patrol,0,1,0
+player1,ranked,The Ur-Dragon,Goblin Rabble,2,2,0
+player1,ranked,"Thorin, King of Durin's Folk",Dinosaur Stampede,0,1,0
+player1,ranked,"Thorin, King of Durin's Folk",Goblin Rabble,0,1,0
+player1,ranked,"Wilhelt, the Rotcleaver",Dinosaur Stampede,0,1,0
+player1,ranked,Zenos yae Galvus,Dinosaur Stampede,0,1,0
+player1,ranked,Zenos yae Galvus,Elven Patrol,0,1,0
+player1,ranked,Zenos yae Galvus,Goblin Rabble,0,1,0
+player2,quick,"Chatterfang, Squirrel General",Draconic Destruction,0,1,0
+player2,quick,"Chatterfang, Squirrel General",First Flight,1,1,0
+player2,quick,"Chatterfang, Squirrel General",Grave Danger,3,3,0
+player2,quick,"Chatterfang, Squirrel General",Sun's Avatar,0,1,0
+player2,quick,Ingris Stingerquill,Chromatic Brood,2,0,0
+player2,quick,The Scarab God,Grave Danger,0,1,0
+player2,quick,Zur the Enchanter,Grave Danger,1,0,0
+player2,quick,Zur the Enchanter,Zombie Tide,1,0,0
+player2,ranked,"Chatterfang, Squirrel General",Chaos Incarnate,4,1,0
+player2,ranked,"Chatterfang, Squirrel General",Draconic Destruction,1,2,0
+player2,ranked,"Chatterfang, Squirrel General",Dragon Hoard,1,0,0
+player2,ranked,"Chatterfang, Squirrel General",First Flight,2,0,0
+player2,ranked,"Chatterfang, Squirrel General",Grave Danger,3,0,0
+player2,ranked,"Chatterfang, Squirrel General",Token Triumph,2,0,0
+player2,ranked,"Gishath, Sun's Avatar",Ashvale Knights,0,1,0
+player2,ranked,"Gishath, Sun's Avatar",Chaos Incarnate,1,0,0
+player2,ranked,"Gishath, Sun's Avatar",Elven Patrol,1,0,0
+player2,ranked,"Gishath, Sun's Avatar",First Flight,1,0,0
+player2,ranked,"Gishath, Sun's Avatar",Goblin Rabble,0,1,0
+player2,ranked,"Gishath, Sun's Avatar",Hippo Diplomacy,3,0,0
+player2,ranked,"Gishath, Sun's Avatar",Nel Toth Wake,2,0,0
+player2,ranked,"Gishath, Sun's Avatar",Pride of Arahbo,1,0,0
+player2,ranked,"Gishath, Sun's Avatar",Rotting Dead,1,0,1
+player2,ranked,"Gishath, Sun's Avatar",Surging Soul,0,1,0
+player2,ranked,Ingris Stingerquill,Dragonstorm,0,1,0
+player2,ranked,Ingris Stingerquill,Gnawbone's Hoard,1,1,0
+player2,ranked,Ingris Stingerquill,Goblin Warband,1,1,0
+player2,ranked,Ingris Stingerquill,Primal Thunder,2,0,0
+player2,ranked,Ingris Stingerquill,Surging Soul,0,1,0
+player2,ranked,"Krenko, Mob Boss",Elven Patrol,1,0,0
+player2,ranked,"Krenko, Mob Boss",Surging Soul,1,0,0
+player2,ranked,"Krenko, Mob Boss",Wyrm Nest,1,0,0
+player2,ranked,"Kudo, King Among Bears",Elf Court,2,0,0
+player2,ranked,"Kudo, King Among Bears",Elven Patrol,1,0,0
+player2,ranked,"Kudo, King Among Bears",First Flight,1,1,0
+player2,ranked,"Kudo, King Among Bears",Goblin Mob,0,1,0
+player2,ranked,"Kudo, King Among Bears",Primal Thunder,0,1,0
+player2,ranked,"Kudo, King Among Bears",Surging Soul,1,0,0
+player2,ranked,Zur the Enchanter,Chromatic Brood,2,0,0
+player2,ranked,Zur the Enchanter,Dinosaur Stampede,2,0,0
+player2,ranked,Zur the Enchanter,Dragonstorm,1,1,0
+player2,ranked,Zur the Enchanter,Gnawbone's Hoard,4,1,0
+player2,ranked,Zur the Enchanter,Goblin Warband,2,0,0
+player2,ranked,Zur the Enchanter,Primal Thunder,2,0,0
+player2,ranked,Zur the Enchanter,Sun's Avatar,1,0,0
+player2,ranked,Zur the Enchanter,Surging Soul,2,0,0
+player2,ranked,Zur the Enchanter,Vampire Lords,3,1,0
+player3,quick,"Atarka, World Render",Desecrated Crypt,0,1,0
+player3,quick,"Atarka, World Render",Dinosaur Stampede,0,1,0
+player3,quick,"Atarka, World Render",Elven Patrol,2,0,0
+player3,quick,Edgar Markov,Orazca Tide,1,0,0
+player3,quick,"Emmara, Soul of the Accord",Coil Riot,1,0,0
+player3,quick,"Emmara, Soul of the Accord",Elven Patrol,0,1,0
+player3,ranked,"Atarka, World Render",Dinosaur Stampede,0,1,0
+player3,ranked,"Atarka, World Render",Goblin Rabble,0,1,0
+player4,quick,"Ghyrson Starn, Kelermorph",Pride of Arahbo,1,0,0
+player4,quick,Magus Lucea Kane,Apex Predators,1,0,0
+player4,quick,Magus Lucea Kane,Elder Dragons,1,0,0
+player4,ranked,Arcum Dagsson,Token Triumph,0,1,0
+player4,ranked,"Ayula, Queen Among Bears",Ashvale Knights,1,0,0
+player4,ranked,"Ayula, Queen Among Bears",Chaos Incarnate,1,0,0
+player4,ranked,"Ayula, Queen Among Bears",Coil Brawl,1,0,0
+player4,ranked,"Ayula, Queen Among Bears",Coil Riot,1,0,0
+player4,ranked,"Ayula, Queen Among Bears",Draconic Destruction,0,1,0
+player4,ranked,"Ayula, Queen Among Bears",Elven Blades,1,1,0
+player4,ranked,"Ayula, Queen Among Bears",Goblin Mob,2,0,0
+player4,ranked,"Ayula, Queen Among Bears",Grave Danger,3,0,0
+player4,ranked,"Ayula, Queen Among Bears",Nel Toth Rites,1,0,0
+player4,ranked,"Ayula, Queen Among Bears",Nel Toth Wake,2,0,0
+player4,ranked,"Ayula, Queen Among Bears",Pride of Arahbo,1,1,0
+player4,ranked,"Ayula, Queen Among Bears",Rotting Dead,2,1,0
+player4,ranked,"Ayula, Queen Among Bears",Sun's Avatar,1,0,0
+player4,ranked,"Ayula, Queen Among Bears",Token Triumph,2,1,0
+player4,ranked,"Ayula, Queen Among Bears",Zombie Tide,1,0,0
+player4,ranked,Captain N'ghathrod,Chaos Incarnate,4,2,0
+player4,ranked,Captain N'ghathrod,Grave Danger,3,1,0
+player4,ranked,Captain N'ghathrod,Token Triumph,0,3,0
+player4,ranked,"Ghyrson Starn, Kelermorph",Chromatic Brood,1,0,0
+player4,ranked,"Ghyrson Starn, Kelermorph",Draconic Destruction,0,2,0
+player4,ranked,"Ghyrson Starn, Kelermorph",Dragonstorm,0,1,0
+player4,ranked,"Ghyrson Starn, Kelermorph",Elf Court,1,0,0
+player4,ranked,"Ghyrson Starn, Kelermorph",Elven Patrol,0,1,0
+player4,ranked,"Ghyrson Starn, Kelermorph",First Flight,0,1,0
+player4,ranked,"Ghyrson Starn, Kelermorph",Gnawbone's Hoard,1,1,0
+player4,ranked,"Ghyrson Starn, Kelermorph",Goblin Mob,2,0,0
+player4,ranked,"Ghyrson Starn, Kelermorph",Goblin Rabble,1,0,0
+player4,ranked,"Ghyrson Starn, Kelermorph",Primal Thunder,0,1,0
+player4,ranked,"Ghyrson Starn, Kelermorph",Surging Soul,0,1,0
+player4,ranked,"Ghyrson Starn, Kelermorph",Vampire Lords,1,1,0
+player4,ranked,"Ghyrson Starn, Kelermorph",Wyrm Nest,1,1,0
+player4,ranked,"Ghyrson Starn, Kelermorph",Zombie Tide,1,0,0
+player4,ranked,"Kilo, Apogee Mind",Ashvale Knights,1,0,0
+player4,ranked,"Kilo, Apogee Mind",Elven Blades,1,0,0
+player4,ranked,"Kilo, Apogee Mind",Hippo Diplomacy,1,0,0
+player4,ranked,"Kinnan, Bonder Prodigy",Chromatic Brood,1,0,0
+player4,ranked,"Kinnan, Bonder Prodigy",Dinosaur Stampede,0,1,0
+player4,ranked,"Kinnan, Bonder Prodigy",Dragonstorm,0,3,0
+player4,ranked,"Kinnan, Bonder Prodigy",Gnawbone's Hoard,2,0,0
+player4,ranked,"Kinnan, Bonder Prodigy",Goblin Warband,3,2,0
+player4,ranked,"Kinnan, Bonder Prodigy",Primal Thunder,3,2,0
+player4,ranked,"Kinnan, Bonder Prodigy",Surging Soul,2,3,0
+player4,ranked,"Kinnan, Bonder Prodigy",Vampire Lords,4,1,0
+player4,ranked,"Miirym, Sentinel Wyrm",Blood Court,0,1,1
+player4,ranked,"Miirym, Sentinel Wyrm",Chromatic Brood,3,1,0
+player4,ranked,"Miirym, Sentinel Wyrm",Dinosaur Stampede,5,2,0
+player4,ranked,"Miirym, Sentinel Wyrm",Dragon Hoard,0,1,0
+player4,ranked,"Miirym, Sentinel Wyrm",Dragonstorm,4,1,0
+player4,ranked,"Miirym, Sentinel Wyrm",Elder Dragons,2,0,0
+player4,ranked,"Miirym, Sentinel Wyrm",Elven Patrol,2,1,0
+player4,ranked,"Miirym, Sentinel Wyrm",First Flight,2,0,0
+player4,ranked,"Miirym, Sentinel Wyrm",Gnawbone's Hoard,3,1,0
+player4,ranked,"Miirym, Sentinel Wyrm",Goblin Mob,1,1,0
+player4,ranked,"Miirym, Sentinel Wyrm",Goblin Rabble,1,2,0
+player4,ranked,"Miirym, Sentinel Wyrm",Goblin Warband,3,2,0
+player4,ranked,"Miirym, Sentinel Wyrm",Primal Thunder,2,1,0
+player4,ranked,"Miirym, Sentinel Wyrm",Sun's Avatar,4,0,0
+player4,ranked,"Miirym, Sentinel Wyrm",Surging Soul,2,1,0
+player4,ranked,"Miirym, Sentinel Wyrm",Vampire Lords,6,1,0
+player4,ranked,"Miirym, Sentinel Wyrm",Vast Host,1,2,0
+player4,ranked,"Talrand, Sky Summoner",Dragonstorm,0,1,0
+player4,ranked,"Talrand, Sky Summoner",Gnawbone's Hoard,2,0,0
+player4,ranked,"Talrand, Sky Summoner",Goblin Warband,0,1,0
+player4,ranked,"Talrand, Sky Summoner",Primal Thunder,0,1,0
+player4,ranked,The Wise Mothman,Chromatic Brood,4,1,0
+player4,ranked,The Wise Mothman,Dinosaur Stampede,2,1,0
+player4,ranked,The Wise Mothman,Dragonstorm,4,1,0
+player4,ranked,The Wise Mothman,First Flight,0,1,0
+player4,ranked,The Wise Mothman,Gnawbone's Hoard,3,3,0
+player4,ranked,The Wise Mothman,Goblin Warband,2,2,0
+player4,ranked,The Wise Mothman,Primal Thunder,3,3,0
+player4,ranked,The Wise Mothman,Surging Soul,1,1,0
+player4,ranked,The Wise Mothman,Vampire Lords,3,2,0
+player4,ranked,"Yuna, Hope of Spira",Elven Blades,0,1,0
+player4,ranked,"Yuna, Hope of Spira",Token Triumph,0,1,0
+player4,ranked,"Yuna, Hope of Spira",Zombie Tide,0,1,0

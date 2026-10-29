@@ -346,7 +346,8 @@
    "grave-danger"
   ],
   "formulaErrorLogOdds": 0.53,
-  "about": "Power = referencePower + strength above the reference decks, in pointLogOdds per point (57% against a deck one point lower). formulaErrorLogOdds is the formula's leave-one-out error over 33 decks (2026-10-25); a deck's games outweigh it after about 15-20 of them."
+  "about": "Power = referencePower + strength above the reference decks, in pointLogOdds per point (57% against a deck one point lower). formulaErrorLogOdds is the formula's leave-one-out error over 33 decks (2026-10-25); a deck's games outweigh it after about 15-20 of them. humanShiftLogOdds is how far a deck's strength against people may stand from its strength in AI-vs-AI games before its games against people decide (2026-10-29: 0.5 fit five-fold held-out games best of 0-2.5).",
+  "humanShiftLogOdds": 0.5
  },
  "ladder": {
   "closest": 3,

@@ -177,6 +177,40 @@ bracket allows. Every division now has decks within 0.5 of its target.
 4. **Optional top-up** (about 100 games each for the decks Mythic and Bronze lean on: Kaalia, Miirym, Krenko
    Optimized, Tormod, Marisi, Kynaios and Tiro) would narrow their ±2 to about ±1. Not needed to ship.
 
+## Power v3: games against people too (2026-10-29)
+
+Caleb: "use real games and AI games as results for the AI decks". AI-vs-AI strength did not predict how a deck does
+against people: 254DADDY's Miirym deck went 15–6 against Diamond's AI, and Tiamat (7.5) lost 13 of 15 games to people.
+
+- **Data.** `docs/cloud/ranked-results/*.csv`: each player's record with each commander against each AI deck, from
+  `player_games` (ranked, quick and casual games against one AI). Players are numbered, no account ids or deck names.
+  The first export (2026-10-29) holds 354 games from four players, about half of them 254DADDY's. Refresh it with:
+
+  ```sql
+  with p as (select user_id, 'player' || dense_rank() over (order by min(played_at)) label from player_games group by user_id)
+  select p.label player, pg.mode, coalesce(pg.commanders[1], '?') human_commander, pg.opponents->0->>'name' ai_deck,
+         count(*) filter (where pg.result = 'win') human_wins, count(*) filter (where pg.result = 'loss') ai_wins,
+         count(*) filter (where pg.result = 'draw') draws
+  from player_games pg join p using (user_id)
+  where pg.mode in ('ranked', 'quick', 'casual') and jsonb_array_length(pg.opponents) = 1 and (pg.opponents->0->>'ai')::boolean
+  group by 1, 2, 3, 4 order by 1, 2, 3, 4;
+  ```
+
+  Save it as a new CSV with those columns (`player, mode, human_commander, ai_deck, human_wins, ai_wins, draws`) and
+  remove the older export, since each holds every game so far. Rows naming a deck outside the pool are reported and
+  skipped.
+- **Method** (`human_fit` in `deck_power.py`). A deck's AI-vs-AI rating (with the formula) is its starting point,
+  widened by `scale.humanShiftLogOdds` (0.5 log-odds, about 1.9 Power points): how far a deck's strength against
+  people may stand from its AI-vs-AI strength. Its games against people then move it, in a Bradley–Terry fit where each
+  player-and-commander has its own strength, so a strong player's wins don't mark a deck down. 0.5 predicted held-out
+  games best of 0–2.5 (five folds). Draws are left out. The AI's skill is not modelled: lower tiers' AIs make mistakes,
+  so decks played mostly there may be rated a little low.
+- **Moves** (Power before → after, the AI's record against people): Tiamat 7.5 → 5.6 (2–13), Edgar Upgraded
+  7.5 → 6.6 (7–17), Old Gnawbone 7.4 → 6.9 (7–16), Gishath Core 7.9 → 7.5 (2–6); up: Atarka's Draconic Destruction
+  6.1 → 9.2 (8–1), Krenko Exhibition 6.7 → 9.3 (11–4), Hakbal 6.8 → 8.2 (8–10), The Ur-Dragon Upgraded 7.4 → 8.7
+  (9–9). Decks with few games against people keep wide ranges (`powerRange`).
+- **Ships** in `ai-decks.json` with the next iOS and Android builds and the next web deploy, like v2.
+
 ## Formula v1 (2026-10-24)
 
 `scripts/ranked/deck_power.py` rates every AI deck; `scripts/ranked/deck-power-weights.json` holds every weight and
@@ -393,6 +427,9 @@ Caleb: "do what is best and get … around 5 per rank".
   6.75–7.75 (IV 6.88 … I 7.63, from Gold I to Diamond IV) with mistakes 2% at IV down to 0% at I, and a crushing loss
   costs one pip there (docs/RANKED.md). Hardest for him: The Ur-Dragon (he went 4–6) and Gishath (8–8). Web reads the ticket now; iOS and Android from their next
   build (iOS 62 and Android 40 keep the bundled values, which the record check still accepts).
+  Fourth tuning (2026-10-29, migration `ranked_diamond_retune`): 254DADDY's Miirym deck won 27 of 39 against Platinum
+  and 15 of 21 against Diamond, so Diamond played no harder. The table gained `ai_skill` (null keeps the ladder's
+  skill); Diamond plays at skill 6 with Power 8–9 (IV 8.13 … I 8.88), and Mythic runs 8.75–9.75 (9.25) to stay above it.
 - **Quick Match:** Easy (Power 3.5, skill 2), Medium (5.5, skill 3, the default) or Hard (7.5, skill 5) as pill gems;
   Advanced shows today's bracket gems, deck row and skill stepper.
 - **Decks:** 41 AI decks. The eight added on 2026-10-25 (Tiamat, Lathliss, Old Gnawbone, Phelddagrif, Zedruu,

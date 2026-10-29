@@ -9,525 +9,714 @@
    "grave-danger"
   ],
   "formulaErrorLogOdds": 0.53,
-  "about": "Power = referencePower + strength above the reference decks, in pointLogOdds per point (57% against a deck one point lower). formulaErrorLogOdds is the formula's leave-one-out error over 33 decks (2026-10-25); a deck's games outweigh it after about 15-20 of them."
+  "about": "Power = referencePower + strength above the reference decks, in pointLogOdds per point (57% against a deck one point lower). formulaErrorLogOdds is the formula's leave-one-out error over 33 decks (2026-10-25); a deck's games outweigh it after about 15-20 of them. humanShiftLogOdds is how far a deck's strength against people may stand from its strength in AI-vs-AI games before its games against people decide (2026-10-29: 0.5 fit five-fold held-out games best of 0-2.5).",
+  "humanShiftLogOdds": 0.5
  },
  "decks": [
   {
    "id": "ai-lathliss-dragon-queen-core",
    "bracket": 2,
-   "power": 9.9,
+   "power": 10.0,
    "powerRange": [
-    7.7,
+    5.9,
     10.0
    ],
    "formulaPower": 7.68,
-   "games": 48
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
+   "id": "ai-krenko-mob-boss-exhibition",
+   "bracket": 1,
+   "power": 9.3,
+   "powerRange": [
+    6.3,
+    10.0
+   ],
+   "formulaPower": 6.04,
+   "games": 36,
+   "humanRecord": {
+    "aiWins": 11,
+    "aiLosses": 4
+   }
+  },
+  {
+   "id": "draconic-destruction",
+   "bracket": 2,
+   "power": 9.2,
+   "powerRange": [
+    6.3,
+    10.0
+   ],
+   "formulaPower": 6.4,
+   "games": 536,
+   "humanRecord": {
+    "aiWins": 8,
+    "aiLosses": 1
+   }
+  },
+  {
+   "id": "ai-kaalia-of-the-vast-optimized",
+   "bracket": 4,
+   "power": 9.2,
+   "powerRange": [
+    5.7,
+    10.0
+   ],
+   "formulaPower": 8.19,
+   "games": 96,
+   "humanRecord": {
+    "aiWins": 2,
+    "aiLosses": 1
+   }
+  },
+  {
+   "id": "ai-edgar-markov-core",
+   "bracket": 2,
+   "power": 8.7,
+   "powerRange": [
+    5.2,
+    10.0
+   ],
+   "formulaPower": 6.94,
+   "games": 692,
+   "humanRecord": {
+    "aiWins": 1,
+    "aiLosses": 1
+   }
+  },
+  {
+   "id": "ai-the-ur-dragon-upgraded",
+   "bracket": 3,
+   "power": 8.7,
+   "powerRange": [
+    6.0,
+    10.0
+   ],
+   "formulaPower": 8.13,
+   "games": 36,
+   "humanRecord": {
+    "aiWins": 9,
+    "aiLosses": 9
+   }
   },
   {
    "id": "ai-kaalia-of-the-vast-core",
    "bracket": 2,
-   "power": 8.4,
+   "power": 8.6,
    "powerRange": [
-    6.5,
+    4.5,
     10.0
    ],
    "formulaPower": 8.36,
-   "games": 48
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
   },
   {
    "id": "ai-the-ur-dragon-core",
    "bracket": 2,
    "power": 8.3,
    "powerRange": [
-    7.6,
-    9.0
+    4.9,
+    10.0
    ],
    "formulaPower": 7.84,
-   "games": 537
-  },
-  {
-   "id": "ai-kaalia-of-the-vast-optimized",
-   "bracket": 4,
-   "power": 8.2,
-   "powerRange": [
-    6.8,
-    9.7
-   ],
-   "formulaPower": 8.19,
-   "games": 96
+   "games": 537,
+   "humanRecord": {
+    "aiWins": 1,
+    "aiLosses": 2
+   }
   },
   {
    "id": "ai-miirym-sentinel-wyrm-optimized",
    "bracket": 4,
-   "power": 8.1,
+   "power": 8.3,
    "powerRange": [
-    6.7,
-    9.6
+    4.4,
+    10.0
    ],
    "formulaPower": 7.56,
-   "games": 96
-  },
-  {
-   "id": "ai-edgar-markov-core",
-   "bracket": 2,
-   "power": 8.0,
-   "powerRange": [
-    7.4,
-    8.6
-   ],
-   "formulaPower": 6.94,
-   "games": 692
-  },
-  {
-   "id": "ai-gishath-suns-avatar-core",
-   "bracket": 2,
-   "power": 7.9,
-   "powerRange": [
-    7.3,
-    8.5
-   ],
-   "formulaPower": 7.44,
-   "games": 689
-  },
-  {
-   "id": "ai-gishath-suns-avatar-exhibition",
-   "bracket": 1,
-   "power": 7.7,
-   "powerRange": [
-    5.8,
-    9.6
-   ],
-   "formulaPower": 7.72,
-   "games": 48
-  },
-  {
-   "id": "ai-the-ur-dragon-optimized",
-   "bracket": 4,
-   "power": 7.6,
-   "powerRange": [
-    5.7,
-    9.5
-   ],
-   "formulaPower": 8.04,
-   "games": 48
-  },
-  {
-   "id": "ai-edgar-markov-upgraded",
-   "bracket": 3,
-   "power": 7.5,
-   "powerRange": [
-    5.3,
-    9.6
-   ],
-   "formulaPower": 6.61,
-   "games": 36
-  },
-  {
-   "id": "ai-tiamat-core",
-   "bracket": 2,
-   "power": 7.5,
-   "powerRange": [
-    5.6,
-    9.4
-   ],
-   "formulaPower": 7.78,
-   "games": 48
-  },
-  {
-   "id": "ai-the-ur-dragon-upgraded",
-   "bracket": 3,
-   "power": 7.4,
-   "powerRange": [
-    5.3,
-    9.4
-   ],
-   "formulaPower": 8.13,
-   "games": 36
-  },
-  {
-   "id": "ai-old-gnawbone-core",
-   "bracket": 2,
-   "power": 7.4,
-   "powerRange": [
-    5.5,
-    9.3
-   ],
-   "formulaPower": 7.24,
-   "games": 48
-  },
-  {
-   "id": "ai-gishath-suns-avatar-upgraded",
-   "bracket": 3,
-   "power": 7.2,
-   "powerRange": [
-    5.1,
-    9.3
-   ],
-   "formulaPower": 7.6,
-   "games": 36
-  },
-  {
-   "id": "ai-krenko-mob-boss-optimized",
-   "bracket": 4,
-   "power": 7.1,
-   "powerRange": [
-    5.6,
-    8.5
-   ],
-   "formulaPower": 6.03,
-   "games": 95
-  },
-  {
-   "id": "ai-krenko-mob-boss-upgraded",
-   "bracket": 3,
-   "power": 7.0,
-   "powerRange": [
-    4.8,
-    9.1
-   ],
-   "formulaPower": 5.97,
-   "games": 36
+   "games": 96,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
   },
   {
    "id": "ai-hakbal-of-the-surging-soul-core",
    "bracket": 2,
-   "power": 6.8,
+   "power": 8.2,
    "powerRange": [
-    4.9,
-    8.7
+    5.4,
+    10.0
    ],
    "formulaPower": 5.3,
-   "games": 48
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 8,
+    "aiLosses": 10
+   }
   },
   {
-   "id": "first-flight",
-   "bracket": 2,
-   "power": 6.7,
+   "id": "ai-krenko-mob-boss-upgraded",
+   "bracket": 3,
+   "power": 7.9,
    "powerRange": [
-    6.2,
-    7.1
+    5.2,
+    10.0
    ],
-   "formulaPower": 5.84,
-   "games": 1368
+   "formulaPower": 5.97,
+   "games": 36,
+   "humanRecord": {
+    "aiWins": 8,
+    "aiLosses": 11
+   }
   },
   {
-   "id": "ai-krenko-mob-boss-exhibition",
+   "id": "ai-gishath-suns-avatar-exhibition",
    "bracket": 1,
-   "power": 6.7,
+   "power": 7.8,
    "powerRange": [
-    4.6,
-    8.8
+    5.1,
+    10.0
    ],
-   "formulaPower": 6.04,
-   "games": 36
+   "formulaPower": 7.72,
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 12,
+    "aiLosses": 12
+   }
+  },
+  {
+   "id": "ai-gishath-suns-avatar-upgraded",
+   "bracket": 3,
+   "power": 7.8,
+   "powerRange": [
+    5.2,
+    10.0
+   ],
+   "formulaPower": 7.6,
+   "games": 36,
+   "humanRecord": {
+    "aiWins": 9,
+    "aiLosses": 12
+   }
+  },
+  {
+   "id": "ai-gishath-suns-avatar-core",
+   "bracket": 2,
+   "power": 7.5,
+   "powerRange": [
+    4.4,
+    10.0
+   ],
+   "formulaPower": 7.44,
+   "games": 689,
+   "humanRecord": {
+    "aiWins": 2,
+    "aiLosses": 6
+   }
+  },
+  {
+   "id": "ai-krenko-mob-boss-optimized",
+   "bracket": 4,
+   "power": 7.3,
+   "powerRange": [
+    3.4,
+    10.0
+   ],
+   "formulaPower": 6.03,
+   "games": 95,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
+   "id": "ai-the-ur-dragon-optimized",
+   "bracket": 4,
+   "power": 7.1,
+   "powerRange": [
+    3.2,
+    10.0
+   ],
+   "formulaPower": 8.04,
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 3
+   }
+  },
+  {
+   "id": "ai-old-gnawbone-core",
+   "bracket": 2,
+   "power": 6.9,
+   "powerRange": [
+    4.3,
+    9.5
+   ],
+   "formulaPower": 7.24,
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 7,
+    "aiLosses": 16
+   }
+  },
+  {
+   "id": "ai-krenko-mob-boss-core",
+   "bracket": 2,
+   "power": 6.6,
+   "powerRange": [
+    3.6,
+    9.7
+   ],
+   "formulaPower": 5.93,
+   "games": 300,
+   "humanRecord": {
+    "aiWins": 3,
+    "aiLosses": 6
+   }
   },
   {
    "id": "ai-lathril-blade-of-the-elves-exhibition",
    "bracket": 1,
    "power": 6.6,
    "powerRange": [
-    4.5,
-    8.7
+    3.7,
+    9.5
    ],
    "formulaPower": 5.87,
-   "games": 36
+   "games": 36,
+   "humanRecord": {
+    "aiWins": 9,
+    "aiLosses": 10
+   }
   },
   {
-   "id": "ai-krenko-mob-boss-core",
-   "bracket": 2,
-   "power": 6.4,
-   "powerRange": [
-    5.6,
-    7.3
-   ],
-   "formulaPower": 5.93,
-   "games": 300
-  },
-  {
-   "id": "ai-lathril-blade-of-the-elves-upgraded",
+   "id": "ai-edgar-markov-upgraded",
    "bracket": 3,
-   "power": 6.4,
+   "power": 6.6,
    "powerRange": [
-    4.3,
-    8.5
+    4.0,
+    9.3
    ],
-   "formulaPower": 5.46,
-   "games": 35
+   "formulaPower": 6.61,
+   "games": 36,
+   "humanRecord": {
+    "aiWins": 7,
+    "aiLosses": 17
+   }
+  },
+  {
+   "id": "first-flight",
+   "bracket": 2,
+   "power": 6.5,
+   "powerRange": [
+    3.7,
+    9.3
+   ],
+   "formulaPower": 5.84,
+   "games": 1368,
+   "humanRecord": {
+    "aiWins": 4,
+    "aiLosses": 9
+   }
   },
   {
    "id": "ai-miirym-sentinel-wyrm-core",
    "bracket": 2,
-   "power": 6.2,
+   "power": 6.5,
    "powerRange": [
-    4.3,
-    8.1
+    2.7,
+    10.0
    ],
    "formulaPower": 7.47,
-   "games": 48
-  },
-  {
-   "id": "draconic-destruction",
-   "bracket": 2,
-   "power": 6.1,
-   "powerRange": [
-    5.4,
-    6.7
-   ],
-   "formulaPower": 6.4,
-   "games": 536
-  },
-  {
-   "id": "token-triumph",
-   "bracket": 2,
-   "power": 5.9,
-   "powerRange": [
-    5.4,
-    6.3
-   ],
-   "formulaPower": 4.87,
-   "games": 1210
-  },
-  {
-   "id": "ai-gishath-suns-avatar-optimized",
-   "bracket": 4,
-   "power": 5.9,
-   "powerRange": [
-    3.8,
-    8.0
-   ],
-   "formulaPower": 7.34,
-   "games": 36
-  },
-  {
-   "id": "ai-edgar-markov-optimized",
-   "bracket": 4,
-   "power": 5.9,
-   "powerRange": [
-    4.0,
-    7.8
-   ],
-   "formulaPower": 6.31,
-   "games": 48
-  },
-  {
-   "id": "ai-winota-joiner-of-forces-optimized",
-   "bracket": 4,
-   "power": 5.8,
-   "powerRange": [
-    3.9,
-    7.6
-   ],
-   "formulaPower": 6.79,
-   "games": 48
-  },
-  {
-   "id": "grave-danger",
-   "bracket": 2,
-   "power": 5.5,
-   "powerRange": [
-    5.1,
-    5.9
-   ],
-   "formulaPower": 5.26,
-   "games": 1475
-  },
-  {
-   "id": "ai-meren-of-clan-nel-toth-core",
-   "bracket": 2,
-   "power": 5.5,
-   "powerRange": [
-    3.6,
-    7.4
-   ],
-   "formulaPower": 6.66,
-   "games": 48
-  },
-  {
-   "id": "ai-wilhelt-the-rotcleaver-upgraded",
-   "bracket": 3,
-   "power": 5.3,
-   "powerRange": [
-    3.2,
-    7.4
-   ],
-   "formulaPower": 5.64,
-   "games": 36
-  },
-  {
-   "id": "ai-arahbo-roar-of-the-world-core",
-   "bracket": 2,
-   "power": 5.3,
-   "powerRange": [
-    3.4,
-    7.2
-   ],
-   "formulaPower": 6.05,
-   "games": 48
-  },
-  {
-   "id": "ai-lathril-blade-of-the-elves-core",
-   "bracket": 2,
-   "power": 5.2,
-   "powerRange": [
-    4.6,
-    5.8
-   ],
-   "formulaPower": 5.69,
-   "games": 648
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 1,
+    "aiLosses": 2
+   }
   },
   {
    "id": "ai-syr-gwyn-hero-of-ashvale-core",
    "bracket": 2,
-   "power": 5.1,
+   "power": 6.5,
    "powerRange": [
-    3.2,
-    6.9
+    2.8,
+    10.0
    ],
    "formulaPower": 5.97,
-   "games": 48
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 2,
+    "aiLosses": 2
+   }
+  },
+  {
+   "id": "token-triumph",
+   "bracket": 2,
+   "power": 6.4,
+   "powerRange": [
+    3.5,
+    9.3
+   ],
+   "formulaPower": 4.87,
+   "games": 1210,
+   "humanRecord": {
+    "aiWins": 6,
+    "aiLosses": 6
+   }
+  },
+  {
+   "id": "ai-gishath-suns-avatar-optimized",
+   "bracket": 4,
+   "power": 6.1,
+   "powerRange": [
+    1.9,
+    10.0
+   ],
+   "formulaPower": 7.34,
+   "games": 36,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 1
+   }
+  },
+  {
+   "id": "ai-edgar-markov-optimized",
+   "bracket": 4,
+   "power": 6.1,
+   "powerRange": [
+    2.0,
+    10.0
+   ],
+   "formulaPower": 6.31,
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
+   "id": "ai-arahbo-roar-of-the-world-core",
+   "bracket": 2,
+   "power": 6.1,
+   "powerRange": [
+    2.5,
+    9.7
+   ],
+   "formulaPower": 6.05,
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 2,
+    "aiLosses": 3
+   }
+  },
+  {
+   "id": "ai-winota-joiner-of-forces-optimized",
+   "bracket": 4,
+   "power": 6.0,
+   "powerRange": [
+    1.9,
+    10.0
+   ],
+   "formulaPower": 6.79,
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
+   "id": "ai-tiamat-core",
+   "bracket": 2,
+   "power": 5.6,
+   "powerRange": [
+    2.6,
+    8.6
+   ],
+   "formulaPower": 7.78,
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 2,
+    "aiLosses": 13
+   }
+  },
+  {
+   "id": "ai-lathril-blade-of-the-elves-upgraded",
+   "bracket": 3,
+   "power": 5.4,
+   "powerRange": [
+    1.6,
+    9.2
+   ],
+   "formulaPower": 5.46,
+   "games": 35,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 3
+   }
+  },
+  {
+   "id": "grave-danger",
+   "bracket": 2,
+   "power": 5.1,
+   "powerRange": [
+    2.6,
+    7.6
+   ],
+   "formulaPower": 5.26,
+   "games": 1475,
+   "humanRecord": {
+    "aiWins": 7,
+    "aiLosses": 18
+   }
+  },
+  {
+   "id": "ai-meren-of-clan-nel-toth-core",
+   "bracket": 2,
+   "power": 5.1,
+   "powerRange": [
+    1.2,
+    9.0
+   ],
+   "formulaPower": 6.66,
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 2
+   }
+  },
+  {
+   "id": "ai-lathril-blade-of-the-elves-core",
+   "bracket": 2,
+   "power": 4.9,
+   "powerRange": [
+    1.6,
+    8.1
+   ],
+   "formulaPower": 5.69,
+   "games": 648,
+   "humanRecord": {
+    "aiWins": 2,
+    "aiLosses": 6
+   }
+  },
+  {
+   "id": "ai-wilhelt-the-rotcleaver-upgraded",
+   "bracket": 3,
+   "power": 4.5,
+   "powerRange": [
+    1.0,
+    8.3
+   ],
+   "formulaPower": 5.64,
+   "games": 36,
+   "humanRecord": {
+    "aiWins": 1,
+    "aiLosses": 4
+   }
   },
   {
    "id": "ai-phelddagrif-core",
    "bracket": 2,
-   "power": 4.9,
+   "power": 4.5,
    "powerRange": [
-    3.0,
-    6.9
+    1.0,
+    8.3
    ],
    "formulaPower": 4.85,
-   "games": 44
-  },
-  {
-   "id": "ai-meren-of-clan-nel-toth-exhibition",
-   "bracket": 1,
-   "power": 4.9,
-   "powerRange": [
-    2.9,
-    6.8
-   ],
-   "formulaPower": 7.07,
-   "games": 48
+   "games": 44,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 4
+   }
   },
   {
    "id": "ai-wilhelt-the-rotcleaver-core",
    "bracket": 2,
    "power": 4.4,
    "powerRange": [
-    3.8,
-    4.9
+    1.1,
+    7.7
    ],
    "formulaPower": 5.01,
-   "games": 726
-  },
-  {
-   "id": "chaos-incarnate",
-   "bracket": 2,
-   "power": 3.8,
-   "powerRange": [
-    3.0,
-    4.7
-   ],
-   "formulaPower": 4.58,
-   "games": 359
-  },
-  {
-   "id": "ai-lathril-blade-of-the-elves-optimized",
-   "bracket": 4,
-   "power": 3.8,
-   "powerRange": [
-    1.9,
-    5.8
-   ],
-   "formulaPower": 5.15,
-   "games": 48
-  },
-  {
-   "id": "ai-marisi-breaker-of-the-coil-exhibition",
-   "bracket": 1,
-   "power": 3.7,
-   "powerRange": [
-    2.3,
-    5.2
-   ],
-   "formulaPower": 3.98,
-   "games": 96
-  },
-  {
-   "id": "ai-wilhelt-the-rotcleaver-optimized",
-   "bracket": 4,
-   "power": 3.6,
-   "powerRange": [
-    1.6,
-    5.6
-   ],
-   "formulaPower": 5.99,
-   "games": 48
-  },
-  {
-   "id": "ai-marisi-breaker-of-the-coil-core",
-   "bracket": 2,
-   "power": 3.6,
-   "powerRange": [
-    1.7,
-    5.6
-   ],
-   "formulaPower": 5.41,
-   "games": 48
+   "games": 726,
+   "humanRecord": {
+    "aiWins": 1,
+    "aiLosses": 6
+   }
   },
   {
    "id": "ai-tormod-the-desecrator-core",
    "bracket": 2,
-   "power": 3.6,
+   "power": 4.3,
    "powerRange": [
-    2.1,
-    5.0
+    1.0,
+    8.1
    ],
    "formulaPower": 3.93,
-   "games": 96
+   "games": 96,
+   "humanRecord": {
+    "aiWins": 1,
+    "aiLosses": 0
+   }
+  },
+  {
+   "id": "ai-lathril-blade-of-the-elves-optimized",
+   "bracket": 4,
+   "power": 4.0,
+   "powerRange": [
+    1.0,
+    8.1
+   ],
+   "formulaPower": 5.15,
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
+   "id": "ai-meren-of-clan-nel-toth-exhibition",
+   "bracket": 1,
+   "power": 4.0,
+   "powerRange": [
+    1.0,
+    7.8
+   ],
+   "formulaPower": 7.07,
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 5
+   }
+  },
+  {
+   "id": "ai-wilhelt-the-rotcleaver-optimized",
+   "bracket": 4,
+   "power": 3.8,
+   "powerRange": [
+    1.0,
+    7.9
+   ],
+   "formulaPower": 5.99,
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
+   "id": "ai-marisi-breaker-of-the-coil-exhibition",
+   "bracket": 1,
+   "power": 3.8,
+   "powerRange": [
+    1.0,
+    7.6
+   ],
+   "formulaPower": 3.98,
+   "games": 96,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 1
+   }
   },
   {
    "id": "ai-kumena-tyrant-of-orazca-core",
    "bracket": 2,
-   "power": 3.5,
+   "power": 3.7,
    "powerRange": [
-    1.5,
-    5.5
+    1.0,
+    7.8
    ],
    "formulaPower": 5.76,
-   "games": 48
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 1
+   }
   },
   {
    "id": "ai-karador-ghost-chieftain-core",
    "bracket": 2,
-   "power": 3.4,
+   "power": 3.6,
    "powerRange": [
-    1.4,
-    5.4
+    1.0,
+    7.8
    ],
    "formulaPower": 5.5,
-   "games": 48
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
   },
   {
    "id": "ai-marrow-gnawer-core",
    "bracket": 2,
-   "power": 3.4,
+   "power": 3.6,
    "powerRange": [
-    1.5,
-    5.4
+    1.0,
+    7.7
    ],
    "formulaPower": 3.72,
-   "games": 48
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
+   "id": "chaos-incarnate",
+   "bracket": 2,
+   "power": 3.2,
+   "powerRange": [
+    1.0,
+    6.0
+   ],
+   "formulaPower": 4.58,
+   "games": 359,
+   "humanRecord": {
+    "aiWins": 3,
+    "aiLosses": 14
+   }
+  },
+  {
+   "id": "ai-marisi-breaker-of-the-coil-core",
+   "bracket": 2,
+   "power": 3.2,
+   "powerRange": [
+    1.0,
+    7.2
+   ],
+   "formulaPower": 5.41,
+   "games": 48,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 2
+   }
   },
   {
    "id": "ai-kynaios-and-tiro-of-meletis-exhibition",
    "bracket": 1,
-   "power": 1.3,
+   "power": 1.5,
    "powerRange": [
     1.0,
-    3.0
+    5.5
    ],
    "formulaPower": 4.29,
-   "games": 94
+   "games": 94,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
   },
   {
    "id": "ai-zedruu-the-greathearted-core",
@@ -535,10 +724,14 @@
    "power": 1.0,
    "powerRange": [
     1.0,
-    3.7
+    5.7
    ],
    "formulaPower": 4.77,
-   "games": 47
+   "games": 47,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
   }
  ]
 }

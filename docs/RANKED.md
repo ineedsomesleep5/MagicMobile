@@ -46,8 +46,11 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 | Silver | 4–5 | 2 | 2 |
 | Gold | 6–7 | 3 | 3 |
 | Platinum | 6.75–7.75 | 3 | 4 |
-| Diamond | 7.5–8.5 | 4 | 5 |
-| Mythic | 8.5 | 4 | 6 |
+| Diamond | 8–9 | 4 | 6 (server; apps' own 5) |
+| Mythic | 8.75–9.75 | 4 | 6 |
+
+Since 2026-10-29 the server sets Diamond's skill and both bands (`ranked_ai_tuning.ai_skill`, docs/DECK_POWER.md
+"Fourth tuning"): Diamond played no harder than Platinum for 254DADDY. Deck Power counts games against people too (Power v3).
 
 Since 2026-10-25 (docs/DECK_POWER.md) the AI brings the deck whose hidden Power is nearest the division's target, at
 random among the three nearest, from the tier's bracket or lower, never your commander and not one you faced recently.

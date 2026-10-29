@@ -64,6 +64,8 @@ try {
   await db.exec(await readFile(new URL('./leaderboard_streaks_champions.sql', import.meta.url), 'utf8'));
   await db.exec(await migration('20261027010000_app_config.sql'));
   await db.exec(await readFile(new URL('./app_config.sql', import.meta.url), 'utf8'));
+  await db.exec(await migration('20261029220000_ranked_diamond_retune.sql'));
+  await db.exec(await readFile(new URL('./ranked_diamond_retune.sql', import.meta.url), 'utf8'));
   console.log('PASS PGlite: ranked queue pairing (rank, bracket, protocol, blocks), host/guest table hand-off, late cancel, reports');
   console.log('PASS PGlite: ranked cards for friends and profile cards, blocked players hidden, no direct table access, account deletion');
   console.log('PASS PGlite: friend challenges (friends only, same-tier ranked with season rollover, replace, accept/decline/expiry, ranked reports, blocks, no direct access)');
@@ -79,6 +81,7 @@ try {
   console.log('PASS PGlite: ranked AI tuning (server table per tier, Power rising through the divisions, mistakes from division IV to I, tickets carry and store them, records match the ticket or the skill standard, table internal)');
   console.log('PASS PGlite: no daily cap on ranked AI wins (a thirteenth win in a day counts)');
   console.log('PASS PGlite: crushing losses (the AI kept 30+ life: two pips, its life kept; a close loss or no record: one; Bronze still free)');
+  console.log('PASS PGlite: Diamond retune (a tier may set its AI skill; Diamond skill 6 at Power 8–9, Mythic 9.25, other tiers keep the ladder skill, tickets carry and store it, an older app\'s skill-5 win counts, skill 4 does not)');
   console.log('Scope: single-process PostgreSQL; auth.uid is a test stub; no live writes, no concurrent-session proof.');
 } catch (error) {
   console.error('FAIL', error.message, error.detail ?? '', error.where ?? '', error.hint ?? '', error.position ?? '', error.routine ?? '');
@@ -121,6 +124,9 @@ function gameRecords() {
     reseeded: record({ seed: '42' }),
     unknown_build: record({ engineBuild: 'sha256:' + 'cd'.repeat(32) }),
     easier_ai: record({ ai: { aiSkill: 1, aiSearchDepth: 2, aiMistakePercent: 50 } }),
+    // Diamond retune: an older app's Diamond AI (skill 5) and one two tiers easier (skill 4).
+    diamond_skill5: record({ ai: { aiSkill: 5, aiSearchDepth: 5, aiMistakePercent: 0 }, turn: 8 }),
+    diamond_skill4: record({ ai: { aiSkill: 4, aiSearchDepth: 4, aiMistakePercent: 0 }, turn: 8 }),
     wrong_winner: record({ winners: ['ai1'] }),
     ai_conceded: record({ extra: ['1c 0'] }),
     short: record({ turn: 2 }),
