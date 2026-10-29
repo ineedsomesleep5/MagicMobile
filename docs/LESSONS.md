@@ -21,11 +21,26 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-29 (Claude, name gate): every install and browser makes an anonymous Supabase account on first open, so of
+  720 accounts 716 had no name and showed nowhere (no leaderboard, friends or saved games). **Rule:** a profile that is
+  reachable but nameless gets the name screen before the menus (`PlayerAccount.needsName`: phase ready and no username;
+  iOS `NameGateView` over the root, Android `menus/NameGate.kt` over `OnDeviceRoot`, web `NameGate.tsx` in `.mroot`), with
+  Google (and Apple on iOS) for players who already have a profile. Offline or with the server down it never shows, so
+  nobody is locked out of playing. Don't claim a test name on the live server from a test browser: it makes a profile.
+
 - 2026-10-28 (Claude, card picture sync): the phones named custom card pictures by a hash of the card key, so the
   files alone can't say which cards have pictures, and iOS hashed `"card:" + full name` while Android hashed the name
   and the web keyed by front face. **Rule:** the card key is the front face, trimmed, lower case on every platform
   (`CustomCardArt.cardKey`, web `artKey`); the phones keep `index.json` of keys beside the files. A new Supabase
   Storage bucket needs its own `storage.objects` policies (none exist by default). Where: docs/CARD_ART_SYNC.md.
+- 2026-10-28 (Claude, Galaxy S23 Ultra report): on a 3-button phone the Back/Home/Recents bar stayed on screen during
+  games; the board only kept clear of it. **Rule:** a game hides every system bar (`HideStatusBarWhileShown` hides
+  `systemBars()`, swipe shows them for a moment), so the board runs edge to edge on 3-button phones as on gesture ones;
+  Android's one-time "Viewing full screen" notice is the system's. The hand's hold-to-magnify and slide both work on
+  the emulator with 3-button navigation at 420 and 480 dpi: to test by adb, the resting hand's touch strip ends about
+  40 dp above the rail (log `rect` from `ArenaHandTouch` if unsure), `input swipe x y x+2 y 2500` run in the
+  background is a hold (screenshot mid-swipe), and a swipe that moves from its first frame is a scrub, never a hold.
+  Where: `board/LandscapeBoard.kt`.
 
 - 2026-10-27 (Claude, stack tab): in `board/ArenaBoardViews.kt` the imported `testTag` is the semantics property
   (`androidx.compose.ui.semantics.testTag`), so `Modifier.testTag(...)` there fails to compile ("cannot be invoked as a

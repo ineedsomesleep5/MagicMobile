@@ -171,6 +171,9 @@ final class PlayerAccount: ObservableObject {
 
     init(api: SupabaseLite = SupabaseLite()) { self.api = api }
 
+    /// The profile is reachable but has no name yet: the app asks for one before the menus (NameGateView). False offline,
+    /// while loading and with the profile server unavailable, so a player is never locked out of playing.
+    var needsName: Bool { phase == .ready && username == nil }
     var onlineFriendCount: Int { friends.filter { $0.isFriend && $0.online }.count }
     var incomingCount: Int { friends.filter(\.isIncoming).count }
 

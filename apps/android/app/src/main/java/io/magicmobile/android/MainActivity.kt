@@ -30,7 +30,12 @@ class MainActivity: ComponentActivity() {
         WindowCompat.getInsetsController(window,window.decorView).apply{isAppearanceLightStatusBars=false;isAppearanceLightNavigationBars=false}
         io.magicmobile.android.studio.DeckStudioServices.install(this)
         if(DesignPreview.active) setContent { DesignPreviewHost() }
-        else setContent { io.magicmobile.android.ondevice.OnDeviceRoot(onDevice) }
+        else setContent {
+            androidx.compose.foundation.layout.Box {
+                io.magicmobile.android.ondevice.OnDeviceRoot(onDevice)
+                io.magicmobile.android.menus.NameGate(onDevice.account)
+            }
+        }
         if (savedInstanceState==null) openJoinLink(intent)
     }
 

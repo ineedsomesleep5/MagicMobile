@@ -534,7 +534,11 @@ private fun XmageStackPeek(objects: List<XmageStackObject>, legalActions: List<L
     }
 }
 
-/** iPhone hides the status bar in landscape; the board gets that height here too. A swipe still shows it. */
+/**
+ * During a game the system bars leave, as on iPhone: the status bar, and the navigation bar too (an Android tester on a
+ * Galaxy S23 Ultra, 2026-10-28: Back, Home and Recents stayed on screen under the board). A swipe from an edge shows them
+ * for a moment. With the bars gone their insets are zero, so the board runs edge to edge on 3-button phones as well.
+ */
 @Composable
 internal fun HideStatusBarWhileShown() {
     val view = androidx.compose.ui.platform.LocalView.current
@@ -542,7 +546,7 @@ internal fun HideStatusBarWhileShown() {
         val window = (view.context as? android.app.Activity)?.window
         val controller = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, view) }
         controller?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        controller?.hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
-        onDispose { controller?.show(androidx.core.view.WindowInsetsCompat.Type.statusBars()) }
+        controller?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        onDispose { controller?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) }
     }
 }

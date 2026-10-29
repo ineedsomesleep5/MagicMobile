@@ -178,6 +178,7 @@ struct MagicMobileApp: App {
         case .embedded, .setupPreview:
             OnDeviceRootView()
                 .defaultAppStorage(MagicMobilePreferences.current)
+                .overlay { NameGate() }
         case .engineMissing:
             ContentUnavailableView(
                 "Native engine missing",
@@ -516,3 +517,11 @@ private struct VersusFixtureScreen: View {
     }
 }
 #endif
+
+/// Covers the app with the name screen while the profile has no name (PlayerAccount.needsName).
+private struct NameGate: View {
+    @ObservedObject private var account = PlayerAccount.shared
+    var body: some View {
+        if account.needsName { NameGateView(account: account).transition(.opacity) }
+    }
+}
