@@ -26,6 +26,14 @@ contradicting one.
   and the web keyed by front face. **Rule:** the card key is the front face, trimmed, lower case on every platform
   (`CustomCardArt.cardKey`, web `artKey`); the phones keep `index.json` of keys beside the files. A new Supabase
   Storage bucket needs its own `storage.objects` policies (none exist by default). Where: docs/CARD_ART_SYNC.md.
+- 2026-10-28 (Claude, Galaxy S23 Ultra report): on a 3-button phone the Back/Home/Recents bar stayed on screen during
+  games; the board only kept clear of it. **Rule:** a game hides every system bar (`HideStatusBarWhileShown` hides
+  `systemBars()`, swipe shows them for a moment), so the board runs edge to edge on 3-button phones as on gesture ones;
+  Android's one-time "Viewing full screen" notice is the system's. The hand's hold-to-magnify and slide both work on
+  the emulator with 3-button navigation at 420 and 480 dpi: to test by adb, the resting hand's touch strip ends about
+  40 dp above the rail (log `rect` from `ArenaHandTouch` if unsure), `input swipe x y x+2 y 2500` run in the
+  background is a hold (screenshot mid-swipe), and a swipe that moves from its first frame is a scrub, never a hold.
+  Where: `board/LandscapeBoard.kt`.
 
 - 2026-10-27 (Claude, stack tab): in `board/ArenaBoardViews.kt` the imported `testTag` is the semantics property
   (`androidx.compose.ui.semantics.testTag`), so `Modifier.testTag(...)` there fails to compile ("cannot be invoked as a
@@ -128,6 +136,17 @@ contradicting one.
   `board/InspectorViews.kt`.
 
 ## Gameplay
+
+- 2026-10-28 (Claude, "won't let me tap mana to pay propaganda cost", TestFlight feedback): a mana payment asked
+  while someone else holds priority (Propaganda or Ghostly Prison's attack tax, paid while attackers are declared and
+  before anyone has priority in that step; Rhystic Study; ward) came with an empty `canPlayObjects`, so the apps let
+  nothing be tapped and Auto Pay was dimmed. Upstream XMage lists playables for the priority player only, and
+  `PlayerImpl.SILENT_PHASES_STEPS` lists none at all in DECLARE_ATTACKERS/PRE; its desktop client lets you click any
+  card regardless. **Fix / rule:** `ViewProjector.project(game, seats, query)` takes the question being published;
+  for PLAY_MANA / PLAY_X_MANA the paying seat gets its activatable mana abilities (`getAvailableActivatedManaAbilities`,
+  the same test a tap gets from `HumanPlayer.playManaAbilities`) instead of upstream's priority-only list. Engine
+  change: a new native build for every platform. Test: `RealStackResponseTests attack-tax`; probe:
+  `scripts/lessons/capture_targets.py`-style replay of an attack into Propaganda.
 
 - 2026-10-27 (Claude): Gogo's "copy which ability?" target, asked in the declare attackers step, showed "Choose attackers."
   and 1 Attacker and the game could not go on: `ArenaCombatPhase` (iOS, Android, web `combatPhase`) took any target
@@ -393,7 +412,9 @@ contradicting one.
   **Rule:** copies must never close the live seat's channel; look for `GameImpl.end` → `abort` on a copy when a human
   suddenly can't answer. Where: `MobileHumanPlayer.abort`/copy constructor. 2026-10-26: it ended Caleb's winning ranked
   web game ("Too many errors", the AI won on life). Web fixed by a `web_sources.py` rewrite (branch
-  `claude/web-engine-copy-abort`, `test/CopyAbortCheck.java` in CI); phones still need `ccd1365a` in an engine release.
+  `claude/web-engine-copy-abort`, `test/CopyAbortCheck.java` in CI). Phones: engine release D (2026-10-28, `ccd1365a`): only the
+  live seat (constructed, or restored from a checkpoint) closes the channel on `abort()`; copies and control proxies never
+  do (`MobileHumanPlayer.abort`/`ownsChannel`, regression `RealConcedeTests.endedCopyKeepsHumanAnswerable`).
 
 - 2026-10-18 (Claude, release C out-of-memory): interrupting an AI search, upstream's only stop signal
   (`FutureTask.cancel(true)` at the timeout), does not stop code that never checks the flag. `SimulatedPlayer2.triggerAbility`
