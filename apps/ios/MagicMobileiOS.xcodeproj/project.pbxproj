@@ -294,6 +294,7 @@
 		ABF01CC5DB13800E3FF8E8D4 /* GrimoireBinderMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02B854BEB232063C4338556D /* GrimoireBinderMenu.swift */; };
 		AD1F29EE4F8AACB5DB930B58 /* AccountSignInCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9613A6EF338027A5A1EAF77 /* AccountSignInCard.swift */; };
 		AD43872AD44AD78E77125654 /* d20-table-landscape.glb in Resources */ = {isa = PBXBuildFile; fileRef = E7B7BC25DD3CB109C2F1D0A2 /* d20-table-landscape.glb */; };
+		AE23699E1C9DF2312DD095A0 /* NameGateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3806C1A2FEFA646918545D52 /* NameGateView.swift */; };
 		AF35E236FEE71179A81F56AD /* DeckStudioCardSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21FA91A26BEAAE41F9CC7036 /* DeckStudioCardSearch.swift */; };
 		AFF0892D6B4BD073D1796811 /* creature-squirrel-1.m4a in Resources */ = {isa = PBXBuildFile; fileRef = B4275BEB1F30ADC9154C9F46 /* creature-squirrel-1.m4a */; };
 		B0C5D4EBA3173AAFED846BA4 /* OnDevice in Resources */ = {isa = PBXBuildFile; fileRef = E25161EF0DCBD6D130249073 /* OnDevice */; };
@@ -537,6 +538,7 @@
 		36D89291D3A05F7D50E814D8 /* BoardResourceLayoutUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardResourceLayoutUITests.swift; sourceTree = "<group>"; };
 		378E2D2A40FFB80E110404D6 /* UITestHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestHarness.swift; sourceTree = "<group>"; };
 		37B38E682FB38C9A11F80A64 /* music-menu-2.m4a */ = {isa = PBXFileReference; path = "music-menu-2.m4a"; sourceTree = "<group>"; };
+		3806C1A2FEFA646918545D52 /* NameGateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NameGateView.swift; sourceTree = "<group>"; };
 		3847D732FDC3CA65EAFB143D /* creature-squirrel-2.m4a */ = {isa = PBXFileReference; path = "creature-squirrel-2.m4a"; sourceTree = "<group>"; };
 		385800852BAEE6683289B0CB /* creature-bird.m4a */ = {isa = PBXFileReference; path = "creature-bird.m4a"; sourceTree = "<group>"; };
 		39C9C549080F402A93AF23A6 /* CardArtSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardArtSyncTests.swift; sourceTree = "<group>"; };
@@ -1160,6 +1162,7 @@
 				19CDF5F1B51FDA0A32ADAF7D /* ArenaMenuKit.swift */,
 				67A68172534917A2D5711A69 /* ArenaPanels.swift */,
 				9AC15F3E94E4CC7556DD91C0 /* ArenaPlayPanel.swift */,
+				3806C1A2FEFA646918545D52 /* NameGateView.swift */,
 			);
 			path = Menus;
 			sourceTree = "<group>";
@@ -1930,6 +1933,7 @@
 				8C6E5F754F495DF627F5735D /* ManaAndStackViews.swift in Sources */,
 				037F8C88A7F2DD19D445DEE4 /* Models.swift in Sources */,
 				32DF840B2C47CB527A80B803 /* MultiplayerD20View.swift in Sources */,
+				AE23699E1C9DF2312DD095A0 /* NameGateView.swift in Sources */,
 				13FD766578F52B9FF9A9C717 /* NativeArtworkBackgroundQueue.swift in Sources */,
 				4FD4CAA9B9A87F614A91BE25 /* NativeArtworkCatalogue.swift in Sources */,
 				D79838C720F7931D9CFD8A2F /* NativeAssetDownloads.swift in Sources */,
