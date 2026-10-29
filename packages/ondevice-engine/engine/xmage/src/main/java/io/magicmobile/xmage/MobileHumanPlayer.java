@@ -15,7 +15,9 @@ import java.util.function.Consumer;
  * Retains HumanPlayer's rule/choice logic. Replaces only the desktop wait/notify transport.
  * Requires the response hook applied by scripts/prepare_upstream.py.
  * No response mutates XMage off its GAME thread. Copies share the input channel, as
- * vanilla HumanPlayer copies share PlayerResponse. Interrupted/closed games abort,
+ * vanilla HumanPlayer copies share PlayerResponse, but only the live seat closes it: a game
+ * copy that ends (an AI simulation where a player loses) aborts its own players, and that
+ * must not close the live human's channel. Interrupted/closed games abort,
  * never auto-answer a choice or fall back to a simulator.
  */
 public final class MobileHumanPlayer extends HumanPlayer {
@@ -30,12 +32,14 @@ public final class MobileHumanPlayer extends HumanPlayer {
     private static final long serialVersionUID=1L;
     // Transient: a checkpoint keeps the rules state only; a restored seat gets a new channel.
     private transient Channel channel;
+    /** True for the live seat (constructed or restored from a checkpoint), false for copies and proxies. */
+    private transient boolean ownsChannel;
     private final UUID proxyControllerId;
     /** GAME thread: set on entering priority(), consumed by the first question it publishes. */
     private transient boolean firstPriorityQuestion;
     public MobileHumanPlayer(String name) {
         super(name,RangeOfInfluence.ALL,1);
-        channel=new Channel();
+        channel=new Channel();ownsChannel=true;
         proxyControllerId=null;
         userData=mage.players.net.UserData.getDefaultUserDataView();
     }
@@ -49,7 +53,7 @@ public final class MobileHumanPlayer extends HumanPlayer {
     }
     private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
         in.defaultReadObject();
-        channel=new Channel(); // HumanPlayer.readObject (prepare_upstream.py) recreates the response.
+        channel=new Channel();ownsChannel=true; // HumanPlayer.readObject (prepare_upstream.py) recreates the response.
     }
     @Override public MobileHumanPlayer copy() { return new MobileHumanPlayer(this); }
     @Override public boolean priority(Game game) {
@@ -81,7 +85,9 @@ public final class MobileHumanPlayer extends HumanPlayer {
         if(channel.closed || !channel.answers.offer(Json.object(Json.freeze(answer))))
             throw new BridgeException("response_channel_unavailable","Player response channel is closed or full");
     }
-    @Override public void abort() { closeChannel();super.abort(); }
+    // GameImpl.end aborts every player of the game that ended; a copy's end leaves the live seat answerable.
+    @Override public void abort() { if(ownsChannel) closeChannel();super.abort(); }
+    /** Match teardown (Running.close): closes the shared channel whichever instance it is called on. */
     public void closeChannel() { channel.closed=true;channel.answers.clear(); }
     @Override protected void waitForResponse(Game game) {
         if(isExecutingMacro()) throw new BridgeException("unsupported_macro","Desktop input macros are not enabled on mobile");
