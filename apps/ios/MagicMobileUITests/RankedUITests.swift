@@ -1,6 +1,6 @@
 import XCTest
 
-/// Quick Match, Ranked, the profile and the rank moments, in the tavern (Caleb, 2026-10-04).
+/// Quick Match, Ranked, the profile and the rank moments, in the Arena menus (Caleb, 2026-10-04; Arena 2026-10-22).
 /// Each screen is captured; no engine game is played here.
 @MainActor
 final class RankedUITests: XCTestCase {
@@ -46,44 +46,51 @@ final class RankedUITests: XCTestCase {
         for _ in 0..<6 where !(element.exists && element.isHittable) { app.swipeUp() }
     }
 
-    func testPlayOffersQuickRankedAndCustom() {
+    /// Play opens Arena's panel (Caleb, 2026-10-22): the tabs, the three ways to play and each one's start in the
+    /// blade; the Ranked tab opens the Ranked Hall, whose Play opens the panel on Ranked.
+    func testPlayPanelOffersQuickRankedAndCustom() {
         launch()
         tapSteady(app.buttons["menu.play"], until: app.buttons["play.quick"])
-        for id in ["play.quick", "play.ranked", "play.custom"] {
+        for id in ["play.quick", "play.ranked", "play.custom", "play.tab.find", "play.tab.friends", "play.tab.recent"] {
             XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 10), id)
         }
-        capture("Play mode chooser")
-        tapSteady(app.buttons["play.quick"], until: app.buttons["quick.bracket"])
-        XCTAssertTrue(app.buttons["quick.bracket"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["play.deck"].exists)
-        capture("Quick Match")
-        reveal(app.buttons["quick.start"])
-        XCTAssertTrue(app.buttons["quick.start"].exists, "Quick Match starts from its own screen")
-        capture("Quick Match bottom")
-        tapSteady(app.buttons["lobby.back"], until: app.buttons["play.ranked"])
-        XCTAssertTrue(app.buttons["play.ranked"].waitForExistence(timeout: 5))
-        tapSteady(app.buttons["play.ranked"], until: app.buttons["ranked.hall.play"])
-        XCTAssertTrue(app.buttons["ranked.hall.play"].waitForExistence(timeout: 10), "Ranked opens the Ranked Hall first")
+        tapSteady(app.buttons["play.quick"], until: app.buttons["quick.bracket.0"])
+        XCTAssertTrue(app.buttons["quick.bracket.0"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["quick.start"].exists, "Quick Match starts from the panel")
+        capture("Play panel, Quick")
+        tapSteady(app.buttons["play.ranked"], until: app.buttons["ranked.find"])
+        XCTAssertTrue(app.buttons["ranked.find"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["ranked.standing"].exists)
+        capture("Play panel, Ranked")
+        tapSteady(app.buttons["play.custom"], until: app.buttons["play.start"])
+        XCTAssertTrue(app.buttons["play.start"].waitForExistence(timeout: 10), "Custom sets up the table")
+        capture("Play panel, Custom")
+        tapSteady(app.buttons["lobby.back"], until: app.buttons["menu.tab.ranked"])
+        XCTAssertTrue(waitUntilHittable(app.buttons["menu.play"]), "Closing the panel returns to the home page")
+        tapSteady(app.buttons["menu.tab.ranked"], until: app.buttons["ranked.hall.play"])
+        XCTAssertTrue(app.buttons["ranked.hall.play"].waitForExistence(timeout: 10), "The Ranked tab opens the Ranked Hall")
         XCTAssertTrue(app.buttons["ranked.hall.leaderboard"].exists)
         capture("Ranked Hall")
         tapSteady(app.buttons["ranked.hall.play"], until: app.buttons["ranked.find"])
-        XCTAssertTrue(app.buttons["ranked.find"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.otherElements["ranked.standing"].exists || app.descendants(matching: .any)["ranked.standing"].exists)
-        capture("Ranked lobby")
-        reveal(app.buttons["ranked.find"])
-        capture("Ranked lobby bottom")
+        XCTAssertTrue(app.buttons["ranked.find"].waitForExistence(timeout: 10), "The hall's Play opens the panel on Ranked")
         tapSteady(app.buttons["lobby.back"], until: app.buttons["ranked.hall.play"])
-        XCTAssertTrue(app.buttons["ranked.hall.play"].waitForExistence(timeout: 5), "Back from the ranked lobby returns to the hall")
-        tapSteady(app.buttons["lobby.back"], until: app.buttons["play.quick"])
-        tapSteady(app.buttons["lobby.back"], until: app.buttons["menu.play"])
-        XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5), "Back returns to the main menu")
+        tapSteady(app.buttons["menu.tab.home"], until: app.buttons["menu.play"])
+        XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5), "Home returns to the home page")
+    }
+
+    private func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval = 5) -> Bool {
+        let end = Date().addingTimeInterval(timeout)
+        while Date() < end {
+            if element.exists && element.isHittable { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return false
     }
 
     /// The fixture leaderboard (SocialFixtures.leaderboard): podium, live strip, rows, scopes and a profile from a row.
     func testLeaderboardShowsPodiumRowsAndScopes() {
         launch(["MAGICMOBILE_UI_TEST_SOCIAL": "1"])
-        tapSteady(app.buttons["menu.play"], until: app.buttons["play.ranked"])
-        tapSteady(app.buttons["play.ranked"], until: app.buttons["ranked.hall.leaderboard"])
+        tapSteady(app.buttons["menu.tab.ranked"], until: app.buttons["ranked.hall.leaderboard"])
         tapSteady(app.buttons["ranked.hall.leaderboard"], until: app.descendants(matching: .any)["leaderboard.podium"])
         XCTAssertTrue(app.descendants(matching: .any)["leaderboard.podium"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any)["leaderboard.live"].exists)
@@ -94,7 +101,8 @@ final class RankedUITests: XCTestCase {
         XCTAssertTrue(app.buttons["leaderboard.row.CalebM"].exists, "Your own row is on the board")
         capture("Leaderboard rows")
         app.swipeDown(); app.swipeDown()
-        tapSteady(app.buttons["leaderboard.scope.friends"], until: app.buttons["leaderboard.row.Aria_Blade"])
+        // The scopes are Arena's tab strip (ArenaSegmented), named by their titles.
+        tapSteady(app.buttons["leaderboard.scope.Friends"], until: app.buttons["leaderboard.row.Aria_Blade"])
         XCTAssertTrue(app.buttons["leaderboard.row.Aria_Blade"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["leaderboard.row.Dahlia_Rose"].exists, "Friends shows friends only")
         capture("Leaderboard friends")
@@ -113,16 +121,15 @@ final class RankedUITests: XCTestCase {
         tapSteady(bracket, until: app.buttons["bracket.close"])
         XCTAssertTrue(app.buttons["bracket.close"].waitForExistence(timeout: 5))
         capture("Bracket sheet")
-        tapSteady(app.buttons["bracket.close"], until: app.buttons["quick.bracket"])
-        XCTAssertTrue(app.buttons["quick.bracket"].waitForExistence(timeout: 5))
+        tapSteady(app.buttons["bracket.close"], until: app.buttons["quick.bracket.0"])
+        XCTAssertTrue(app.buttons["quick.bracket.0"].waitForExistence(timeout: 5))
     }
 
     func testProfileShowsRankStatsAndHistory() {
         launch(["MAGICMOBILE_UI_TEST_RANK": "gold-2-3-1", "MAGICMOBILE_UI_TEST_MATCHES": "14"])
         let profile = app.buttons["menu.profile"]
-        reveal(profile)
         XCTAssertTrue(profile.waitForExistence(timeout: 10))
-        XCTAssertEqual(profile.value as? String, "Gold II")
+        XCTAssertTrue(app.buttons["home.rank"].label.contains("Gold II"), "The home page's rank medallion")
         tapSteady(profile, until: app.descendants(matching: .any)["profile.season"])
         XCTAssertTrue(app.descendants(matching: .any)["profile.season"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Gold II"].exists)
@@ -131,7 +138,9 @@ final class RankedUITests: XCTestCase {
         capture("Profile achievements")
         reveal(app.descendants(matching: .any)["profile.history"])
         capture("Profile history")
-        tapSteady(app.buttons["lobby.back"], until: app.buttons["menu.play"])
+        // Profile is a top-bar tab with no back chevron: Home leaves it.
+        XCTAssertFalse(app.buttons["lobby.back"].exists, "A tab's page has no back chevron")
+        tapSteady(app.buttons["menu.tab.home"], until: app.buttons["menu.play"])
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5))
     }
 

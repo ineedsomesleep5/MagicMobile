@@ -6,7 +6,11 @@ import UIKit
 /// A touch-owned inspection is transient. Explicit Inspect actions remain persistent.
 final class HoldCardInspection: ObservableObject {
     @Published private(set) var isActive = false
+    /// Where the holding finger is now (window coordinates), so it can slide onto the inspector's tabs.
+    @Published private(set) var finger: CGPoint?
     private var dismiss: (() -> Void)?
+
+    func track(_ point: CGPoint) { if isActive { finger = point } }
 
     func begin(dismiss: @escaping () -> Void) {
         end()
@@ -19,6 +23,7 @@ final class HoldCardInspection: ObservableObject {
         let completion = dismiss
         dismiss = nil
         isActive = false
+        finger = nil
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) { completion?() }
@@ -60,7 +65,7 @@ private struct CardInteractionModifier: ViewModifier {
             CardTouchView(tap: tap, begin: {
                 inspection?.begin(dismiss: release)
                 inspect()
-            }, end: endInspection, enabled: enabled)
+            }, move: { inspection?.track($0) }, end: endInspection, enabled: enabled)
             .accessibilityHidden(true)
         }
         .accessibilityAddTraits(.isButton)
@@ -84,6 +89,7 @@ private struct CardInteractionModifier: ViewModifier {
 private struct CardTouchView: UIViewRepresentable {
     let tap: () -> Void
     let begin: () -> Void
+    let move: (CGPoint) -> Void
     let end: () -> Void
     let enabled: Bool
 
@@ -91,6 +97,7 @@ private struct CardTouchView: UIViewRepresentable {
     func updateUIView(_ view: TouchView, context: Context) {
         view.tap = tap
         view.begin = begin
+        view.move = move
         view.end = end
         view.isUserInteractionEnabled = enabled
         if !enabled { view.finish() }
@@ -100,6 +107,7 @@ private struct CardTouchView: UIViewRepresentable {
     final class TouchView: UIView {
         var tap: (() -> Void)?
         var begin: (() -> Void)?
+        var move: ((CGPoint) -> Void)?
         var end: (() -> Void)?
         private var inspecting = false
 
@@ -109,6 +117,7 @@ private struct CardTouchView: UIViewRepresentable {
             isAccessibilityElement = false
             let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
             hold.minimumPressDuration = 0.35
+            // Before the hold begins the finger may wander 8 points; once inspecting it may slide onto the tabs.
             hold.allowableMovement = 8
             let selection = UITapGestureRecognizer(target: self, action: #selector(selected(_:)))
             selection.require(toFail: hold)
@@ -126,6 +135,7 @@ private struct CardTouchView: UIViewRepresentable {
         @objc private func held(_ gesture: UILongPressGestureRecognizer) {
             switch gesture.state {
             case .began: inspecting = true; begin?()
+            case .changed: if inspecting { move?(gesture.location(in: nil)) }
             case .ended, .cancelled, .failed: finish()
             default: break
             }

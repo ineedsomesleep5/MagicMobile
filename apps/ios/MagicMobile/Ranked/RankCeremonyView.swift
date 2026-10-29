@@ -20,13 +20,13 @@ struct RankProgressPanel: View {
                     .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.9, blue: 0.62), shown.tier.tint], startPoint: .top, endPoint: .bottom))
                 if shown.tier == .mythic {
                     Label("\(shown.pips)", systemImage: "flame.fill")
-                        .font(.system(size: 14, weight: .heavy, design: .serif)).foregroundStyle(shown.tier.tint)
+                        .font(ArenaMenuStyle.font(14, .heavy)).foregroundStyle(shown.tier.tint)
                 } else {
                     RankPips(filled: shown.pips, tier: shown.tier, size: 13,
                              highlight: shownPoints == nil ? nil : (change.pipDelta >= 0 ? shown.pips - 1 : shown.pips))
                 }
                 Text(deltaText)
-                    .font(.system(size: 12, weight: .heavy, design: .serif))
+                    .font(ArenaMenuStyle.font(12, .heavy))
                     .foregroundStyle(change.pipDelta > 0 ? Color(red: 0.6, green: 0.95, blue: 0.55)
                                      : change.pipDelta < 0 ? Color(red: 1, green: 0.55, blue: 0.45) : TavernPalette.parchment.opacity(0.7))
                 if !change.bonuses.isEmpty {
@@ -41,8 +41,7 @@ struct RankProgressPanel: View {
             Spacer(minLength: 0)
         }
         .padding(12)
-        .background { TavernFill(material: .leather).overlay(Color.black.opacity(0.3)).clipShape(RoundedRectangle(cornerRadius: 10)) }
-        .overlay { TavernBrassFrame(scale: 0.5) }
+        .modifier(ArenaGlassPanel(cornerRadius: 12, opacity: 0.95))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "Ranked: \(change.after.title). \(deltaText)"))
         .accessibilityIdentifier("rank.progress")
@@ -106,7 +105,7 @@ struct RankCeremonyOverlay: View {
                 Group {
                     if finished {
                         Button { close() } label: { Text(String(localized: "Continue")).frame(minWidth: 180) }
-                            .buttonStyle(TavernButtonStyle(kind: .primary, fontSize: 18))
+                            .buttonStyle(ArenaButtonStyle(kind: .primary, fontSize: 18))
                             .accessibilityIdentifier("rank.ceremony.continue")
                     } else {
                         Color.clear.frame(height: 44)
@@ -150,7 +149,7 @@ struct RankCeremonyOverlay: View {
         VStack(spacing: 8) {
             Text(promoted ? (tierChange ? String(localized: "NEW RANK") : String(localized: "RANKED UP"))
                           : String(localized: "RANKED DOWN"))
-                .font(.system(size: 15, weight: .black, design: .serif)).tracking(4)
+                .font(ArenaMenuStyle.font(15, .black)).tracking(4)
                 .foregroundStyle(promoted ? TavernPalette.brass : Color(red: 0.85, green: 0.4, blue: 0.35))
             Text(change.after.title)
                 .font(.system(size: 40, weight: .black, design: .serif))
@@ -158,7 +157,7 @@ struct RankCeremonyOverlay: View {
                 .shadow(color: (promoted ? change.after.tier.tint : .black).opacity(0.7), radius: 12)
                 .minimumScaleFactor(0.6).lineLimit(1)
             Text(promoted ? String(localized: "Your opponents grow stronger.") : String(localized: "Win your next games to climb back."))
-                .font(.system(size: 14, weight: .medium, design: .serif))
+                .font(ArenaMenuStyle.font(14, .medium))
                 .foregroundStyle(TavernPalette.parchment.opacity(0.8))
         }
         .multilineTextAlignment(.center)

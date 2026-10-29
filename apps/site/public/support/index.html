@@ -3,40 +3,40 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1b120b">
+  <meta name="theme-color" content="#08090c">
   <title>Support MagicMobile</title>
   <meta name="description" content="MagicMobile is free with no ads. Tips help cover its server costs.">
   <link rel="icon" type="image/png" href="/favicon.png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <style>
-    /* Walnut & Ember, as on the download site and the privacy page (see ../../DESIGN.md). */
-    :root { --canvas: #1b120b; --leather: #29140b; --brass: #dba34d; --ink: #f3e6c8; --soft: #cfb994; --accent: #ff8058;
-      --plaque-ink: #ffe8a8; }
+    /* Arena, as on the download site and the privacy page (see ../../DESIGN.md). */
+    :root { color-scheme: dark; --canvas: #0c0d11; --ink: #f2ebdb; --soft: #c2b8a6; --gold: #fad685; --hair: rgba(232, 190, 112, 0.4);
+      --serif: "Iowan Old Style", "Source Serif 4", Georgia, serif; --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: linear-gradient(#110a05c7, #110a05c7), url("/tavern/walnut.webp") 0 0 / 340px, var(--canvas);
-      color: var(--ink); font: 17px/1.6 ui-serif, "New York", Georgia, "Times New Roman", serif; }
-    main { max-width: 720px; margin: 0 auto; padding: 40px 16px 64px; }
-    h1 { font-size: 36px; line-height: 1.2; margin: 18px 0 8px; font-weight: 800; }
-    h2 { font-size: 21px; margin: 34px 0 8px; padding-top: 18px; border-top: 1px solid #dba34d57; color: var(--brass); }
+    body { margin: 0; background: radial-gradient(70% 40% at 50% 0%, #2a1a10, transparent 70%), var(--canvas); color: var(--ink); font: 17px/1.6 var(--sans); }
+    main { max-width: 720px; margin: 0 auto; padding: 32px max(16px, env(safe-area-inset-right, 0px)) 64px max(16px, env(safe-area-inset-left, 0px)); }
+    .back { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font: 700 18px/1 var(--serif); }
+    .back img { width: 32px; height: 32px; }
+    h1 { font: 800 40px/1.1 var(--serif); margin: 28px 0 8px; letter-spacing: -0.01em; }
+    h2 { font: 700 22px/1.25 var(--serif); margin: 34px 0 8px; padding-top: 18px; border-top: 1px solid var(--hair); }
     p, li { color: var(--soft); }
     strong { color: var(--ink); }
-    a { color: var(--accent); }
-    a:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+    a { color: var(--gold); }
+    a:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; border-radius: 4px; }
     ul { padding-left: 20px; }
-    .mark { display: block; width: 56px; height: 56px; margin-top: 28px; border-radius: 13px; box-shadow: 0 0 0 1px #dba34d99; }
     .lead { font-size: 19px; color: var(--ink); }
-    .tip { display: inline-flex; align-items: center; gap: 10px; min-height: 52px; margin: 10px 0 6px; padding: 10px 28px;
-      border-radius: 26px; border: 2px solid var(--brass); color: var(--plaque-ink); font-weight: 700; text-decoration: none;
-      text-shadow: 0 1px 1px #000c; background: linear-gradient(180deg, #ffd6a042, #ffa06400 40%, #46080066), url("/tavern/ember.webp") center / cover, #6b120d;
-      box-shadow: 0 2px 22px #ff80586b, 0 5px 12px #08030073; }
-    .tip:hover { filter: brightness(1.08); }
+    /* Arena's orange pill. */
+    .tip { display: inline-flex; align-items: center; gap: 10px; min-height: 52px; margin: 10px 0 6px; padding: 0 28px; border-radius: 999px;
+      color: #fff; font: 700 19px/1 var(--serif); text-decoration: none; text-shadow: 0 1px 1.5px rgba(89, 26, 0, 0.75);
+      background: linear-gradient(transparent 50%, rgba(110, 20, 0, 0.35)), linear-gradient(#ffb24a, #f47a1c 48%, #c9420d);
+      border: 1.5px solid rgba(255, 214, 150, 0.9); box-shadow: 0 3px 12px rgba(255, 120, 31, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
+    .tip:hover { filter: brightness(1.07); }
     .small { font-size: 15px; }
   </style>
 </head>
 <body>
   <main>
-    <a href="/">← MagicMobile</a>
-    <img class="mark" src="/tavern/mark-96.webp" alt="" width="56" height="56">
+    <a class="back" href="/"><img src="/site/mark.png" alt="" width="96" height="96">MagicMobile</a>
     <h1>Support MagicMobile</h1>
     <p class="lead">MagicMobile is free, with no ads and nothing to buy in the app. If you enjoy it, a small tip helps cover the cost of running it.</p>
 
@@ -46,15 +46,15 @@
 
     <h2>What tips pay for</h2>
     <ul>
-      <li>the database behind profiles, friends and ranked games;</li>
-      <li>the relay that connects iPhone and Android players at online tables;</li>
+      <li>the database behind profiles, friends, synced decks and ranked games;</li>
+      <li>the relay that connects players at online tables;</li>
       <li>the yearly Apple developer membership that keeps TestFlight builds coming.</li>
     </ul>
 
     <h2>Other ways to help</h2>
-    <p>Tell a friend, bring your playgroup to an online table, or report a bug on the <a href="https://github.com/ineedsomesleep5/MagicMobile/issues">project's GitHub page</a>.</p>
+    <p>Tell a friend or bring your playgroup to an online table.</p>
 
-    <p>MagicMobile is an independent fan project. Magic: The Gathering and card artwork belong to their respective owners. MagicMobile is not affiliated with Wizards of the Coast.</p>
+    <p>MagicMobile is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p>
   </main>
 </body>
 </html>

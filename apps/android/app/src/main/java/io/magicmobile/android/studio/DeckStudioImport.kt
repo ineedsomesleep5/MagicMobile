@@ -43,6 +43,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.magicmobile.android.core.readBounded
 import io.magicmobile.android.game.EngineJson
+import io.magicmobile.android.menus.arenaScrollFade
 import io.magicmobile.android.ui.SfDesign
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
@@ -94,7 +95,8 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
     var name by remember { mutableStateOf("Imported Commander Deck") }
     var text by remember { mutableStateOf("") }
     var link by remember { mutableStateOf("") }
-    var excludeSideboards by remember { mutableStateOf(false) }
+    // On by default: a link's maybeboard is left out rather than failing the whole import (10 of 60 popular Archidekt decks have one).
+    var excludeSideboards by remember { mutableStateOf(true) }
     var preview by remember { mutableStateOf<OnDeviceDeckLinkImporter.Preview?>(null) }
     var sourceURL by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -248,8 +250,6 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
 
     // The parts of the importer, shared by the single page (upright) and the two pages of a spread.
     val entry: @Composable () -> Unit = {
-        Text("Bring your deck.", color = DeckStudioPalette.ink, style = sf(34f, SfWeight.bold, tracking = -1f))
-        Text("Paste or link a decklist. Review every card before saving.", color = DeckStudioPalette.secondaryInk, style = StudioText.body)
         StudioSegmented(listOf("Paste", "Link", "Account"), method, { method = it },
             { if (it == "Account") "Archidekt" else it }, enabled = !busy && saved == null && batch.isEmpty())
         // Type a commander's name and pick it from the suggestions, as on Archidekt.
@@ -268,8 +268,6 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
                         Modifier.semantics { contentDescription = "deckStudio.import.commander.change" }, enabled = !locked)
                 }
             } else {
-                Text("Optional. Pick it first and the import treats it as your commander, even when the list doesn't say so.",
-                    color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
                 StudioRoundedField(commanderQuery, { commanderQuery = it }, "Type a commander's name",
                     Modifier.fillMaxWidth().testTag("deckStudio.import.commander.search"), enabled = !locked,
                     onSubmit = { commanderSuggestions.firstOrNull()?.let { chooseCommander(it.name) } })
@@ -305,8 +303,6 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
                 "Link" -> {
                     StudioRoundedField(link, { link = it }, "Public Archidekt or Moxfield deck URL", Modifier.fillMaxWidth(), keyboardType = KeyboardType.Uri, enabled = !locked)
                     StudioToggle("Exclude sideboard / maybeboard", excludeSideboards, { excludeSideboards = it }, enabled = !locked)
-                    Text("Public links only, subject to provider access. This contacts the deck provider. No sign-in, bot-check bypass or scraping. When a provider is unavailable, paste its text export instead.",
-                        color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
                     StudioPlainButton("Switch to pasted export", { method = "Paste" }, enabled = !locked)
                 }
                 "Account" -> {
@@ -388,10 +384,10 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
         }
     }
     val spread = androidx.compose.ui.platform.LocalConfiguration.current.let { Grimoire.isSpread(it.screenWidthDp, it.screenHeightDp) }
-    // A page of the binder (concept B, 2026-10-06): Cancel is the strap on the leather above it.
-    // This screen's pages, for page turns that move only the paper (GrimoireStage).
+    // A glass page over the dimmed room, Cancel as a dark pill at its head.
     val binderScreen = remember { Any() }
-    Box(Modifier.fillMaxSize().binderCover()) {
+    Box(Modifier.fillMaxSize()) {
+        BinderCover()
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().padding(start = 4.dp, end = 4.dp, bottom = 2.dp)) {
             val head: @Composable () -> Unit = {
                 BinderHead("Cancel", ::cancel, title = "Import deck", strapTag = "deckStudio.import.cancel", strapEnabled = !saving)
@@ -403,14 +399,12 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
                     BinderPage(Modifier.weight(1f).fillMaxHeight(), gutterStart = false, screen = binderScreen) {
                         Column(Modifier.fillMaxSize()) {
                             head()
-                            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) { entry() }
+                            Column(Modifier.weight(1f).arenaScrollFade().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) { entry() }
                         }
                     }
                     BinderPage(Modifier.weight(1f).fillMaxHeight(), gutterStart = true, screen = binderScreen) {
                         Column(Modifier.fillMaxSize()) {
-                            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                                if (preview == null) Text("Your decklist appears here for review, card by card, before anything is saved.",
-                                    color = DeckStudioPalette.secondaryInk, style = StudioText.callout.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic))
+                            Column(Modifier.weight(1f).arenaScrollFade().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                                 reviewed()
                             }
                             confirm()
@@ -422,7 +416,7 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
                 BinderPage(Modifier.weight(1f).fillMaxWidth(), gutterStart = true, screen = binderScreen) {
                     Column(Modifier.fillMaxSize()) {
                         head()
-                        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp).widthIn(max = 720.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        Column(Modifier.weight(1f).arenaScrollFade().verticalScroll(rememberScrollState()).padding(16.dp).widthIn(max = 720.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                             entry()
                             reviewed()
                         }
@@ -445,7 +439,8 @@ private fun ImportReview(preview: OnDeviceDeckLinkImporter.Preview) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             SfImage(if (preview.unresolvedNames.isEmpty()) "checkmark.circle" else "exclamationmark.triangle", DeckStudioPalette.ink, 17.dp)
-            Text(if (preview.unresolvedNames.isEmpty()) "Names resolved in the compiled catalogue" else "${preview.unresolvedNames.size} unresolved names retained",
+            Text(if (preview.unresolvedNames.isEmpty()) "Every card found"
+                else "${preview.unresolvedNames.size} not in MagicMobile yet: ${preview.unresolvedNames.take(4).joinToString(", ")}${if (preview.unresolvedNames.size > 4) "…" else ""}",
                 color = DeckStudioPalette.ink, style = StudioText.body)
         }
         Text("${DeckStudioDraftPresentation.gameCount(draft)} main + commander cards; ${preview.deck.totalCards} across all imported sections.",
@@ -458,7 +453,7 @@ private fun ImportReview(preview: OnDeviceDeckLinkImporter.Preview) {
                     Text("${row.quantity}× ${row.cardName}", Modifier.weight(1f), color = DeckStudioPalette.ink, style = StudioText.body)
                     Text(DeckStudioDraftPresentation.section(row), color = DeckStudioPalette.ink, style = StudioText.caption)
                 }
-                if (row.cardName in preview.unresolvedNames) Text("Unresolved; retained in draft", color = DeckStudioPalette.warning, style = StudioText.caption)
+                if (row.cardName in preview.unresolvedNames) Text("Not in MagicMobile yet; kept in the draft", color = DeckStudioPalette.warning, style = StudioText.caption)
             }
         }
         if (preview.annotations.isNotEmpty()) {

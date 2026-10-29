@@ -67,7 +67,8 @@ actor NativeDeckArtwork {
     func imageData(name: String, variant: Variant = .board, allowNetwork: Bool,
                    tokenTypeLine: String? = nil, tokenOracleText: String? = nil,
                    tokenPower: String? = nil, tokenToughness: String? = nil, tokenColors: [String]? = nil,
-                   tokenSourceName: String? = nil, art: CardArtChoices.Selection? = nil) async throws -> Data? {
+                   tokenSourceName: String? = nil, art: CardArtChoices.Selection? = nil,
+                   defaultArtFallback: Bool = true) async throws -> Data? {
         try Task.checkCancellation()
         if let tokenTypeLine {
             // Only a caller with an explicitly disclosed copy-source identity may
@@ -76,9 +77,10 @@ actor NativeDeckArtwork {
                 return try await imageData(name: tokenSourceName, variant: variant, allowNetwork: allowNetwork, art: art)
             }
             let quality: NativeArtworkQuality = variant == .inspection ? .high : (variant == .board ? .standard : .compact)
+            // A differently worded but unambiguous token counts online too (searchToken finds it the same way).
             let stored = await assetStore.tokenImage(name: name, typeLine: tokenTypeLine, oracleText: tokenOracleText,
                                                       power: tokenPower, toughness: tokenToughness, colors: tokenColors,
-                                                      offlineFallback: !allowNetwork)
+                                                      offlineFallback: true)
             if let stored, (!allowNetwork || quality.accepts(stored)) { return stored }
             guard allowNetwork, let tokenOracleText, let tokenColors, !tokenTypeLine.isEmpty,
                   !name.isEmpty, Set(tokenColors).isSubset(of: ["W", "U", "B", "R", "G"]),
@@ -92,7 +94,7 @@ actor NativeDeckArtwork {
             // can both observe a cache miss and issue duplicate catalogue searches.
             if let upgraded = await assetStore.tokenImage(name: name, typeLine: tokenTypeLine, oracleText: tokenOracleText,
                                                           power: tokenPower, toughness: tokenToughness, colors: tokenColors,
-                                                          quality: quality) { return upgraded }
+                                                          quality: quality, offlineFallback: true) { return upgraded }
             guard ProcessInfo.processInfo.systemUptime >= tokenRetryAfter[key, default: 0] else { return stored }
             do {
                 guard let (token, url) = try await tokenLookup(name, tokenTypeLine, tokenOracleText,
@@ -103,6 +105,8 @@ actor NativeDeckArtwork {
                 // Recheck the exact visible identity even for an injected provider.
                 guard NativeAssetStore.matchTokenArtwork([token], name: name, typeLine: tokenTypeLine,
                                                          oracleText: tokenOracleText, power: tokenPower,
+                                                         toughness: tokenToughness, colors: tokenColors) != nil ||
+                      NativeAssetStore.looseTokenArtwork([token], name: name, typeLine: tokenTypeLine, power: tokenPower,
                                                          toughness: tokenToughness, colors: tokenColors) != nil else { return stored }
                 let data = try await downloadImage(name: token.name, quality: quality, imageURL: url)
                 guard let data else { return stored }
@@ -122,6 +126,8 @@ actor NativeDeckArtwork {
         // default art only when Scryfall has no such printing, or offline with nothing saved for it.
         if let art {
             if let data = try await printedImageData(art, name: name, variant: variant, allowNetwork: allowNetwork) { return data }
+            // A view about to fetch the chosen printing waits for it instead of flashing the default art first.
+            if !defaultArtFallback { return nil }
         }
         let downloaded = await assetStore.image(key: NativeAssetStore.cardKey(name))
         // Bulk-download quality stays untouched. Live upgrades use only the bounded
@@ -132,7 +138,14 @@ actor NativeDeckArtwork {
         }
         do {
             let original = try await nameRequest(name, variant: variant)
-            return try await imageData(request: original, variant: variant, allowNetwork: allowNetwork) ?? downloaded
+            guard let fetched = try await imageData(request: original, variant: variant, allowNetwork: allowNetwork) else { return downloaded }
+            // Kept with the downloads, so a card seen once never needs Scryfall again (the URL cache holds a few hundred).
+            // Never beside a download: the quality the player chose there stays theirs.
+            if allowNetwork, downloaded == nil, variant != .compact {
+                try? await assetStore.save(fetched, key: NativeAssetStore.cardKey(name), quality: variant == .inspection ? .high : .standard,
+                                           announce: false)
+            }
+            return fetched
         }
         catch is CancellationError { throw CancellationError() }
         catch { if let downloaded { return downloaded }; throw error }
@@ -144,7 +157,14 @@ actor NativeDeckArtwork {
         if let stored, !allowNetwork || quality.accepts(stored) { return stored }
         do {
             let request = try Self.request(printing: art.printing, back: art.back, variant: variant)
-            return try await imageData(request: request, variant: variant, allowNetwork: allowNetwork) ?? stored
+            guard let fetched = try await imageData(request: request, variant: variant, allowNetwork: allowNetwork) else { return stored }
+            // Kept with the downloads like default art, so a chosen printing seen once shows at once, offline too
+            // (Caleb, 2026-10-27: the opening hand showed the default lands, then swapped to his choices every match).
+            if allowNetwork, stored == nil, variant != .compact {
+                try? await assetStore.save(fetched, key: NativeAssetStore.printingKey(art.printing, back: art.back), quality: quality,
+                                           announce: false)
+            }
+            return fetched
         } catch is CancellationError { throw CancellationError() }
         catch ArtworkError.httpStatus(let status) where status == 404 || status == 422 {
             return stored // Scryfall has no such printing or face: the default art shows instead
@@ -152,6 +172,20 @@ actor NativeDeckArtwork {
             if let stored { return stored }
             if let fallback = await assetStore.image(key: NativeAssetStore.cardKey(name)) { return fallback }
             throw error
+        }
+    }
+    private var prefetchTask: Task<Void, Never>?
+    /// Saves the playing deck's chosen printings ahead of the game, one at a time, so its cards show the chosen art
+    /// from the first frame. Only with live images on; a printing already saved costs no request.
+    func prefetchChosenArt(_ cards: [(name: String, printing: CardPrinting)]) {
+        prefetchTask?.cancel()
+        guard UserDefaults.standard.bool(forKey: NativeArtworkPreference.key), !cards.isEmpty else { prefetchTask = nil; return }
+        prefetchTask = Task(priority: .utility) { [self] in
+            for card in cards {
+                guard !Task.isCancelled else { return }
+                _ = try? await imageData(name: card.name, variant: .board, allowNetwork: true,
+                                         art: .init(printing: card.printing, back: false))
+            }
         }
     }
     /// Scryfall's image route for a card name; a double-faced card's reverse face asks its front for `face=back`.
@@ -390,4 +424,10 @@ actor NativeDeckArtwork {
             completionHandler(challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust ? .performDefaultHandling : .cancelAuthenticationChallenge, nil)
         }
     }
+}
+
+/// Online card images (Scryfall) are opt-in. Here, beside the loader, so the presentation checks build it too.
+enum NativeArtworkPreference {
+    /// One spelling of the consent key, so a new surface cannot drift onto its own store.
+    static let key = "magicmobile.deckArtworkNetworkEnabled"
 }

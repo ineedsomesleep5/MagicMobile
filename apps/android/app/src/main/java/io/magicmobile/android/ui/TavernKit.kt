@@ -97,6 +97,17 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import io.magicmobile.android.R
+import io.magicmobile.android.menus.ArenaButton
+import io.magicmobile.android.menus.ArenaButtonKind
+import io.magicmobile.android.menus.ArenaCheckbox
+import io.magicmobile.android.menus.ArenaGlass
+import io.magicmobile.android.menus.ArenaMenuStyle
+import io.magicmobile.android.menus.ArenaSlider
+import io.magicmobile.android.menus.ArenaStepper
+import io.magicmobile.android.menus.LocalArenaBoard
+import io.magicmobile.android.menus.LocalArenaButtonTextStyle
+import io.magicmobile.android.menus.arenaGlassBackground
+import io.magicmobile.android.menus.arenaGlassPanel
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -283,11 +294,13 @@ fun Modifier.tavernPanel(cornerRadius: Dp = 12.dp): Modifier {
         .tavernBrassFrame(scale)
 }
 
-/** TavernPanelChrome: the classic fill and edge off the tavern table, leather in brass on it. */
+/** TavernPanelChrome: the classic fill and edge off the tavern table, leather in brass on it, Arena's glass in the menus. */
 fun Modifier.tavernPanelChrome(tavern: Boolean, cornerRadius: Dp = 12.dp, classicFill: Color = MagicPalette.iron.copy(alpha = 0.94f),
-                               classicStroke: Color = MagicPalette.antiqueGold.copy(alpha = 0.38f)): Modifier =
-    if (tavern) tavernPanel(cornerRadius)
+                               classicStroke: Color = MagicPalette.antiqueGold.copy(alpha = 0.38f)): Modifier = composed {
+    if (LocalArenaBoard.current) arenaGlassPanel(maxOf(cornerRadius, 12.dp))
+    else if (tavern) tavernPanel(cornerRadius)
     else this.background(classicFill, RoundedCornerShape(cornerRadius)).border(1.dp, classicStroke, RoundedCornerShape(cornerRadius))
+}
 
 /** TavernTitleBar: the leather title bar of tavern panels, in brass trim. */
 fun Modifier.tavernTitleBar(): Modifier = this
@@ -310,6 +323,7 @@ val tavernFieldTextStyle: TextStyle get() = sf(15f, SfWeight.medium, SfDesign.SE
 /** TavernSheetBackground: dark tooled leather under a brass rule along the top. */
 @Composable
 fun TavernSheetBackground(modifier: Modifier = Modifier, shape: Shape = RectangleShape) {
+    if (LocalArenaBoard.current) { Box(modifier.arenaGlassBackground()); return }
     Box(modifier.tavernFill(TavernMaterial.LEATHER, shape, overlayBrush = Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f))))
         .drawBehind {
             drawRect(Brush.verticalGradient(listOf(TavernPalette.brass, rgb(0.42, 0.28, 0.09)), 0f, 3.dp.toPx()), size = Size(size.width, 3.dp.toPx()))
@@ -322,6 +336,13 @@ fun TextStyle.engraved(alpha: Float = 0.7f, y: Float = 1f): TextStyle = copy(sha
 /** TavernPanelTitle: a panel title engraved in gold capitals (read in normal case by accessibility services). */
 @Composable
 fun TavernPanelTitle(text: String, modifier: Modifier = Modifier, size: Float = 16f) {
+    if (LocalArenaBoard.current) {
+        // On the Arena board (iOS TavernPanelTitle): Arena's serif in plain gold, not the engraved tavern capitals.
+        FitText(text.uppercase(), io.magicmobile.android.menus.ArenaMenuStyle.font(size, SfWeight.bold).copy(color = io.magicmobile.android.menus.ArenaMenuStyle.gold,
+            letterSpacing = androidx.compose.ui.unit.TextUnit(1f, androidx.compose.ui.unit.TextUnitType.Sp)),
+            modifier.semantics { contentDescription = text }, minimumScale = 0.7f)
+        return
+    }
     FitText(text.uppercase(), tavernDisplay(size, tracking = 1.2f).copy(brush = TavernPalette.goldText).engraved(),
         modifier.semantics { contentDescription = text }, minimumScale = 0.7f)
 }
@@ -331,6 +352,8 @@ fun TavernPanelTitle(text: String, modifier: Modifier = Modifier, size: Float = 
 fun TavernSealButton(onClick: () -> Unit, modifier: Modifier = Modifier, contentDescription: String = "Close") {
     Box(modifier.size(44.dp).clickable(remember { MutableInteractionSource() }, null, onClick = onClick)
         .semantics { this.contentDescription = contentDescription; role = Role.Button }, contentAlignment = Alignment.Center) {
+        // On the Arena board (iOS TavernSealLabel): Arena's glass close button, no wax seal.
+        if (LocalArenaBoard.current) { io.magicmobile.android.board.ArenaCloseLabel(); return@Box }
         val seal = tavernImage(R.drawable.tavern_ui_seal)
         // The x pressed into the wax is faint; a gold x on top reads at a glance (Caleb, 2026-10-03).
         Box(Modifier.size(32.dp).glow(Color.Black.copy(alpha = 0.5f), 3.dp, 16.dp).drawBehind { drawStretched(seal) }, contentAlignment = Alignment.Center) {
@@ -364,6 +387,16 @@ fun TavernGenericGem(value: Int, size: Dp = 30.dp, modifier: Modifier = Modifier
 /** TavernTag: a small tag in a thin brass rim; parchment for labels ("PAY COST"), leather for status chips, with an optional coloured jewel. */
 @Composable
 fun TavernTag(text: String, modifier: Modifier = Modifier, leather: Boolean = false, accent: Color? = null) {
+    if (LocalArenaBoard.current) {
+        // On the Arena board (iOS TavernTag.arenaTag): gold capitals on glass, no leather or parchment.
+        Row(modifier.defaultMinSize(minHeight = 22.dp).background(Color.White.copy(alpha = 0.07f), CircleShape)
+            .border(0.8.dp, io.magicmobile.android.menus.ArenaGlass.hairline, CircleShape).padding(horizontal = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (accent != null) Box(Modifier.size(6.dp).glow(accent, 3.dp, 3.dp).background(accent, CircleShape))
+            FitText(text, sf(10f, SfWeight.heavy, SfDesign.SERIF, tracking = 1f), color = io.magicmobile.android.menus.ArenaMenuStyle.gold, minimumScale = 0.7f)
+        }
+        return
+    }
     Row(modifier.tavernCapsuleRim(thin = true).defaultMinSize(minHeight = 22.dp)
         .padding(1.5.dp).tavernFill(if (leather) TavernMaterial.LEATHER else TavernMaterial.PARCHMENT, CircleShape)
         .padding(horizontal = 10.5.dp), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -396,6 +429,18 @@ fun TavernButtonText(text: String, modifier: Modifier = Modifier, maxLines: Int 
 fun TavernButton(onClick: () -> Unit, modifier: Modifier = Modifier, kind: TavernButtonKind = TavernButtonKind.PRIMARY, compact: Boolean = false,
                  fontSize: Float? = null, fullWidth: Boolean = false, enabled: Boolean = true, pressSound: GameSound? = null,
                  content: @Composable RowScope.() -> Unit) {
+    // The Arena menus draw Arena's button face instead (TavernButtonStyle with \.arenaBoard).
+    if (LocalArenaBoard.current) {
+        val arenaKind = when (kind) {
+            TavernButtonKind.PRIMARY -> ArenaButtonKind.PRIMARY
+            TavernButtonKind.DANGER -> ArenaButtonKind.DANGER
+            TavernButtonKind.SECONDARY -> ArenaButtonKind.SECONDARY
+        }
+        ArenaButton(onClick, modifier, arenaKind, compact, fontSize, fullWidth, enabled) {
+            CompositionLocalProvider(LocalTavernButtonTextStyle provides LocalArenaButtonTextStyle.current) { content() }
+        }
+        return
+    }
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     LaunchedEffect(pressed) { if (pressed && pressSound != null) GameAudio.play(pressSound) }
@@ -571,8 +616,11 @@ fun TavernMenu(modifier: Modifier = Modifier, edge: TavernMenuEdge = TavernMenuE
                     GameAudio.play(GameSound.UI_CLOSE)
                     scope.launch { delay(350); action() }
                 }
+                val arena = LocalArenaBoard.current
                 CompositionLocalProvider(LocalTavernBoard provides true, LocalTavernMenuSelect provides select) {
-                    Column(Modifier.width(width).glow(Color.Black.copy(alpha = 0.55f), 14.dp, 12.dp).tavernPanel(12.dp)
+                    // The Arena menus' pop-over is glass, not leather.
+                    Column(Modifier.width(width).then(if (arena) Modifier.arenaGlassPanel(12.dp)
+                        else Modifier.glow(Color.Black.copy(alpha = 0.55f), 14.dp, 12.dp).tavernPanel(12.dp))
                         .then(if (scrollHeight != null) Modifier.heightIn(max = scrollHeight).verticalScroll(rememberScrollState()) else Modifier)
                         .padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp), content = items)
                 }
@@ -585,6 +633,18 @@ fun TavernMenu(modifier: Modifier = Modifier, edge: TavernMenuEdge = TavernMenuE
 @Composable
 fun TavernMenuItem(title: String, action: () -> Unit, systemImage: String? = null, destructive: Boolean = false, enabled: Boolean = true) {
     val select = LocalTavernMenuSelect.current
+    if (LocalArenaBoard.current) {
+        // Arena's rows: light words on the glass, a hairline between them.
+        Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 40.dp).alpha(if (enabled) 1f else 0.45f)
+            .clickable(remember { MutableInteractionSource() }, null, enabled, role = Role.Button) { select(action) }
+            .semantics { contentDescription = title }.padding(horizontal = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            val ink = if (destructive) rgb(1.0, 0.66, 0.58) else ArenaMenuStyle.text
+            systemImage?.let { SfImage(it, if (it == "diamond.fill") ArenaMenuStyle.gold else ink, 11.dp) }
+            Text(title, Modifier.weight(1f), color = ink, style = ArenaMenuStyle.font(14f, SfWeight.semibold), maxLines = 2)
+        }
+        return
+    }
     TavernRowButton({ select(action) }, isPrimary = true, isDanger = destructive, enabled = enabled,
         modifier = Modifier.semantics { contentDescription = title }) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -603,6 +663,10 @@ fun TavernMenuHeading(title: String) {
 /** TavernMenuDivider: a thin brass rule between groups of tavern menu rows. */
 @Composable
 fun TavernMenuDivider() {
+    if (LocalArenaBoard.current) {
+        Box(Modifier.fillMaxWidth().padding(vertical = 2.dp).height(1.dp).background(io.magicmobile.android.menus.ArenaGlass.hairline, alpha = 0.45f))
+        return
+    }
     Box(Modifier.fillMaxWidth().padding(vertical = 2.dp).height(1.dp).alpha(0.7f).background(TavernPalette.brassLine))
 }
 
@@ -680,6 +744,8 @@ fun TavernSwitchFace(isOn: Boolean, modifier: Modifier = Modifier) {
 @Composable
 fun TavernToggle(title: String, isOn: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier, subtitle: String? = null,
                  enabled: Boolean = true, color: Color = BrandTheme.ink) {
+    // Arena's Options use checkboxes, not switches.
+    if (LocalArenaBoard.current) { ArenaCheckbox(title, isOn, onChange, modifier, subtitle, enabled = enabled); return }
     Row(modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).alpha(if (enabled) 1f else 0.5f)
         .clickable(remember { MutableInteractionSource() }, null, enabled) { GameAudio.play(GameSound.UI_TOGGLE); onChange(!isOn) }
         .semantics { contentDescription = title; role = Role.Switch; stateDescription = if (isOn) "On" else "Off" },
@@ -695,6 +761,7 @@ fun TavernToggle(title: String, isOn: Boolean, onChange: (Boolean) -> Unit, modi
 /** TavernSlider: an ember-filled groove in a brass rim with a brass knob. */
 @Composable
 fun TavernSlider(value: Float, onChange: (Float) -> Unit, modifier: Modifier = Modifier, range: ClosedFloatingPointRange<Float> = 0f..1f, label: String = "") {
+    if (LocalArenaBoard.current) { ArenaSlider(value, onChange, label, modifier, range); return }
     val fraction = ((value - range.start) / (range.endInclusive - range.start)).coerceIn(0f, 1f)
     BoxWithConstraints(modifier.fillMaxWidth().height(34.dp).semantics { contentDescription = label; stateDescription = "${(fraction * 100).roundToInt()} percent" }) {
         val knob = 22.dp
@@ -719,6 +786,8 @@ fun TavernSlider(value: Float, onChange: (Float) -> Unit, modifier: Modifier = M
 @Composable
 fun TavernStepper(title: String, value: Int, range: IntRange, onChange: (Int) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
                   color: Color = BrandTheme.ink) {
+    // The title already says the value ("AI skill: 3").
+    if (LocalArenaBoard.current) { ArenaStepper(title, value, range, onChange, modifier, showsValue = false, enabled = enabled); return }
     @Composable
     fun ring(symbol: String, canStep: Boolean, step: Int) {
         Box(Modifier.size(32.dp).alpha(if (canStep) 1f else 0.4f).glow(Color.Black.copy(alpha = 0.45f), 2.dp, 16.dp)
@@ -749,7 +818,18 @@ fun <T> TavernPicker(title: String, selection: T, sections: List<TavernPickerSec
     val count = sections.sumOf { it.options.size + if (it.title == null) 0 else 1 }
     TavernMenu(modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f), edge = TavernMenuEdge.BELOW, enabled = enabled, scrollHeight = if (count > 7) 420.dp else null,
         contentDescription = "$title, $current", label = { pressed ->
-            Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp).graphicsLayer { val s = if (pressed) 0.98f else 1f; scaleX = s; scaleY = s }
+            // The Arena menus' dropdown: the choice in light type on dark glass in the gold hairline.
+            if (LocalArenaBoard.current) Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = if (showsTitle) 50.dp else 44.dp)
+                .graphicsLayer { val s = if (pressed) 0.98f else 1f; scaleX = s; scaleY = s }
+                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                .border(1.dp, ArenaGlass.hairline, RoundedCornerShape(8.dp)).padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (showsTitle) io.magicmobile.android.menus.ArenaCaps(title, 9.5f)
+                    FitText(current, ArenaMenuStyle.font(15f, SfWeight.semibold), color = ArenaMenuStyle.text, minimumScale = 0.75f)
+                }
+                SfImage("chevron.down", ArenaMenuStyle.gold, 11.dp)
+            } else Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp).graphicsLayer { val s = if (pressed) 0.98f else 1f; scaleX = s; scaleY = s }
                 .tavernFill(TavernMaterial.PARCHMENT, RoundedCornerShape(10.dp),
                     overlayBrush = Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.16f), 0.5f to Color.Transparent))
                 .border(1.2.dp, TavernPalette.brassLine, RoundedCornerShape(10.dp)).padding(horizontal = 14.dp),
@@ -774,6 +854,21 @@ fun <T> TavernPicker(title: String, selection: T, sections: List<TavernPickerSec
 @Composable
 fun TavernTextField(value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier, enabled: Boolean = true,
                     singleLine: Boolean = true) {
+    if (LocalArenaBoard.current) {
+        // On the Arena menus: a darker pane in the glass's gold hairline, light text (TavernFieldChrome's Arena look).
+        val style = sf(15f, SfWeight.medium, SfDesign.SERIF).copy(color = ArenaGlass.text)
+        androidx.compose.foundation.text.BasicTextField(value, onChange, modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.6f)
+            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(9.dp)).border(1.dp, ArenaGlass.hairline, RoundedCornerShape(9.dp))
+            .padding(horizontal = 12.dp), enabled = enabled, singleLine = singleLine, textStyle = style,
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(ArenaMenuStyle.gold),
+            decorationBox = { inner ->
+                Box(Modifier.defaultMinSize(minHeight = 40.dp), contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty()) Text(placeholder, color = ArenaGlass.text.copy(alpha = 0.5f), style = style)
+                    inner()
+                }
+            })
+        return
+    }
     androidx.compose.foundation.text.BasicTextField(value, onChange, modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.6f).tavernField(),
         enabled = enabled, singleLine = singleLine, textStyle = tavernFieldTextStyle,
         cursorBrush = androidx.compose.ui.graphics.SolidColor(TavernPalette.ink),

@@ -106,6 +106,14 @@ struct CardChoicePlan {
 
     mutating func cancel() { stopped = true }
 
+    /// True while a selection still owes the engine answers: cards not yet chosen, or a Done to send. A gap with no
+    /// prompt then means the engine is slow, not that the choice is finished (Caleb, 2026-10-25: a discard of seven
+    /// handed control back after a few cards and asked again three times).
+    var expectsMorePrompts: Bool {
+        guard !stopped, kind == .selection, !doneSent else { return false }
+        return !(expectedChosen == Set(selected) && selected.count == maximumSelection)
+    }
+
     /// A cleared pending submission with the same prompt has not authorized another reply.
     func submittedPromptIsUnchanged(in snapshot: GameSnapshot) -> Bool {
         guard let lastPrompt, let prompt = snapshot.promptEnvelopeV2 else { return false }

@@ -15,6 +15,7 @@ import io.magicmobile.android.core.array
 import io.magicmobile.android.game.BuildIdentity
 import io.magicmobile.android.game.EngineCheckpointResult
 import io.magicmobile.android.game.EngineClient
+import io.magicmobile.android.game.isLessonNudge
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.EngineHealth
 import io.magicmobile.android.game.EngineJson
@@ -92,14 +93,16 @@ const val RELAY_ADAPTER_VERSION = "ondevice-0.1/relay-1/rollstep-2/room-1/conced
 
 /** Port of OnDeviceAppConfiguration.aiGameSeats. */
 object OnDeviceAppConfiguration {
-    fun aiGameSeats(name: String, humanDeck: J, aiDecks: List<J>, aiSkill: Int): List<J> {
+    /** `aiMistakePercent`: a ranked game's deliberate-mistake chance from its server ticket; null keeps the skill's own. */
+    fun aiGameSeats(name: String, humanDeck: J, aiDecks: List<J>, aiSkill: Int, aiMistakePercent: Int? = null): List<J> {
         if (aiDecks.size !in 1..3) throw EngineError.InvalidMessage("Choose 1–3 AI opponents.")
         if (aiSkill !in 1..10) throw EngineError.InvalidMessage("Choose AI skill from 1–10.")
         return listOf<J>(JsonObject(mapOf("seatId" to JsonPrimitive("player1"), "name" to JsonPrimitive(name),
             "controller" to JsonPrimitive("human"), "deck" to humanDeck))) + aiDecks.mapIndexed { offset, deck ->
             val index = offset + 1
             JsonObject(mapOf("seatId" to JsonPrimitive("player${index + 1}"), "name" to JsonPrimitive("AI $index"),
-                "controller" to JsonPrimitive("ai"), "deck" to deck, "aiSkill" to JsonPrimitive(aiSkill)))
+                "controller" to JsonPrimitive("ai"), "deck" to deck, "aiSkill" to JsonPrimitive(aiSkill)) +
+                (aiMistakePercent?.let { mapOf("aiMistakePercent" to JsonPrimitive(it)) } ?: emptyMap()))
         }
     }
 }
@@ -114,6 +117,8 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     var precons by mutableStateOf<List<PreconDeck>>(emptyList()); private set
     /** The included bracket decks (ai-decks.json): AI opponents, and decks players may pick. */
     var bracketDecks by mutableStateOf<List<io.magicmobile.android.game.AIDeck>>(emptyList()); private set
+    /** ai-decks.json's Power block (docs/DECK_POWER.md): picks Ranked's and Quick Match's AI decks. */
+    var deckPower by mutableStateOf<io.magicmobile.android.game.DeckPowerData?>(null); private set
     /** The Commander bracket card lists (commander-brackets.json). */
     var bracketRules by mutableStateOf(io.magicmobile.android.game.BracketRules.EMPTY); private set
     var localDecks by mutableStateOf<List<SavedDeck>>(emptyList()); private set
@@ -151,7 +156,8 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             io.magicmobile.android.game.OnDeviceSmartPass.Settings.decode(io.magicmobile.android.ui.AppPreferences.string(
                 io.magicmobile.android.game.OnDeviceSmartPass.STOPS_KEY,
                 io.magicmobile.android.game.OnDeviceSmartPass.Settings.encode(io.magicmobile.android.game.OnDeviceSmartPass.defaultStops)).value),
-            io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.STOP_FOR_OWN_SPELLS_KEY, false).value)
+            io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.STOP_FOR_OWN_SPELLS_KEY, false).value,
+            io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.STOP_FOR_THREATS_KEY, true).value)
     private var aiClient: EngineClient? = null
     private var aiMatchID: String? = null
     private var sceneActive = true
@@ -177,7 +183,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
         ?: bracketDecks.firstOrNull { it.playerDeckID == id }?.deck ?: localDecks.firstOrNull { "local:${it.id}" == id }?.deck
     val deckIDs: Set<String> get() = (precons.map { "precon:${it.id}" } + bracketDecks.map { it.playerDeckID } + localDecks.map { "local:${it.id}" }).toSet()
     /** Every AI deck: the precons (Core) and the bracket decks. */
-    val aiPool: List<io.magicmobile.android.game.AIDeck> get() = io.magicmobile.android.ranked.aiPool(precons, bracketDecks)
+    val aiPool: List<io.magicmobile.android.game.AIDeck> get() = io.magicmobile.android.ranked.aiPool(precons, bracketDecks, deckPower)
 
     fun prepare() {
         if (identity != null || preparing) return
@@ -194,9 +200,13 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
                 }
                 precons = decks.first
                 withContext(Dispatchers.IO) {
-                    runCatching { io.magicmobile.android.game.AIDeckPool.parse(context.assets.open("ai-decks.json").use { it.readBytes().decodeToString() }) } to
+                    runCatching { context.assets.open("ai-decks.json").use { it.readBytes().decodeToString() } } to
                         runCatching { io.magicmobile.android.game.BracketRules.parse(context.assets.open("commander-brackets.json").use { it.readBytes().decodeToString() }) }
-                }.let { (aiDecks, rules) -> aiDecks.onSuccess { bracketDecks = it }; rules.onSuccess { bracketRules = it } }
+                }.let { (aiDecks, rules) ->
+                    aiDecks.mapCatching { io.magicmobile.android.game.AIDeckPool.parse(it) to io.magicmobile.android.game.AIDeckPool.parsePower(it) }
+                        .onSuccess { (decks, power) -> bracketDecks = decks; deckPower = power }
+                    rules.onSuccess { bracketRules = it }
+                }
                 decks.second.onSuccess { publishLocalDecks(it) }.onFailure { errorMessage = "Saved decks could not be read: ${it.message}" }
                 // The compact printing index names the build and resolves decks; the full catalogue
                 // (rules text and metadata for 30,000 cards) loads only for screens that need it.
@@ -225,10 +235,14 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     /** The compact printing index, once `prepare()` has loaded it. */
     val printingIndex: PrintingIndex? get() = printings
 
-    /** Deck Studio's library store: saved decks stay in this model's deck store. */
+    /** Deck Studio's library store: saved decks stay in this model's deck store. The player's deletes reach deck sync. */
     val library: io.magicmobile.android.studio.DeckLibraryStore by lazy {
         io.magicmobile.android.studio.DeckLibraryStore(store) { saved -> publishLocalDecks(saved) }
+            .also { it.onDeleted = { record -> deckSyncState.noteDeleted(record.id) } }
     }
+
+    /** Deck sync's record beside the library (docs/DECK_SYNC.md). */
+    val deckSyncState: io.magicmobile.android.studio.SyncState by lazy { io.magicmobile.android.studio.DeckLibrarySyncAdapter.state(context.filesDir) }
 
     /** The full catalogue, loading it on first use. */
     suspend fun awaitCatalogue(): Catalogue {
@@ -275,9 +289,22 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
         return runCatching { EngineJson.encode(record) }.getOrNull()
     }
 
+    /** A lesson: its recording answers for the engine (LessonTransport). No runtime, save or game record. */
+    suspend fun startLesson(script: io.magicmobile.android.game.LessonScript, transport: io.magicmobile.android.game.LessonTransport) {
+        if (isBusy || needsLeave) return
+        isBusy = true; errorMessage = null; feedback = null; status = "Starting lesson"
+        try {
+            updateSessionForeground()
+            session.attach(EngineClient(transport), script.matchID, script.viewer, close = { })
+            status = "Lesson started"
+        } catch (error: Throwable) {
+            errorMessage = error.message ?: error.javaClass.simpleName
+        } finally { isBusy = false }
+    }
+
     /** `settings` are the setup choices kept with a checkpoint, so a resumed game can rebuild its menu state and Rematch. */
     suspend fun startAI(name: String, deck: Deck, aiDecks: List<Deck>, aiSkill: Int = 2, settings: GameResumeSettings? = null, deckID: String? = null,
-                        seed: Long? = null) {
+                        seed: Long? = null, aiMistakePercent: Int? = null) {
         val identity = identity ?: return
         if (isBusy || needsLeave) return
         isBusy = true; errorMessage = null; feedback = null; status = "Starting XMage"
@@ -289,7 +316,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             val resolvedDeck = resolve(deck)
             humanDeck = resolvedDeck
             val opponentDecks = aiDecks.map(::resolve)
-            val seats = OnDeviceAppConfiguration.aiGameSeats(playerName, resolvedDeck, opponentDecks, aiSkill)
+            val seats = OnDeviceAppConfiguration.aiGameSeats(playerName, resolvedDeck, opponentDecks, aiSkill, aiMistakePercent)
             val client = runtime.makeClient(identity)
             runtimeOpen = runtime.isOpen
             aiClient = client
@@ -433,7 +460,9 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             return
         }
         errorMessage = null; feedback = null
-        try { operation() } catch (error: Throwable) { errorMessage = error.message ?: error.javaClass.simpleName }
+        try { operation() } catch (error: Throwable) {
+            if (!error.isLessonNudge) errorMessage = error.message ?: error.javaClass.simpleName
+        }
     }
 
     /** Waits up to 3 seconds for the current response and its refresh to finish. */

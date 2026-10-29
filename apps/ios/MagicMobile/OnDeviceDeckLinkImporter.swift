@@ -85,13 +85,19 @@ struct OnDeviceDeckLinkImporter {
         var errorDescription: String? { message + " Export the deck as text and paste it instead; no cards were imported." }
     }
 
+    /// A share link's query and fragment (`?utm_source=…`, `#title`) are ignored: the request goes to a fixed provider
+    /// endpoint built from the deck ID alone (Caleb, 2026-10-22: an Archidekt share link failed on its tracking query).
+    /// A link pasted without its scheme is read as HTTPS.
     static func source(for text: String) throws -> Source {
-        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard value.utf8.count <= 2048, let url = URLComponents(string: value),
+        var value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !value.contains("://") { value = "https://" + value }
+        guard value.utf8.count <= 2048, var url = URLComponents(string: value),
               url.scheme == "https", url.user == nil, url.password == nil, url.port == nil,
-              url.query == nil, !url.percentEncodedPath.contains("%") else {
-            throw ImportError(message: "Use an HTTPS public Moxfield or Archidekt deck URL without credentials or query parameters.")
+              !url.percentEncodedPath.contains("%") else {
+            throw ImportError(message: "Use an HTTPS public Moxfield or Archidekt deck URL without credentials.")
         }
+        url.query = nil
+        url.fragment = nil
         let path = url.path.split(separator: "/", omittingEmptySubsequences: false)
         guard path.count >= 3, path[0].isEmpty, path[1] == "decks" else {
             throw ImportError(message: "This is not a supported deck link.")

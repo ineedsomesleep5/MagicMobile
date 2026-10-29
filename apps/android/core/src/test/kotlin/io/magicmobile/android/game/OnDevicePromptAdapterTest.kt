@@ -36,4 +36,16 @@ class OnDevicePromptAdapterTest {
         assertNotNull(command)
         assertEquals(EnginePrompt.answer("uuid", kotlinx.serialization.json.JsonPrimitive(first)), OnDevicePromptAdapter.answer(command!!, prompt, viewer))
     }
+
+    /** parity/ability-rule-cases.json (OnDevicePromptAdapterTests.swift, abilityRule.test.ts). */
+    @Test fun abilityRuleCases() {
+        val repo = generateSequence(java.io.File("").absoluteFile) { it.parentFile }.first { java.io.File(it, "apps/android").isDirectory }
+        val root = Json.parseToJsonElement(java.io.File(repo, "apps/android/core/src/test/resources/parity/ability-rule-cases.json").readText())
+            as kotlinx.serialization.json.JsonObject
+        for (case in (root["cases"] as kotlinx.serialization.json.JsonArray).map { it as kotlinx.serialization.json.JsonObject }) {
+            val prim = { key: String -> (case[key] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content }
+            val rules = (case["rules"] as kotlinx.serialization.json.JsonArray).map { (it as kotlinx.serialization.json.JsonPrimitive).content }
+            assertEquals(prim("name"), prim("expect"), EngineDisplayText.abilityRule(prim("label")!!, rules, prim("sourceName")))
+        }
+    }
 }

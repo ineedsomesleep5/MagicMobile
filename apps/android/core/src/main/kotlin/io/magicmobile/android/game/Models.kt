@@ -67,6 +67,12 @@ data class GameSnapshot(
     val seatPlayerId: String? = null,
 ) {
     val viewerID: String get() = viewerPlayerId ?: "human"
+    /**
+     * The number the board's "TURN" labels show: how many times the table has gone round. XMage's [turn] counts every
+     * player's turn and stays what logic, records and the engine use. Estimated from the players still in, as iOS does
+     * before its round tracker has seen the game (exact until someone is eliminated).
+     */
+    val displayTurn: Int get() = tableRoundEstimate(turn, players.count { !it.isOut })
     /** The player the bottom of the board shows: the viewer, or their stand-in while they watch. */
     val seatID: String get() = seatPlayerId ?: viewerID
     fun isViewer(playerID: String?): Boolean = playerID == viewerID
@@ -107,6 +113,14 @@ data class GameSnapshot(
         if (isViewer(id) || promptEnvelopeV2 != null) return null
         val player = players.firstOrNull { it.playerId == id } ?: return null
         return if (player.isHuman == false && !player.isOut) id else null
+    }
+    /** Another person at the table holds the decision or priority: the game waits on them, not on the engine. */
+    val waitingOnPersonID: String? get() {
+        if (isCompleted) return null
+        val id = waitingOnPlayerId ?: priorityPlayerId ?: return null
+        if (isViewer(id)) return null
+        val player = players.firstOrNull { it.playerId == id } ?: return null
+        return if (player.isHuman == true && !player.isOut) id else null
     }
     /** Opponents still in the game. */
     val remainingOpponents: List<PlayerGameState> get() = players.filter { !isViewer(it.playerId) && !it.isOut }
@@ -189,7 +203,8 @@ data class MobilePromptPresentation(val kind: MobilePromptKind, val title: Strin
         private fun isCombatSelection(snapshot: GameSnapshot, legalActions: List<LegalAction>): Boolean =
             legalActions.any { it.type == "declare_attackers" || it.type == "declare_blockers" } ||
                 ((snapshot.isViewer(snapshot.waitingOnPlayerId) || snapshot.isViewer(snapshot.priorityPlayerId)) &&
-                    (normalizedStep(snapshot).contains("declare-attack") || normalizedStep(snapshot).contains("declare-block")))
+                    (normalizedStep(snapshot).contains("declare-attack") || normalizedStep(snapshot).contains("declare-block")) &&
+                    snapshot.promptEnvelopeV2?.isCombatSelection != false)
 
         private fun normalizedStep(snapshot: GameSnapshot): String = "${snapshot.step ?: ""} ${snapshot.promptText ?: ""}".lowercase()
     }
@@ -459,6 +474,8 @@ data class CardIdentity(
     val tokenColors: List<String>? = null,
     val copySourceArtworkName: String? = null,
     val tokenArtwork: TokenArtworkIdentity? = null,
+    /** Your own face-down card: the real card shown, dimmed and marked face down. Null for anyone else's. */
+    val faceDown: Boolean? = null,
 ) {
     val isLand: Boolean get() = typeLine.contains("land", ignoreCase = true)
     val isCreature: Boolean get() = typeLine.contains("creature", ignoreCase = true)
@@ -607,6 +624,12 @@ data class PromptEnvelopeV2(
         !options?.get("autoAnswerMessage").string.isNullOrEmpty()
     /** XMage's "which triggered ability goes on the stack first" question. */
     val isTriggerOrder: Boolean get() = method == "GAME_PICK_ABILITY"
+    /**
+     * XMage's attacker or blocker selection (a SELECT the on-device adapter answers with a target). Other target questions asked
+     * during combat, such as Gogo copying an attack trigger or a targeted trick, are ordinary targets.
+     */
+    val isCombatSelection: Boolean get() = method == "GAME_SELECT" &&
+        (responseKind.lowercase() == "target" || responseCommand?.type?.lowercase() == "choose_target")
 }
 
 @Serializable
@@ -877,4 +900,10 @@ fun capitalizedWords(value: String): String {
         startOfWord = false
     }
     return out.toString()
+}
+
+/** The round for an engine turn count: turns / players still in, rounded up (iOS `TableRounds.estimate`). */
+fun tableRoundEstimate(turn: Int, playersIn: Int): Int {
+    val n = maxOf(1, playersIn)
+    return maxOf(1, (maxOf(1, turn) + n - 1) / n)
 }

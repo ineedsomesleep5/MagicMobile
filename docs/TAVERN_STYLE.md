@@ -176,6 +176,30 @@ pass through; the medallion's pop-over lists each badge in words. Table-wide hin
 stay under the phase plate. See `docs/ANDROID_PARITY.md` for the
 piece-by-piece port and `docs/BOARD_FX_ROADMAP.md` for effects.
 
+## Board modes: Hearth and Arena
+
+Two board modes share the tavern kit (Caleb, 2026-10-20); each will get its own themes later.
+
+- **Hearth** is the board above: sockets, the hourglass, the mana rail.
+- **Arena** follows the reference game, as approved in the Duel Board Prototype artifact. Its look and screens are in `docs/ARENA_STYLE.md`. Its layout is `ArenaLayout` (`ArenaBoardModel.swift`, 956×440 and 440×956 canvases), not `TavernSockets`.
+  - The table: a leaning tavern table (`tavern-arena-landscape` / `-portrait`, from `scripts/brand/arena_layout.json`). The vertical mat is wider than the screen, because the camera narrows its far half.
+  - Positions follow the current reference game (Caleb's desktop screenshot, 2026-10-20; the gameplay video is an older version): each side's front row, nearest the compass, holds its creatures centred. Planeswalkers, battles, sagas and other non-creature permanents have a section of their own at the table's right edge, a size up (in landscape between the opponent's two rows and level with your front row; in portrait at the end of the front row), with planeswalkers and battles outermost and loyalty and defense on a shield. The back row holds lands from the left and, right of centre, mana rocks, Treasures and other artifacts. Auras and Equipment go with the permanent they're attached to. The stack's top card stays big on the right.
+  - Rows use the table's full width: `ArenaRowFit` shrinks the cards (down to 70%) before any section scrolls, sizing the creatures and the side section together, and portrait opens a second front row first. Landscape fits 8 creatures at full size and 12 before scrolling; portrait fits 12 in two rows, or 10 beside two planeswalkers. Only past that does a section scroll with the edge fade.
+  - The hand and decks: the hand stays tucked along the bottom edge with only the cards' tops showing (in vertical, at full size behind the front rail, the tops just below your lands). A tap or a slide along it pops up the card under the finger, whole, while the rest stay tucked; a second tap plays it, and carrying it up off the hand onto the table plays it too. A hold magnifies the card and follows the finger. (The layout can still open the hand into a raised fan on a tap, `Hand.opensOnTap`; it's off in both orientations.) Your graveyard, library and exile sit in the bottom-left corner, the opponent's top right; your medallion stands above the tucked hand. Decks are 3D stacks with the real card back, and a revealed top card lies face up on them.
+  - Controls and medallions: the phase strip and buttons sit in one corner (on the front rail in vertical). The strip's icons are small enamel pieces in brass rims with an engraved detail; the current step lights gold into the turn's colour with a halo, and the played part of the turn is lit along the track. The life number sits over the player's picture in the medallion.
+  - Tiles lean with the table's own camera (`ArenaTableLean`: the plate's pitch, converging on the screen's centre), so their sides follow the mat's edges. A tapped tile tilts 12° and greys under a big tap mark. Card Frames (Settings, per mode) is off by default in Arena: the reference's cropped card, a name bar and a silver power/toughness box.
+  - Floating mana is plain symbols. Cards you can play from the graveyard or exile end the fan with a shimmer. Exile piles sit by the graveyards.
+  - No system or Hearth chrome on the Arena board (Caleb, 2026-10-20). Pop-ups, menus, prompt panels and the loop bar are dark glass in a gold hairline (`ArenaGlassPanel`, `ArenaGlassRow`, `ArenaGlassBackground`), and the shared tavern pieces switch to glass by themselves on `\.arenaBoard` (TavernPanelChrome, TavernTag, TavernTitleBar, TavernSealLabel, TavernFieldChrome, PanelActionButtonStyle). Plaque buttons stay ember and leather. Panels open centred on the table over the dimmed board (`boardSheet` / `ArenaPanelOverlay`), never as an iOS sheet; a panel closes with `boardPanelClose`, not `dismiss`.
+  - Choices are full-table browsers, as in the reference (Caleb prefers them to pop-ups): the table dims, a serif title names the effect over one line of instructions, cards lie in the middle, the effect's source stands on the right, an orange Done answers and "View Battlefield" steps the browser aside. Each ability is a card with its source's art on top and its text below (`ArenaAbilityCard`).
+    - Abilities and trigger order (`ArenaAbilityBrowser`): tap triggers in the order they should resolve; coins number them, and Auto Order or Done answer. A prompt's Cancel stays inside the browser.
+    - The stack (`ArenaStackBrowser`, from the stack card's arrow): every object side by side, the next to resolve first and lit, whose it is and its targets underneath.
+    - Card choices (`BoardCardChoiceView.arenaStage`): scry in Bottom and Top zones and surveil in Graveyard and Library (a tap moves a card across, arrows reorder), library searches and top-of-library picks in a row (two columns of three in portrait) with the cards you can take first.
+    - Modes (`ArenaModeBrowser`): one card per mode with the spell's art.
+    - Questions (`ArenaQuestionStage`): "you may" and yes-or-no questions are the title, with the card they name in the middle and the answers as plaques under it.
+    - Amounts (X), damage splits and piles still use the glass panel.
+  - An ability on the stack is drawn as an ability card, with an arc to its target, and a commander's spell has a gold rim and a crown.
+  - Combo loops run under a slim glass bar at the top edge. "Until they lose" works only when the rounds so far take the same life (or poison) from every opponent and no opponent has both cards and an untapped land; it then finishes behind a curtain.
+
 ## Known Android gaps (still plain or system-styled)
 
 From `docs/ANDROID_PARITY.md` (2026-10-03), not re-verified since: the game log drawer's contents,

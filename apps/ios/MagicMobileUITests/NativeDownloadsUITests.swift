@@ -6,7 +6,7 @@ final class NativeDownloadsUITests: XCTestCase {
         let app = XCUIApplication()
         continueAfterFailure = false
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         defer { app.terminate() }
@@ -15,12 +15,12 @@ final class NativeDownloadsUITests: XCTestCase {
         // The first touch after launch only moves focus on this simulator (UITestHarness).
         UITestHarness.settleFirstTouch(app)
         menu.press(forDuration: 0.15)
-        let scope = app.buttons["downloads.scope"]
-        XCTAssertTrue(scope.waitForExistence(timeout: 10))
-        scope.tap()
-        let tokens = app.buttons["All supported tokens"]
-        XCTAssertTrue(tokens.waitForExistence(timeout: 5))
+        // Arena's panel: the scope is a list of diamond rows under the status card.
+        let tokens = app.buttons["downloads.scope.tokens"]
+        XCTAssertTrue(tokens.waitForExistence(timeout: 10))
+        for _ in 0..<4 where !tokens.isHittable { app.swipeUp() }
         tokens.tap()
+        XCTAssertTrue(tokens.isSelected)
         XCTAssertFalse(app.switches["Include tokens"].exists)
         XCTAssertFalse(app.buttons["downloads.deck"].exists)
         let start = app.buttons["downloads.start"]
@@ -28,10 +28,13 @@ final class NativeDownloadsUITests: XCTestCase {
         XCTAssertTrue(start.exists)
         XCTAssertFalse(start.isEnabled, "Selecting tokens must not opt into online artwork")
         XCTAssertFalse(app.buttons["downloads.cancel"].exists)
-        app.buttons["Done"].tap()
+        app.buttons["downloads.close"].tap()
+        // Home fades back in once the panel closes (it steps away behind panels); press when it can take the touch.
+        let back = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: menu)
+        XCTAssertEqual(XCTWaiter.wait(for: [back], timeout: 5), .completed)
         menu.press(forDuration: 0.15)
-        XCTAssertTrue(scope.waitForExistence(timeout: 5))
-        XCTAssertTrue(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "All supported tokens", "All supported tokens").evaluate(with: scope))
+        XCTAssertTrue(tokens.waitForExistence(timeout: 5))
+        XCTAssertTrue(tokens.isSelected, "The token-only scope survives leaving Downloads")
         XCTAssertFalse(app.buttons["downloads.cancel"].exists)
         let capture = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         capture.name = "Token-only artwork scope with offline consent preserved"
@@ -43,7 +46,7 @@ final class NativeDownloadsUITests: XCTestCase {
         let app = XCUIApplication()
         continueAfterFailure = false
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         defer { app.terminate() }
@@ -52,35 +55,35 @@ final class NativeDownloadsUITests: XCTestCase {
         // The first touch after launch only moves focus on this simulator (UITestHarness).
         UITestHarness.settleFirstTouch(app)
         menu.press(forDuration: 0.15)
-        let scope = app.buttons["downloads.scope"], quality = app.buttons["downloads.quality"]
-        XCTAssertTrue(scope.waitForExistence(timeout: 10))
-        scope.tap()
-        XCTAssertTrue(app.buttons["One deck"].waitForExistence(timeout: 5))
-        app.buttons["One deck"].press(forDuration: 0.15)
+        // Arena's panel: the scope as diamond rows, the quality as a tab strip.
+        let oneDeck = app.buttons["downloads.scope.deck"], compact = app.buttons["downloads.quality.Compact"]
+        XCTAssertTrue(oneDeck.waitForExistence(timeout: 10))
+        for _ in 0..<4 where !oneDeck.isHittable { app.swipeUp() }
+        oneDeck.press(forDuration: 0.15)
         XCTAssertTrue(app.buttons["downloads.deck"].waitForExistence(timeout: 5))
-        quality.tap()
-        XCTAssertTrue(app.buttons["Compact"].waitForExistence(timeout: 5))
-        app.buttons["Compact"].press(forDuration: 0.15)
+        for _ in 0..<4 where !compact.isHittable { app.swipeUp() }
+        compact.press(forDuration: 0.15)
+        XCTAssertTrue(compact.isSelected)
         let tokens = app.switches["Include tokens"]
         XCTAssertTrue(tokens.exists)
         if tokens.value as? String == "1" { tokens.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap() }
         XCTAssertEqual(tokens.value as? String, "0")
-        app.buttons["Done"].tap()
+        app.buttons["downloads.close"].tap()
         XCTAssertTrue(menu.waitForExistence(timeout: 5))
         menu.press(forDuration: 0.15)
-        XCTAssertTrue(scope.waitForExistence(timeout: 5))
+        XCTAssertTrue(oneDeck.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["downloads.deck"].exists, "One-deck scope must survive leaving Downloads")
-        XCTAssertTrue(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Compact", "Compact").evaluate(with: quality))
+        XCTAssertTrue(compact.isSelected, "The quality must survive leaving Downloads")
         XCTAssertEqual(app.switches["Include tokens"].value as? String, "0")
         XCTAssertFalse(app.buttons["downloads.cancel"].exists, "Navigation and selection changes must not start transfers")
     }
 
-    func testLiveImagePreferenceIsSharedBetweenSettingsAndLobby() {
+    func testLiveImagePreferenceIsSharedBetweenOptionsAndDownloads() {
         let app = XCUIApplication()
         continueAfterFailure = false
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
         app.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
-        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test"]
+        app.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test"]
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         defer { app.terminate() }
@@ -88,19 +91,23 @@ final class NativeDownloadsUITests: XCTestCase {
         // The first touch after launch only moves focus on this simulator (UITestHarness).
         UITestHarness.settleFirstTouch(app)
         app.buttons["menu.settings"].press(forDuration: 0.15)
+        // Arena's Options: the artwork choice is on the Display & Artwork page.
+        let display = app.buttons["settings.open.display"]
+        XCTAssertTrue(display.waitForExistence(timeout: 10))
+        display.tap()
         let consent = app.switches["nativeArtwork.downloads"]
         XCTAssertTrue(consent.waitForExistence(timeout: 10))
         XCTAssertEqual(consent.value as? String, "0")
         consent.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
         XCTAssertEqual(consent.value as? String, "1")
-        app.buttons["Done"].tap()
-        XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 10))
-        app.buttons["menu.play"].press(forDuration: 0.15)
-        UITestHarness.chooseCustomTable(app)
+        app.buttons["settings.close"].tap()
+        XCTAssertTrue(app.buttons["menu.downloads"].waitForExistence(timeout: 10))
+        // Downloads shows the same choice.
+        app.buttons["menu.downloads"].press(forDuration: 0.15)
         XCTAssertTrue(consent.waitForExistence(timeout: 10))
         for _ in 0..<3 where !consent.isHittable { app.swipeUp() }
         XCTAssertTrue(consent.isHittable)
-        XCTAssertEqual(consent.value as? String, "1", "Lobby must share the settings preference")
+        XCTAssertEqual(consent.value as? String, "1", "Downloads must share the Options preference")
         consent.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
         XCTAssertEqual(consent.value as? String, "0")
     }
@@ -109,7 +116,7 @@ final class NativeDownloadsUITests: XCTestCase {
         let app = XCUIApplication()
         continueAfterFailure = false
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         defer {
@@ -125,10 +132,10 @@ final class NativeDownloadsUITests: XCTestCase {
         // The first touch after launch only moves focus on this simulator (UITestHarness).
         UITestHarness.settleFirstTouch(app)
         menu.press(forDuration: 0.15)
-        XCTAssertTrue(app.descendants(matching: .any)["downloads.title"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["downloads.summary"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["Card catalogue included"].isHittable, "Technical details start collapsed")
-        XCTAssertTrue(app.buttons["downloads.scope"].exists)
-        XCTAssertTrue(app.buttons["downloads.quality"].exists)
+        XCTAssertTrue(app.buttons["downloads.scope.catalogue"].exists)
+        XCTAssertTrue(app.buttons["downloads.quality.Standard"].exists)
         let check = app.buttons["downloads.check"]
         for _ in 0..<4 where !check.isHittable { app.swipeUp() }
         XCTAssertTrue(check.isHittable)
@@ -154,7 +161,7 @@ final class NativeDownloadsUITests: XCTestCase {
         screenshot.name = "Downloads coverage and explicit consent"
         screenshot.lifetime = .keepAlways
         add(screenshot)
-        app.buttons["Done"].tap()
+        app.buttons["downloads.close"].tap()
         XCTAssertTrue(menu.waitForExistence(timeout: 5))
     }
 }

@@ -283,6 +283,22 @@
     root = typeof root === 'string' ? document.querySelector(root) : (root || document);
     opts = opts || {};
 
+    // Teardown for client-side routers (issue #6). mount() registers window
+    // listeners, starts two self-rescheduling rAF loops, and pushes onto
+    // ScrollCraft.instances, so without destroy() every re-mount leaves the old
+    // instance running for the life of the tab. `on` records what it registered
+    // and the two loops keep their live handle, so destroy() can undo exactly
+    // what this mount did and nothing else: its window listeners, both rAF
+    // loops, both IntersectionObservers, and every clip blob it created. A page
+    // that never calls destroy() behaves exactly as before.
+    var scListeners = [];
+    var scDead = false;
+    var scTickFrame = 0, scPointerFrame = 0;
+    function on(type, fn, o) {
+      addEventListener(type, fn, o);
+      scListeners.push([type, fn, o]);
+    }
+
     var acts = [];
     var worlds = [];
     var drifts = [];
@@ -486,7 +502,12 @@
     });
 
     // ---- flow reveals (fire once) ----------------------------------------
-    var io = null;
+    // `cio` is assigned inside the counters IIFE below; it is declared here so
+    // destroy() can disconnect it. An IntersectionObserver holds a strong ref to
+    // every observed target, and unobserve only runs on first intersection, so a
+    // never-revealed element in a removed subtree is retained for the life of the
+    // tab, once per re-mount.
+    var io = null, cio = null;
     if ('IntersectionObserver' in window) {
       io = new IntersectionObserver(function (entries) {
         entries.forEach(function (e) {
@@ -528,6 +549,7 @@
         if (reduce || ms <= 0) { c.textContent = formatNum(b, tpl); return; }
         var t0 = null, last = null;
         function frame(now) {
+          if (scDead) return;
           if (t0 === null) t0 = now;
           var t = Math.min((now - t0) / ms, 1);
           var out = formatNum(a + (b - a) * ease(t), tpl);
@@ -538,7 +560,7 @@
       }
       els.forEach(function (c) { var n = spec(c); c.textContent = formatNum(num(n[0]), n[1] || '0'); });
       if ('IntersectionObserver' in window) {
-        var cio = new IntersectionObserver(function (entries) {
+        cio = new IntersectionObserver(function (entries) {
           entries.forEach(function (e) {
             if (!e.isIntersecting) return;
             run(e.target); cio.unobserve(e.target);
@@ -552,6 +574,9 @@
 
     // ---- layout -----------------------------------------------------------
     function layout() {
+      // layout() and read() are both on the returned api, so a framework's
+      // updated() arriving after destroyed() enters them directly.
+      if (scDead) return;
       vh = innerHeight; vw = innerWidth;
       acts.forEach(function (a) {
         if (a.pinned) a.el.style.height = (a.span * 100) + 'vh';
@@ -634,6 +659,11 @@
       V.loading = true;
       fetch(src).then(function (r) { if (!r.ok) throw new Error(r.status); return r.blob(); })
         .then(function (blob) {
+          // A fetch in flight when destroy() ran resolves anyway. Without this
+          // it attaches loadedmetadata/seeked to a detached element, calls
+          // read(), arms primeClip's 2s timer and assigns a blob URL nothing
+          // will ever revoke, all after teardown reported success.
+          if (scDead) return;   // the Blob is unreferenced from here and is collected
           // Listeners and preload BEFORE src. Assigning src starts the load, so
           // attaching afterwards and then calling load() restarts it and aborts
           // the first request (visible as ERR_ABORTED on the blob URL).
@@ -674,7 +704,8 @@
           V.el.preload = 'auto';
           V.el.muted = true;            // as a property, not only an attribute
           V.el.playsInline = true;
-          V.el.src = URL.createObjectURL(blob);
+          V.objectURL = URL.createObjectURL(blob);
+          V.el.src = V.objectURL;
         })
         .catch(function () { V.loading = false; });
     }
@@ -815,6 +846,7 @@
 
     // ---- per-frame scroll read -------------------------------------------
     function read() {
+      if (scDead) return;
       y = scrollY || pageYOffset;
       var driftA = null, driftB = null, driftT = 0;
       var maxY = Math.max((document.documentElement.scrollHeight || 0) - vh, 1);
@@ -991,6 +1023,7 @@
     // the decoder, while read() must stay cheap enough to run on every scroll
     // event. The lerp here is also what turns a jittery wheel into a glide.
     function tick() {
+      if (scDead) return;
       // Deadband. A phone decoder cannot service a seek every frame, so asking
       // for one costs more than it shows; 20ms of clip is under a frame of
       // footage anyway.
@@ -1020,7 +1053,7 @@
         var t = clamp(V.cur, 0, 0.999) * dur;
         if (Math.abs(V.el.currentTime - t) > eps) { try { V.el.currentTime = t; } catch (e) {} }
       }
-      requestAnimationFrame(tick);
+      scTickFrame = requestAnimationFrame(tick);
     }
 
     // iOS will not paint a muted video that has never been handed a user
@@ -1084,11 +1117,11 @@
     // triggering events includes touchend but NOT touchstart. A restricted
     // device (Low Power Mode) that rejects the touchstart prime for lacking
     // activation gets a second, valid chance the moment the finger lifts.
-    addEventListener('touchstart', prime, { passive: true });
-    addEventListener('touchend', prime, { passive: true });
-    addEventListener('pointerdown', prime, { passive: true });
-    addEventListener('click', prime, { passive: true });
-    addEventListener('scroll', prime, { passive: true });
+    on('touchstart', prime, { passive: true });
+    on('touchend', prime, { passive: true });
+    on('pointerdown', prime, { passive: true });
+    on('click', prime, { passive: true });
+    on('scroll', prime, { passive: true });
 
     // ---- pointer devices --------------------------------------------------
     var tilts = [], magnets = [], spots = [];
@@ -1105,7 +1138,7 @@
       });
       if (!tilts.length && !magnets.length && !spots.length) return;
 
-      addEventListener('pointermove', function (e) {
+      on('pointermove', function (e) {
         if (e.pointerType !== 'mouse') return;
         for (var i = 0; i < tilts.length; i++) {
           var T = tilts[i], r = T.el.getBoundingClientRect();
@@ -1132,6 +1165,7 @@
       }, { passive: true });
 
       (function pointerTick() {
+        if (scDead) return;
         // Interpolate toward the target rather than tracking the pointer
         // directly. Direct tracking reads as artificial because it carries no
         // momentum; the lerp gives it weight.
@@ -1147,14 +1181,15 @@
           M.x += (M.tx - M.x) * 0.12; M.y += (M.ty - M.y) * 0.12;
           M.el.style.transform = 'translate3d(' + M.x.toFixed(2) + 'px,' + M.y.toFixed(2) + 'px,0)';
         }
-        requestAnimationFrame(pointerTick);
+        scPointerFrame = requestAnimationFrame(pointerTick);
       })();
     }
 
     // ---- wiring -----------------------------------------------------------
     var ticking = false;
-    addEventListener('scroll', function () {
-      if (!ticking) { ticking = true; requestAnimationFrame(function () { read(); ticking = false; }); }
+    on('scroll', function () {
+      if (scDead) return;
+      if (!ticking) { ticking = true; requestAnimationFrame(function () { if (!scDead) read(); ticking = false; }); }
     }, { passive: true });
 
     // Keyboard focus on a pinned or panning act. The browser's own
@@ -1165,7 +1200,7 @@
     // definition. behavior:'instant' on purpose: scrollcraft.css sets
     // scroll-behavior:smooth, so the default animates the jump and focus sits
     // off screen for the whole of a multi-screen glide.
-    addEventListener('focusin', function (e) {
+    on('focusin', function (e) {
       var el = e.target;
       if (!el || !el.closest) return;
       var act = el.closest('[data-sc-act]');
@@ -1177,9 +1212,10 @@
     });
 
     var lastW = innerWidth;
-    addEventListener('resize', function () {
+    on('resize', function () {
       // Ignore URL-bar-only height changes on phones. Relaying out on those
       // makes the page jump under the reader's thumb for no reason.
+      if (scDead) return;
       if (innerWidth === lastW && isMobile()) { vh = innerHeight; return; }
       lastW = innerWidth;
       layout();
@@ -1188,6 +1224,7 @@
     if (document.fonts && document.fonts.ready) {
       // Line splitting measures line boxes, so it has to wait for the real face.
       document.fonts.ready.then(function () {
+        if (scDead) return;
         acts.forEach(function (a) { a.cues.forEach(function (q) { if (q.kinetic && q.units) { q.el.__scSplit = null; q.units = null; } }); });
         layout();
       });
@@ -1195,10 +1232,45 @@
 
     layout();
     initPointer();
-    requestAnimationFrame(tick);
+    scTickFrame = requestAnimationFrame(tick);
     document.documentElement.classList.add('sc-ready');
 
     var api = { layout: layout, read: read, acts: acts, worlds: worlds, clips: playheads, lerp: LERP };
+    // Idempotent: a second call is a no-op, because a framework's teardown hook
+    // can run after the element is already gone.
+    api.destroy = function () {
+      if (scDead) return;
+      scDead = true;
+      for (var i = 0; i < scListeners.length; i++) {
+        removeEventListener(scListeners[i][0], scListeners[i][1], scListeners[i][2]);
+      }
+      scListeners.length = 0;
+      if (scTickFrame) { cancelAnimationFrame(scTickFrame); scTickFrame = 0; }
+      if (scPointerFrame) { cancelAnimationFrame(scPointerFrame); scPointerFrame = 0; }
+      // Both observers, or every element they still watch stays reachable.
+      if (io) { io.disconnect(); io = null; }
+      if (cio) { cio.disconnect(); cio = null; }
+      // A blob URL is a document-lifetime reference to a whole decoded clip, so
+      // an unreleased one is the largest thing a re-mount can leak. Detaching
+      // the source needs the removeAttribute + load() pair: revoking alone
+      // leaves the element holding the resource.
+      for (var v = 0; v < playheads.length; v++) {
+        var V = playheads[v];
+        try { V.el.pause(); } catch (e) {}
+        if (V.objectURL) {
+          try { V.el.removeAttribute('src'); V.el.load(); } catch (e) {}
+          URL.revokeObjectURL(V.objectURL);
+          V.objectURL = null;
+        }
+      }
+      var at = global.ScrollCraft.instances.indexOf(api);
+      if (at !== -1) global.ScrollCraft.instances.splice(at, 1);
+      // Document-global, while the instance is not: only the last one out drops
+      // it, or a second stage on the page loses its no-transition guard.
+      if (!global.ScrollCraft.instances.length) {
+        document.documentElement.classList.remove('sc-ready');
+      }
+    };
     global.ScrollCraft.instances.push(api);
     return api;
   }

@@ -9,16 +9,16 @@ web
 Commander players opening a shared link on a phone or computer to discover MagicMobile and install it.
 
 ## Product Purpose
-Showcase the native apps and provide Android APK and iOS TestFlight downloads. Browser gameplay is a future possibility, not a currently available feature.
+Showcase MagicMobile and get people playing: iOS TestFlight, the Android APK, and the desktop browser game (linked from here, unlisted for search engines).
 
 ## Stack
-Delegated implementation choice: standalone React/Vite site with Three.js, deployed to Vercel. The existing web game remains separate.
+Standalone React/Vite site with Three.js (the bar's D20), deployed to Vercel. The browser game is a separate project (`apps/web`, magicmobile-web.vercel.app).
 
 ## Capabilities and Constraints
 Native local Commander against AI, Deck Studio, deck imports and analysis. Android is an alpha with physical-phone acceptance pending and no process-death live-game resume. iOS build 11 fixes the solo AI D20 startup flow and includes Game Center multiplayer for 2–4 seats with human players and AI opponents, a shared animated D20 starting roll, and cancellable skip actions. Physical two-device acceptance remains pending.
 
 ## Brand Commitments
-MagicMobile's existing identity and imagery. User requests a minimal, polished interactive site, motion design, and a floating 3D Magic card such as Black Lotus.
+The apps' Arena look and the brass M mark. High-motion Scroll Craft page (Hall and Cut, DESIGN.md). No cross-play claim yet.
 
 ## Evidence on Hand
 Signed Android GitHub prerelease and acceptance receipt. iOS build 11 distribution evidence is recorded in `../../release/RELEASE_0.1.1_BUILD11.md`. Actual application screenshots will be labeled by platform.

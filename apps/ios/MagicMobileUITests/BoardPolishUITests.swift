@@ -25,7 +25,7 @@ final class BoardPolishUITests: XCTestCase {
         app = application
         application.launchEnvironment["MAGICMOBILE_MULTIPLAYER_D20_FIXTURE"] = "1"
         application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        application.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)",
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)",
             "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "YES"]
         XCUIDevice.shared.orientation = .portrait
         application.launch()
@@ -99,7 +99,7 @@ final class BoardPolishUITests: XCTestCase {
         currentCapture = "starting-roll-covers-choice"
         application.launchEnvironment["MAGICMOBILE_STARTING_ROLL_FIXTURE"] = "1"
         application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
-        application.launchArguments = ["-magicmobile.boardAppearance", "arena", "-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "YES"]
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "YES"]
         XCUIDevice.shared.orientation = .portrait
         application.launch()
         let tapToRoll = application.buttons["multiplayerD20.tapToRoll"]
@@ -157,14 +157,14 @@ final class BoardPolishUITests: XCTestCase {
         app = application
         application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
         application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
-        application.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
             "-magicmobile.playerDisplayName", "Test Player"]
         XCUIDevice.shared.orientation = .portrait
         application.launch()
         XCTAssertTrue(application.buttons["menu.play"].waitForExistence(timeout: 20))
         application.buttons["menu.play"].press(forDuration: 0.15)
         UITestHarness.chooseCustomTable(application)
-        let ai = application.segmentedControls.buttons["AI"]
+        let ai = application.buttons["setup.mode.ai"]
         for _ in 0..<5 {
             if ai.isHittable { break }
             application.swipeUp()
@@ -172,12 +172,12 @@ final class BoardPolishUITests: XCTestCase {
         visible(ai, in: application)
         ai.press(forDuration: 0.15)
         XCTAssertTrue(application.buttons["Start game"].exists)
-        let gameCenter = application.segmentedControls.buttons["Game Center"]
+        let gameCenter = application.buttons["setup.mode.gamecenter"]
         gameCenter.press(forDuration: 0.15)
         XCTAssertTrue(application.buttons["Sign in to Game Center"].waitForExistence(timeout: 10))
         XCTAssertTrue(application.buttons["Find players"].exists)
         // "Online" is the iPhone + Android relay table; there is no hosted sign-in or lobby.
-        application.segmentedControls.buttons["Online"].press(forDuration: 0.15)
+        application.buttons["setup.mode.online"].press(forDuration: 0.15)
         XCTAssertTrue(application.buttons["ondevice.relay.host"].waitForExistence(timeout: 10))
         XCTAssertFalse(application.textFields["Email"].exists)
         XCTAssertFalse(application.secureTextFields["Password"].exists)
@@ -190,12 +190,11 @@ final class BoardPolishUITests: XCTestCase {
         ai.press(forDuration: 0.15)
         XCTAssertTrue(application.buttons["Start game"].waitForExistence(timeout: 5))
         XCTAssertTrue(application.buttons["Start game"].isEnabled)
-        let rollMode = application.segmentedControls.buttons["Roll D20"]
+        let rollMode = application.buttons["setup.first.roll"]
         for _ in 0..<5 where !rollMode.isHittable { application.swipeUp() }
         XCTAssertTrue(rollMode.isHittable)
         rollMode.tap()
         XCTAssertTrue(rollMode.isSelected)
-        XCTAssertTrue(application.staticTexts["Everyone rolls a D20. The highest roll starts; ties reroll."].exists)
     }
 
     func testPortraitCrowdedBattlefield() { runMatrix(portrait: true, selectedFixtures: ["crowded-battlefield"]) }
@@ -207,7 +206,7 @@ final class BoardPolishUITests: XCTestCase {
             app?.terminate()
             let application = XCUIApplication()
             app = application
-            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+            application.launchArguments = ["-magicmobile.boardMode", "hearth", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
                 "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", theme]
             application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "crowded-battlefield"
             application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
@@ -249,7 +248,7 @@ final class BoardPolishUITests: XCTestCase {
         let application = XCUIApplication()
         app = application
         application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        application.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         application.launch()
         XCTAssertTrue(application.buttons["menu.settings"].waitForExistence(timeout: 20))
@@ -257,7 +256,10 @@ final class BoardPolishUITests: XCTestCase {
         // taps. Still assert the destination; no retry conceals a failed action.
         XCTAssertTrue(application.buttons["menu.settings"].isHittable)
         application.buttons["menu.settings"].press(forDuration: 0.15)
-        XCTAssertTrue(application.navigationBars["Settings"].waitForExistence(timeout: 10))
+        XCTAssertTrue(application.buttons["settings.close"].waitForExistence(timeout: 10))
+        application.buttons["settings.open.board"].tap()
+        XCTAssertTrue(application.buttons["settings.page.board"].waitForExistence(timeout: 5)
+                      || application.descendants(matching: .any)["settings.page.board"].waitForExistence(timeout: 5))
         for title in ["Stone Arena", "Midnight", "Classic Wood", "Moss Sanctuary", "Obsidian Ember", "Tidal Slate", "Walnut Tavern"] {
             XCTAssertFalse(application.buttons[title + " battlefield"].exists, "\(title) should not be offered")
         }
@@ -274,6 +276,31 @@ final class BoardPolishUITests: XCTestCase {
     func testLandscapePlayerTarget() { runMatrix(portrait: false, selectedFixtures: ["player-target-prompt"]) }
     func testPortraitZoneInspection() { runMatrix(portrait: true, selectedFixtures: ["zone-inspection"]) }
     func testLandscapeZoneInspection() { runMatrix(portrait: false, selectedFixtures: ["zone-inspection"]) }
+    /// Held sideways, the Hearth board's zone pop-over used to run off the screen with no way to scroll to the last rows.
+    func testLandscapeZonePopoverReachesEveryRow() {
+        app?.terminate()
+        let application = XCUIApplication()
+        app = application
+        currentCapture = "landscape-zone-popover"
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "NO"]
+        application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "normal-battlefield"
+        application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+        XCUIDevice.shared.orientation = .landscapeLeft
+        application.launch()
+        XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+        let orb = application.buttons["board.lifeOrb"]
+        XCTAssertTrue(orb.waitForExistence(timeout: 10))
+        orb.tap()
+        let last = application.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Battlefield'")).firstMatch
+        XCTAssertTrue(last.waitForExistence(timeout: 5))
+        capture(application, name: "landscape-zone-popover-open")
+        let rows = application.scrollViews.containing(NSPredicate(format: "label BEGINSWITH 'Battlefield'")).firstMatch
+        XCTAssertTrue(rows.exists, "The zone rows scroll inside the pop-over")
+        for _ in 0..<4 where !(last.isHittable && application.frame.contains(last.frame)) { rows.swipeUp() }
+        XCTAssertTrue(last.isHittable && application.frame.contains(last.frame), "The last zone row must be reachable in landscape")
+        capture(application, name: "landscape-zone-popover-end")
+    }
+
     func testPortraitHandInspection() { runMatrix(portrait: true, selectedFixtures: ["full-hand-inspection"]) }
     func testLandscapeHandInspection() { runMatrix(portrait: false, selectedFixtures: ["full-hand-inspection"]) }
     func testPortraitHandArtworkScroll() { runMatrix(portrait: true, selectedFixtures: ["normal-battlefield"]) }
@@ -318,7 +345,7 @@ final class BoardPolishUITests: XCTestCase {
         app?.terminate()
         let application = XCUIApplication()
         app = application
-        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
             "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
         application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "normal-battlefield"
         application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
@@ -348,7 +375,7 @@ final class BoardPolishUITests: XCTestCase {
         app?.terminate()
         let application = XCUIApplication()
         app = application
-        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
             "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
         application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "normal-battlefield"
         application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
@@ -384,7 +411,7 @@ final class BoardPolishUITests: XCTestCase {
             app?.terminate()
             let application = XCUIApplication()
             app = application
-            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+            application.launchArguments = ["-magicmobile.boardMode", "hearth", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
                 "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
             application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
             application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
@@ -423,7 +450,7 @@ final class BoardPolishUITests: XCTestCase {
         app?.terminate()
         let application = XCUIApplication()
         app = application
-        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
             "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
         application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "four-player-focus"
         application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
@@ -461,14 +488,354 @@ final class BoardPolishUITests: XCTestCase {
         captureImage(name: "tavern-own-popover")
     }
 
+    /// Arena is the default board (2026-10-23): with no board mode chosen, a game opens on the Arena board.
+    func testTheArenaBoardIsTheDefault() {
+        let application = XCUIApplication()
+        app = application
+        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "YES"]
+        application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
+        application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "normal-battlefield"
+        application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+        XCUIDevice.shared.orientation = .portrait
+        application.launch()
+        XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+        XCTAssertTrue(application.buttons["board.arena.menu"].waitForExistence(timeout: 10), "The Arena board's gear")
+    }
+
     /// Walnut Tavern held sideways: the landscape plate with the medallions up the left column,
     /// the phase plate and pass button down the right and the battlefield on the mat.
+    /// The Arena board (BoardMode.arena) in both orientations: your medallion, the opponent's, the corner's primary
+    /// button and phase strip, the gear menu and the hand; payment offers Auto Pay.
+    func testArenaBoardKeepsItsControlsInBothOrientations() {
+        for (fixture, landscape) in [("normal-battlefield", false), ("normal-battlefield", true), ("mana-payment-prompt", false)] {
+            app?.terminate()
+            let application = XCUIApplication()
+            app = application
+            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.boardMode", "arena",
+                "-magicmobile.portraitModeEnabled", landscape ? "NO" : "YES", "-magicmobile.boardAppearance", "tavern"]
+            application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
+            application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+            XCUIDevice.shared.orientation = landscape ? .landscapeLeft : .portrait
+            application.launch()
+            XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+            let shaped = NSPredicate { _, _ in (application.frame.width > application.frame.height) == landscape }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: shaped, object: application)], timeout: 10), .completed)
+            let name = "\(fixture)-\(landscape ? "landscape" : "portrait")"
+            XCTAssertTrue(application.buttons["board.lifeOrb"].waitForExistence(timeout: 10), "Your medallion in \(name)")
+            XCTAssertTrue(application.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "board.zones.")).firstMatch.exists,
+                          "The opponent's medallion in \(name)")
+            XCTAssertTrue(application.descendants(matching: .any)["board.phase.plate"].exists, "The phase strip in \(name)")
+            XCTAssertTrue(application.descendants(matching: .any)["board.hand.scroll"].exists, "The hand in \(name)")
+            let primary = application.buttons["board.action.primary"]
+            XCTAssertTrue(primary.exists, "The corner's button in \(name)")
+            XCTAssertGreaterThan(primary.frame.midX, application.frame.width * 0.6, "The corner's button sits on the right in \(name)")
+            XCTAssertGreaterThan(primary.frame.midY, application.frame.height * 0.8, "The corner's button sits at the bottom in \(name)")
+            if fixture == "mana-payment-prompt" {
+                XCTAssertEqual(primary.label, "Auto Pay", "Paying offers Auto Pay")
+            } else {
+                XCTAssertTrue(primary.label.hasPrefix("Next"), "Your main phase moves on with Next")
+                let menu = application.buttons["board.arena.menu"]
+                XCTAssertTrue(menu.exists, "The gear in \(name)")
+                // The launch's first touch can be cancelled by the simulator; spend that one on the table.
+                UITestHarness.settleFirstTouch(application)
+                if landscape {
+                    // The hand rests tucked along the bottom edge and a tap pops the card up whole, as in the reference.
+                    let third = application.descendants(matching: .any)
+                        .matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-hand-")).element(boundBy: 2)
+                    XCTAssertTrue(third.exists, "A hand card in \(name)")
+                    // Pin it by identifier: a popped card moves in the accessibility order, so "the third" changes.
+                    let card = application.descendants(matching: .any).matching(identifier: third.identifier).firstMatch
+                    let tucked = card.frame.minY
+                    XCTAssertGreaterThan(tucked, application.frame.height * 0.8, "The hand rests tucked in \(name)")
+                    card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap()
+                    let opened = NSPredicate { _, _ in card.frame.minY < tucked - 40 }
+                    XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: opened, object: card)], timeout: 3),
+                                   .completed, "A tap pops the card up in \(name)")
+                }
+                menu.tap()
+                XCTAssertTrue(application.buttons["Game Log"].waitForExistence(timeout: 5), "The gear opens the game menu in \(name)")
+                // Its settings open on the table in glass, not in a system sheet, and Done closes them.
+                application.buttons["Game Settings"].tap()
+                let done = application.buttons["board.menu.done"]
+                XCTAssertTrue(done.waitForExistence(timeout: 5), "Game Settings opens in \(name)")
+                captureImage(name: "arena-settings-\(name)")
+                done.tap()
+                XCTAssertTrue(done.waitForNonExistence(timeout: 5), "Done closes Game Settings in \(name)")
+            }
+            captureImage(name: "arena-\(name)")
+        }
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    /// The Arena board's other browsers: a "you may" question on its own screen with Yes and No, scry's Bottom and Top
+    /// zones (a tap moves a card across), and a modal spell's modes as cards (a tap answers with that mode).
+    func testArenaBoardShowsChoicesAsBrowsers() {
+        func launch(_ fixture: String) -> XCUIApplication {
+            app?.terminate()
+            let application = XCUIApplication()
+            app = application
+            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.boardMode", "arena",
+                "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
+            application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
+            application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+            XCUIDevice.shared.orientation = .portrait
+            application.launch()
+            return application
+        }
+        var application = launch("may-trigger-prompt")
+        XCTAssertTrue(application.descendants(matching: .any)["arena.question"].waitForExistence(timeout: 15), "The question screen")
+        XCTAssertTrue(application.buttons["Yes"].exists && application.buttons["No"].exists, "Yes and No under the card")
+        captureImage(name: "arena-question")
+
+        application = launch("scry-choice")
+        XCTAssertTrue(application.staticTexts["board.choice.title"].waitForExistence(timeout: 15))
+        XCTAssertEqual(application.staticTexts["board.choice.title"].label, "Scry")
+        let top = application.descendants(matching: .any)["board.choice.zone.top"]
+        XCTAssertTrue(top.exists, "Scry's Top zone")
+        let card = top.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "board.choice.card.")).firstMatch
+        XCTAssertTrue(card.exists, "A card on top")
+        let id = card.identifier
+        card.tap()
+        let bottom = application.descendants(matching: .any)["board.choice.zone.bottom"]
+        let moved = NSPredicate { _, _ in bottom.descendants(matching: .any).matching(identifier: id).firstMatch.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: moved, object: bottom)], timeout: 5), .completed,
+                       "A tap moves the card to the bottom")
+        captureImage(name: "arena-scry")
+
+        application = launch("mode-choice")
+        XCTAssertTrue(application.descendants(matching: .any)["arena.modeBrowser"].waitForExistence(timeout: 15), "The mode browser")
+        XCTAssertFalse(application.buttons["Cancel prompt details"].exists, "No prompt panel over it")
+        application.descendants(matching: .any)["arena.mode.mode-2"].tap()
+        let answered = NSPredicate { _, _ in
+            application.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Choose mode")).firstMatch.exists
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: answered, object: application)], timeout: 5),
+                       .completed, "A tap answers with that mode")
+    }
+
+    /// The rest of the Arena's screens (docs/ARENA_STYLE.md): named choices as cards with a remember toggle, who goes
+    /// first as medallions, a pile choice, a mana split, and the X pill in the corner, each answering with a tap.
+    func testArenaBoardShowsChoicesPlayersPilesSplitsAndNumbers() {
+        func launch(_ environment: [String: String], fixture: String = "normal-battlefield") -> XCUIApplication {
+            app?.terminate()
+            let application = XCUIApplication()
+            app = application
+            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.boardMode", "arena",
+                "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
+            application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
+            application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+            for (key, value) in environment { application.launchEnvironment[key] = value }
+            XCUIDevice.shared.orientation = .portrait
+            application.launch()
+            return application
+        }
+        func answered(_ application: XCUIApplication, _ text: String) -> Bool {
+            let found = NSPredicate { _, _ in
+                application.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch.exists
+            }
+            return XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: found, object: application)], timeout: 5) == .completed
+        }
+
+        var application = launch(["MAGICMOBILE_PREVIEW_PROMPT": "replacement"])
+        XCTAssertTrue(application.descendants(matching: .any)["arena.choiceBrowser"].waitForExistence(timeout: 15), "The choice browser")
+        XCTAssertFalse(application.buttons["Cancel prompt details"].exists, "No prompt panel over it")
+        XCTAssertTrue(application.descendants(matching: .any)["arena.choice.r1"].exists, "Doubling Season's choice")
+        XCTAssertFalse(application.descendants(matching: .any)["arena.choice.r3"].exists, "Its remembered twin is a toggle, not a card")
+        captureImage(name: "arena-choices")
+        application.descendants(matching: .any)["arena.choice.r2"].tap()
+        XCTAssertTrue(answered(application, "Chatterfang"), "A tap answers with that choice")
+
+        application = launch(["MAGICMOBILE_PREVIEW_PROMPT": "starting-player"])
+        XCTAssertTrue(application.descendants(matching: .any)["arena.playerChoice"].waitForExistence(timeout: 15), "Who goes first")
+        application.buttons["arena.player.human"].tap()
+        XCTAssertTrue(answered(application, "Choose You"), "A tap on a medallion answers")
+
+        application = launch(["MAGICMOBILE_PREVIEW_PROMPT": "piles"])
+        XCTAssertTrue(application.descendants(matching: .any)["arena.pileBrowser"].waitForExistence(timeout: 15), "The pile browser")
+        application.descendants(matching: .any)["arena.pile.2"].tap()
+        let choose = application.buttons["arena.browser.primary"]
+        XCTAssertTrue(choose.waitForExistence(timeout: 5) && choose.isEnabled, "A picked pile can be taken")
+        choose.tap()
+        XCTAssertTrue(answered(application, "Choose Pile 2"))
+
+        application = launch(["MAGICMOBILE_PREVIEW_PROMPT": "mana-split"])
+        XCTAssertTrue(application.descendants(matching: .any)["arena.split"].waitForExistence(timeout: 15), "The split browser")
+        let done = application.buttons["arena.browser.primary"]
+        XCTAssertTrue(done.isEnabled, "XMage's own split comes in complete")
+        application.buttons["arena.split.m4.minus"].tap()
+        XCTAssertFalse(done.isEnabled, "Two of three mana is not a legal split")
+        captureImage(name: "arena-split")
+
+        application = launch(["MAGICMOBILE_PREVIEW_AMOUNT": "1"])
+        XCTAssertTrue(application.descendants(matching: .any)["arena.amount"].waitForExistence(timeout: 15), "The X pill")
+        application.buttons["arena.amount.1"].tap()
+        application.buttons["arena.amount.1"].tap()
+        application.buttons["arena.amount.submit"].tap()
+        XCTAssertTrue(answered(application, "Choose 2"), "The pill answers with its value")
+    }
+
+    /// The Arena board's table pieces from Caleb's 2026-10-21 notes: the stack card's tab with its count, a popped hand
+    /// card carried straight onto the table (your land row counts), a medallion opening the player's card, its zones and
+    /// revealed cards opening as browsers, and the command zone's Cast.
+    func testArenaBoardStackTabDragAfterPopAndZoneBrowsers() {
+        func launch(_ fixture: String, landscape: Bool) -> XCUIApplication {
+            app?.terminate()
+            let application = XCUIApplication()
+            app = application
+            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.boardMode", "arena",
+                "-magicmobile.portraitModeEnabled", landscape ? "NO" : "YES", "-magicmobile.boardAppearance", "tavern"]
+            application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
+            application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+            XCUIDevice.shared.orientation = landscape ? .landscapeLeft : .portrait
+            application.launch()
+            XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+            let shaped = NSPredicate { _, _ in (application.frame.width > application.frame.height) == landscape }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: shaped, object: application)], timeout: 10), .completed)
+            UITestHarness.settleFirstTouch(application)
+            return application
+        }
+        func captured(_ application: XCUIApplication, _ text: String) -> Bool {
+            let found = NSPredicate { _, _ in
+                let label = application.staticTexts["preview.captured-command"]
+                return label.exists && label.label.contains(text)
+            }
+            return XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: found, object: application)], timeout: 5) == .completed
+        }
+
+        // The stack card's tab opens the stack and says how much is on it.
+        var application = launch("stack-response-prompt", landscape: false)
+        let tab = application.buttons["board.stack.tray"]
+        XCTAssertTrue(tab.waitForExistence(timeout: 10), "The stack card's tab")
+        XCTAssertTrue(tab.label.contains("2 objects"), tab.label)
+        tab.tap()
+        XCTAssertTrue(application.descendants(matching: .any)["arena.stackBrowser"].waitForExistence(timeout: 5), "The tab opens the stack")
+        captureImage(name: "arena-stack-tab")
+
+        // A card popped out of the hand is carried straight onto the table from its own picture.
+        application = launch("normal-battlefield", landscape: true)
+        // Sol Ring is the fixture's castable card.
+        let card = application.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-hand-sol-ring")).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 10), "Sol Ring in the hand")
+        let tucked = card.frame.minY
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap()
+        let popped = NSPredicate { _, _ in card.frame.minY < tucked - 40 }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: popped, object: card)], timeout: 3), .completed, "The card pops up")
+        // Start on the popped card's top, above the tucked hand, and let go on the table.
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12))
+            .press(forDuration: 0.05, thenDragTo: application.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.45)))
+        XCTAssertTrue(captured(application, "Sol Ring"), "Carrying the popped card onto the table plays it")
+
+        // The gear's menu is a card on the table, and its Game Log has the Arena look.
+        application.buttons["board.arena.menu"].tap()
+        XCTAssertTrue(application.descendants(matching: .any)["arena.menuCard"].waitForExistence(timeout: 5), "The gear's menu card")
+        application.buttons["Game Log"].tap()
+        XCTAssertTrue(application.buttons["Close game log"].waitForExistence(timeout: 5), "The game log opens")
+        XCTAssertTrue(application.staticTexts["Game Log"].exists, "Its title")
+        captureImage(name: "arena-game-log")
+        application.buttons["Close game log"].tap()
+
+        // Portrait: the tab at the hand's left lays the hand out in one flat row of whole cards, a sideways swipe moves
+        // along it, and the tab tucks it again.
+        application = launch("normal-battlefield", landscape: false)
+        let spreadTab = application.buttons["arena.hand.spread"]
+        XCTAssertTrue(spreadTab.waitForExistence(timeout: 10), "The spread tab")
+        let sol = application.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-hand-sol-ring")).firstMatch
+        let last = application.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-hand-spirited-companion")).firstMatch
+        let rail = application.frame.height * 0.86
+        XCTAssertGreaterThan(sol.frame.maxY, rail, "Tucked behind the rail")
+        spreadTab.tap()
+        let spreadOut = NSPredicate { _, _ in sol.frame.maxY < rail && spreadTab.label == "Tuck your hand" }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: spreadOut, object: sol)], timeout: 5), .completed,
+                       "The cards lie whole above the rail")
+        XCTAssertEqual(sol.frame.midY, last.frame.midY, accuracy: 12, "One row (a card partly off the screen reports a trimmed frame)")
+        XCTAssertGreaterThan(last.frame.maxX, application.frame.width, "The rest of a big hand waits to the right")
+        captureImage(name: "arena-hand-spread")
+        // Two swipes from right to left across the row.
+        for _ in 0..<2 {
+            let y = sol.frame.midY / application.frame.height
+            application.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: y))
+                .press(forDuration: 0.05, thenDragTo: application.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: y)))
+        }
+        let swiped = NSPredicate { _, _ in last.frame.maxX <= application.frame.width + 1 }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: swiped, object: last)], timeout: 5), .completed,
+                       "A sideways swipe brings the last card into view")
+        spreadTab.tap()
+        let tuckedAgain = NSPredicate { _, _ in sol.frame.maxY > rail }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: tuckedAgain, object: sol)], timeout: 5), .completed,
+                       "The tab tucks them again")
+
+        // The hand's touch area reaches up to where cards pop, over your land row; a land there still takes its tap.
+        application = launch("mana-payment-prompt", landscape: false)
+        let forest = application.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-your-lands-forest")).firstMatch
+        XCTAssertTrue(forest.waitForExistence(timeout: 10), "A Forest in your land row")
+        // A real touch at its middle (XCUITest's hittable check misreads the table's lean, as on the Tavern board).
+        forest.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(captured(application, "captured"), "A land under the hand's touch area still taps for mana")
+
+        // Your medallion opens your player card; the command zone opens as a browser and casts your commander.
+        application = launch("zone-inspection", landscape: false)
+        let medallion = application.buttons["board.lifeOrb"]
+        XCTAssertTrue(medallion.waitForExistence(timeout: 10))
+        medallion.tap()
+        XCTAssertTrue(application.descendants(matching: .any)["arena.playerCard"].waitForExistence(timeout: 5), "Your player card")
+        let command = application.buttons["arena.player.zone.command"]
+        XCTAssertTrue(command.exists && command.label.contains("you can play from it"), command.label)
+        captureImage(name: "arena-player-card")
+        command.tap()
+        XCTAssertTrue(application.descendants(matching: .any)["arena.zone"].waitForExistence(timeout: 5), "The command zone's browser")
+        XCTAssertFalse(application.descendants(matching: .any)["arena.playerCard"].exists, "The player card steps aside for it")
+        captureImage(name: "arena-command-zone")
+        let cast = application.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "arena.zone.action.")).firstMatch
+        XCTAssertTrue(cast.exists && cast.label.hasPrefix("Cast"), "The commander's Cast plaque")
+        cast.tap()
+        XCTAssertTrue(captured(application, "Cast commander"), "Cast answers as the Hearth panel does")
+
+        // Revealed cards: a pill beside the opponent's piles opens them in a browser; Done closes it.
+        application = launch("zone-inspection", landscape: true)
+        let revealed = application.buttons["arena.chip.revealed"]
+        XCTAssertTrue(revealed.waitForExistence(timeout: 10), "The revealed pill")
+        XCTAssertLessThan(revealed.frame.midY, application.frame.height * 0.2, "It sits up by the opponent's piles, off the rows")
+        revealed.tap()
+        let zone = application.descendants(matching: .any)["arena.zone"]
+        XCTAssertTrue(zone.waitForExistence(timeout: 5), "Revealed cards open in a browser")
+        captureImage(name: "arena-revealed")
+        application.buttons["arena.browser.primary"].tap()
+        XCTAssertTrue(zone.waitForNonExistence(timeout: 5), "Done closes it")
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    /// The Arena board answers an ability choice in its own browser, never in the prompt panel behind it, and a tap on
+    /// an ability answers with that ability.
+    func testArenaBoardChoosesAbilitiesInItsOwnBrowser() {
+        app?.terminate()
+        let application = XCUIApplication()
+        app = application
+        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.boardMode", "arena",
+            "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
+        application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "ability-choice"
+        application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+        XCUIDevice.shared.orientation = .portrait
+        application.launch()
+        XCTAssertTrue(application.descendants(matching: .any)["arena.abilityBrowser"].waitForExistence(timeout: 15), "The ability browser")
+        XCTAssertFalse(application.buttons["Cancel prompt details"].exists, "No prompt panel over the browser")
+        let id = "22222222-2222-4222-8222-222222222222"
+        let ability = application.descendants(matching: .any)["arena.ability.\(id)"]
+        XCTAssertTrue(ability.exists, "Each ability is a card in the browser")
+        captureImage(name: "arena-ability-browser")
+        ability.tap()
+        let answered = NSPredicate { _, _ in
+            application.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", id)).firstMatch.exists
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: answered, object: application)], timeout: 5),
+                       .completed, "A tap answers with that ability")
+    }
+
     func testTavernLandscapeTableKeepsItsControls() {
         for fixture in ["normal-battlefield", "crowded-battlefield", "four-player-focus", "attached-permanents"] {
             app?.terminate()
             let application = XCUIApplication()
             app = application
-            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+            application.launchArguments = ["-magicmobile.boardMode", "hearth", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
                 "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
             application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
             XCUIDevice.shared.orientation = .landscapeLeft
@@ -503,7 +870,7 @@ final class BoardPolishUITests: XCTestCase {
                 let application = XCUIApplication()
                 app = application
                 currentCapture = "\(portrait ? "portrait" : "landscape")-\(fixture)"
-                application.launchArguments = ["-magicmobile.boardAppearance", "arena", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+                application.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
                                                "-magicmobile.portraitModeEnabled", portrait || rotateDuringTest ? "YES" : "NO"]
                 application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
                 application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"

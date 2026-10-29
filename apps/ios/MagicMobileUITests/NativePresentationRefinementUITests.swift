@@ -7,7 +7,7 @@ final class NativePresentationRefinementUITests: XCTestCase {
         continueAfterFailure = false
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
         if error { app.launchEnvironment["MAGICMOBILE_UI_TEST_ENGINE_ERROR"] = "1" }
-        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "-deckStudio.cards.layout.v1", "List", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "-deckStudio.cards.layout.v1", "List", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 20))
@@ -27,7 +27,10 @@ final class NativePresentationRefinementUITests: XCTestCase {
         app.swipeUp()
         XCTAssertFalse(app.buttons["ondevice.diagnostics"].exists)
         app.swipeDown()
+        // Back from the custom table is the Play panel; its close returns home.
         app.buttons["Main menu"].tap()
+        XCTAssertTrue(app.buttons["play.start"].waitForExistence(timeout: 5))
+        app.buttons["lobby.back"].tap()
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5))
     }
 
@@ -46,9 +49,11 @@ final class NativePresentationRefinementUITests: XCTestCase {
         XCTAssertTrue(report.isHittable)
         report.tap()
         XCTAssertTrue(app.buttons["ondevice.shareReport"].waitForExistence(timeout: 5))
-        app.buttons["Done"].tap()
+        app.buttons["diagnostics.close"].tap()
         app.swipeDown()
         app.buttons["Main menu"].tap()
+        XCTAssertTrue(app.buttons["play.start"].waitForExistence(timeout: 5))
+        app.buttons["lobby.back"].tap()
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5))
     }
 }

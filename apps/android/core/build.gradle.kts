@@ -33,5 +33,7 @@ tasks.register<JavaExec>("insightChecks") {
 }
 tasks.test {
     systemProperty("magicmobile.repo", rootProject.file("../..").absolutePath)
+    // Laws (docs/LAWS.md): -Plaws.runs=20000 for a deeper local run; CI uses the default.
+    providers.gradleProperty("laws.runs").orNull?.let { systemProperty("laws.runs", it) }
     testLogging { events("failed"); exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
 }

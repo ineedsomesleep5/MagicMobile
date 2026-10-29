@@ -10,9 +10,9 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026101802
+        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026102802
         versionName = providers.gradleProperty("androidVersionName").orNull ?: "0.1.1"
-        buildConfigField("int", "RELEASE_BUILD", "31")
+        buildConfigField("int", "RELEASE_BUILD", "47")
         ndk { abiFilters += "arm64-v8a" }
         buildConfigField("boolean", "NATIVE_ENGINE", withNative.toString())
         val relayURL = providers.gradleProperty("relayUrl").orNull ?: "https://magicmobile-relay.calebjfeliciano.workers.dev"
@@ -56,6 +56,7 @@ val prepareAssets by tasks.registering(Exec::class) {
     inputs.file(rootProject.file("../ios/MagicMobile/Resources/commander-brackets.json"))
     inputs.file(rootProject.file("../ios/MagicMobile/Resources/ai-decks.json"))
     inputs.files(rootProject.file("../ios/MagicMobile/Resources/tavern-room.json")).optional()
+    inputs.dir(rootProject.file("../ios/MagicMobile/Resources/Lessons"))
     outputs.dir(layout.buildDirectory.dir("generated/magicmobile-assets"))
     commandLine("python3",script.absolutePath, rootProject.file("../..").absolutePath,layout.buildDirectory.dir("generated/magicmobile-assets").get().asFile.absolutePath)
 }
@@ -73,7 +74,11 @@ val prepareBrandAssets by tasks.registering(Sync::class) {
     from(File(catalogue, "AppIcon.appiconset/AppIcon-1024.png")) { into("drawable-nodpi"); rename { "magicmobile_icon.png" } }
     from(catalogue) {
         include("battlefield-tavern-portrait.imageset/*.jpg", "battlefield-tavern-landscape.imageset/*.jpg",
-            "menu-backdrop-tavern.imageset/*.jpg", "tavern-room-*.imageset/*.jpg", "tavern-*.imageset/*.png")
+            "menu-backdrop-tavern.imageset/*.jpg", "tavern-room-*.imageset/*.jpg", "tavern-*.imageset/*.png",
+            // The Arena board's leaning tables (tavern-arena-landscape.jpg becomes R.drawable.tavern_arena_landscape).
+            "tavern-arena-*.imageset/*.jpg",
+            // The Arena home page's art (1252 px crops): home-art-ur-dragon.jpg becomes R.drawable.home_art_ur_dragon.
+            "home-art-*.imageset/*.jpg")
         // Android resource names are lowercase with underscores: tavern-mana-B -> tavern_mana_b.
         eachFile { path = "drawable-nodpi/" + name.replace('-', '_').lowercase() }
         includeEmptyDirs = false
@@ -132,6 +137,9 @@ dependencies {
     // models. Only the arm64 libraries ship (abiFilters above), about 3 MB.
     implementation("com.google.android.filament:filament-android:1.75.1")
     implementation("com.google.android.filament:gltfio-android:1.75.1")
+    // Voice chat at online tables (ondevice/VoiceRoom.kt, docs/VOICE_CHAT.md): Agora's basic voice SDK, the version iOS uses.
+    // Only its arm64 library ships (abiFilters above), about 14 MB.
+    implementation("io.agora.rtc:voice-rtc-basic:4.6.4")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }
 tasks.register<JavaExec>("artworkCatalogueChecks") {

@@ -65,6 +65,11 @@ final class ProfileHistoryUITests: XCTestCase {
         XCTAssertTrue(first.label.contains("Token Triumph"), first.label)
         attach("Profile recent games fixture")
         first.press(forDuration: 0.15)
+        // The card opens its summary; Game review opens the dashboard.
+        let review = app.buttons[firstGame.replacingOccurrences(of: ".expand", with: ".review")]
+        XCTAssertTrue(review.waitForExistence(timeout: 5))
+        UITestHarness.reveal(review, in: page, swipes: 6, upward: false)
+        review.press(forDuration: 0.15)
         let dashboard = app.scrollViews["deckHistory.dashboard.scroll"]
         let closeDashboard = app.buttons["deckHistory.dashboard.close"]
         XCTAssertTrue(dashboard.waitForExistence(timeout: 10))
@@ -112,6 +117,10 @@ final class ProfileHistoryUITests: XCTestCase {
         let legacy = app.buttons[secondGame]
         UITestHarness.reveal(legacy, in: page, swipes: 12)
         legacy.press(forDuration: 0.15)
+        let legacyReview = app.buttons[secondGame.replacingOccurrences(of: ".expand", with: ".review")]
+        XCTAssertTrue(legacyReview.waitForExistence(timeout: 5))
+        UITestHarness.reveal(legacyReview, in: page, swipes: 6, upward: false)
+        legacyReview.press(forDuration: 0.15)
         XCTAssertTrue(dashboard.waitForExistence(timeout: 5))
         let missing = app.staticTexts["Detailed history was not recorded for this match."]
         center(missing, in: dashboard)

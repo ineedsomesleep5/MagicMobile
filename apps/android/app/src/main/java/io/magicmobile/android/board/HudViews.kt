@@ -455,7 +455,7 @@ fun TavernOpponentBar(frame: TavernFrame, snapshot: GameSnapshot, opponentName: 
         TavernCardBackFan(opponent.zones.visibleHandCount, Modifier.tavernPosition(frame, sockets.opponentHand))
         // The step of the turn mirrors the nameplate; the log is in the controls menu. A tap opens the phase stops, as Arena's phase bar does.
         Box(Modifier.tavernPosition(frame, sockets.phasePlate)) {
-            TavernPhasePlate(snapshot.step ?: snapshot.phase, snapshot.turn,
+            TavernPhasePlate(snapshot.step ?: snapshot.phase, snapshot.displayTurn,
                 Modifier.clickable(onClickLabel = "Opens phase stops") { showPhaseStops = true }, width = plateWidth)
             // Day or night and the storm count hang under the plate when they matter, without moving it.
             TavernTableHints(snapshot.dayNight, snapshot.stormCount, Modifier.align(Alignment.BottomCenter).hangBelow(5.dp))
@@ -562,7 +562,8 @@ fun TavernPlayerZoneMenu(player: PlayerGameState, viewZone: (String, List<ZoneCa
             }
         }
         if (swapOpponents.size > 1 && swap != null) {
-            TavernOpponentSwap(swapOpponents, player.playerId, { game?.playerLabel(it) ?: "Opponent" }, swap)
+            TavernOpponentSwap(swapOpponents, player.playerId, { game?.playerLabel(it) ?: "Opponent" }, swap,
+                game?.let { io.magicmobile.android.game.ArenaTargetReach.of(it).hiddenOpponents.toSet() } ?: emptySet())
         }
     }
 }

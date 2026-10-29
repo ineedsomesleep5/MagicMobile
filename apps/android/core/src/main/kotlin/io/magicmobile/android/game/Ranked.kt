@@ -9,6 +9,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.double
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -212,18 +213,49 @@ data class RankState(
 }
 
 object RankLadder {
-    /** Seasons are calendar months in UTC: "2026-10". */
-    fun season(millis: Long): String = YearMonth.from(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC)).toString()
+    /**
+     * The first quarterly season (Caleb, 2026-10-26): October 2026 was a month; from November 2026 a season is three months,
+     * named by its first: "2026-11" runs November to January. RankLadder.swift; server mm_season_for.
+     */
+    val FIRST_QUARTER: YearMonth = YearMonth.of(2026, 11)
+
+    /** The season holding a time, in UTC: "2026-10", then "2026-11", "2027-02", … */
+    fun season(millis: Long): String {
+        val month = YearMonth.from(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC))
+        if (month < FIRST_QUARTER) return month.toString()
+        val months = java.time.temporal.ChronoUnit.MONTHS.between(FIRST_QUARTER, month)
+        return FIRST_QUARTER.plusMonths(months / 3 * 3).toString()
+    }
+
+    /** How many months a season lasts. */
+    fun seasonMonths(season: String): Long? = runCatching { if (YearMonth.parse(season) < FIRST_QUARTER) 1L else 3L }.getOrNull()
 
     fun seasonEnd(season: String): Long? = runCatching {
-        YearMonth.parse(season).plusMonths(1).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        YearMonth.parse(season).plusMonths(seasonMonths(season)!!).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
     }.getOrNull()
 
-    /** "October 2026" */
+    /** "ends in 34 days", "ends today"; null once the season is over (the leaderboard's live strip; iOS seasonCountdown). */
+    fun seasonCountdown(season: String, now: Long): String? {
+        val end = seasonEnd(season) ?: return null
+        if (end <= now) return null
+        val days = kotlin.math.ceil((end - now) / 86_400_000.0).toInt()
+        return if (days <= 1) "ends today" else "ends in $days days"
+    }
+
+    /** "October 2026", or a quarter's span: "Nov 2026 – Jan 2027". */
     fun seasonName(season: String): String = runCatching {
         val month = YearMonth.parse(season)
-        "${month.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${month.year}"
+        if (seasonMonths(season) == 3L) {
+            val last = month.plusMonths(2)
+            "${month.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())} ${month.year} – ${last.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())} ${last.year}"
+        } else "${month.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${month.year}"
     }.getOrDefault(season)
+
+    /** Season numbers for badges: October 2026 is Season 1, the first quarter (November 2026) Season 2, and so on. */
+    fun seasonNumber(season: String): Int? = runCatching {
+        val months = java.time.temporal.ChronoUnit.MONTHS.between(FIRST_QUARTER, YearMonth.parse(season))
+        when { months >= 0 -> 2 + (months / 3).toInt(); months == -1L -> 1; else -> null }
+    }.getOrNull()
 
     /** A new month: last season goes into history and you drop one tier (Mythic to Diamond IV). */
     fun rollover(state: RankState, season: String): RankState {
@@ -254,19 +286,92 @@ object RankLadder {
     }
 }
 
+/**
+ * A season's badge (Caleb, 2026-10-26): the tier the player peaked at that season. Season 1 (October 2026, the first)
+ * carries a founder ribbon. The season in play shows too, still being earned. RankLadder.swift.
+ */
+data class SeasonBadge(val season: String, val peak: RankPosition, val inProgress: Boolean = false) {
+    val tier: RankTier get() = peak.tier
+    val founder: Boolean get() = season == FOUNDING_SEASON
+    val number: Int? get() = RankLadder.seasonNumber(season)
+
+    companion object {
+        const val FOUNDING_SEASON = "2026-10"
+
+        /** Newest first: the season in play when ranked games were played in it, then each finished season at its peak. */
+        fun earned(rank: RankState): List<SeasonBadge> {
+            val current = if (rank.wins + rank.losses + rank.draws > 0) listOf(SeasonBadge(rank.season, rank.peak, inProgress = true)) else emptyList()
+            return current + rank.history.map { SeasonBadge(it.season, it.peak) }
+        }
+
+        /** The best finished badge: the highest peak, the newest of equals. */
+        fun best(badges: List<SeasonBadge>): SeasonBadge? =
+            badges.filter { !it.inProgress }.maxWithOrNull(compareBy<SeasonBadge>({ it.peak.points }, { it.season }))
+    }
+}
+
 // MARK: - AI decks (AIDeckPool.swift)
 
 data class AIDeck(val id: String, val name: String, val subtitle: String, val colors: String, val commander: String,
-                  val bracket: CommanderBracket, val deck: Deck) {
+                  val bracket: CommanderBracket, val deck: Deck,
+                  /** Hidden deck Power, 1-10 (ai-decks.json `power`, scripts/ranked/deck_power.py); null when unrated. */
+                  val power: Double? = null) {
     /** The setup screen's deck ID when a player picks one of these decks for themselves. */
     val playerDeckID: String get() = "included:$id"
     /** An official precon; ai-decks.json IDs all start with "ai-". */
     val isPrecon: Boolean get() = !id.startsWith("ai-")
 }
 
+/** A Quick Match level: the AI deck's target Power and the AI's skill. */
+data class QuickLevel(val power: Double, val skill: Int)
+
+/** ai-decks.json's `power` block (DeckPowerData in AIDeckPool.swift): each deck's Power, Ranked's bands, Quick Match's levels. */
+data class DeckPowerData(val closest: Int, val rankedTiers: List<Pair<Double, Double>>, val quickMatch: Map<String, QuickLevel>,
+                         val decks: Map<String, Double>)
+
 object AIDeckPool {
-    /** ai-decks.json (scripts/ranked/build_ai_decks.py). */
-    fun parse(text: String): List<AIDeck> = Json.parseToJsonElement(text).jsonObject["decks"]!!.jsonArray.map { item ->
+    /** The `power` block of ai-decks.json, or null when the file has none. */
+    fun parsePower(text: String): DeckPowerData? {
+        val block = Json.parseToJsonElement(text).jsonObject["power"]?.jsonObject ?: return null
+        return DeckPowerData(block["closest"]!!.jsonPrimitive.int,
+            block["rankedTiers"]!!.jsonArray.map { val band = it.jsonArray; band[0].jsonPrimitive.double to band[1].jsonPrimitive.double },
+            block["quickMatch"]!!.jsonObject.mapValues { (_, v) -> QuickLevel(v.jsonObject["power"]!!.jsonPrimitive.double, v.jsonObject["skill"]!!.jsonPrimitive.int) },
+            block["decks"]!!.jsonObject.mapValues { (_, v) -> v.jsonPrimitive.double })
+    }
+
+    /**
+     * Ranked's target Power (docs/DECK_POWER.md): the tier's band split in four divisions, IV low to I high; Mythic
+     * (division 0) aims at the middle of its band.
+     */
+    fun rankedTarget(tier: Int, division: Int, tiers: List<Pair<Double, Double>>): Double {
+        val (low, high) = tiers[tier.coerceIn(0, tiers.size - 1)]
+        if (division <= 0) return (low + high) / 2
+        return low + (high - low) * (4 - minOf(4, division) + 0.5) / 4
+    }
+
+    /**
+     * An AI deck by Power (pickByPower in AIDeckPool.swift): decks with a Power and a bracket at most `maxBracket` (null:
+     * any), never your commander and not a recent deck while others remain, then the `closest` nearest the target (ties
+     * by id), `roll` picking among them. Null when no deck qualifies. Checked against parity/power-cases.json.
+     */
+    fun pickByPower(target: Double, maxBracket: Int?, avoidingCommander: String?, recent: List<String>, decks: List<AIDeck>,
+                    closest: Int = 3, roll: (Int) -> Int = { (0 until it).random() }): AIDeck? {
+        var candidates = decks.filter { it.power != null && (maxBracket == null || it.bracket.level <= maxBracket) }
+        if (avoidingCommander != null && candidates.any { it.commander != avoidingCommander }) candidates = candidates.filter { it.commander != avoidingCommander }
+        val fresh = candidates.filter { it.id !in recent }
+        if (fresh.isNotEmpty()) candidates = fresh
+        val near = candidates.sortedWith(compareBy<AIDeck>({ kotlin.math.abs(it.power!! - target) }, { it.id })).take(closest)
+        if (near.isEmpty()) return null
+        return near[roll(near.size).coerceIn(0, near.size - 1)]
+    }
+
+    /** ai-decks.json (scripts/ranked/build_ai_decks.py), each deck with its Power from the file's `power` block. */
+    fun parse(text: String): List<AIDeck> {
+        val power = parsePower(text)?.decks ?: emptyMap()
+        return parseDecks(text).map { it.copy(power = power[it.id]) }
+    }
+
+    private fun parseDecks(text: String): List<AIDeck> = Json.parseToJsonElement(text).jsonObject["decks"]!!.jsonArray.map { item ->
         val row = item.jsonObject
         fun s(key: String) = row[key]!!.jsonPrimitive.content
         AIDeck(s("id"), s("name"), s("subtitle"), s("colors"), s("commander"), CommanderBracket.clamping(row["bracket"]!!.jsonPrimitive.int),
@@ -330,8 +435,40 @@ data class MatchRecord(
     val rankChange: RankChange? = null, val season: String? = null,
     /** The engine's id for the game: finds its detailed record (Deck Studio's saved game history). Earlier games have none. */
     val engineMatchID: String? = null,
+    /** A ranked AI game's server ticket, so the server's answer finds this game. */
+    val rankedTicket: String? = null,
+    /** How the server counted it (counted, too_soon, capped, unverified) and, for an unverified win, why. */
+    val settlement: String? = null,
+    val settlementCheck: String? = null,
+    /** How long the game ran, in seconds; null for games from before 2026-10-26. */
+    val durationSeconds: Int? = null,
 ) {
     val vsHuman: Boolean get() = opponents.any { !it.isAI }
+    /** Why a ranked win left the ladder alone, as the player reads it; null when it counted. */
+    val rankNote: String? get() = RankSettlement.note(settlement, settlementCheck, deckBracket)
+}
+
+/** The server's word on a ranked AI result (mm_ranked_ai_settle; RankSettlement in RankLadder.swift). */
+object RankSettlement {
+    /** A win the server held back from the ladder. */
+    fun held(settlement: String?): Boolean = settlement in setOf("too_soon", "capped", "unverified")
+
+    fun note(settlement: String?, check: String?, deckBracket: Int): String? = when (settlement) {
+        "too_soon" -> "Not ranked: the game ended too quickly"
+        "capped" -> "Not ranked: 12 ranked wins a day"
+        "unverified" -> when (check) {
+            "too_short" -> "Not ranked: wins before turn ${if (deckBracket >= 5) 3 else 5} don't count"
+            "too_fast" -> "Not ranked: the game ended too quickly"
+            else -> "Not ranked: this win couldn't be checked"
+        }
+        else -> null
+    }
+
+    /** "Gold II: 3 → 5 pips" within a division, "Gold II → Gold I" across one (ProfileGame.rankLine on iOS). */
+    fun line(change: RankChange): String =
+        if (change.before.title == change.after.title && change.after.tier != RankTier.MYTHIC)
+            "${change.after.title}: ${change.before.pips} → ${change.after.pips} pips"
+        else "${change.before.title} → ${change.after.title}"
 }
 
 data class StatsLine(val id: String, val label: String, val detail: String?, val games: Int, val wins: Int) {
@@ -433,10 +570,15 @@ data class RankedStanding(
     val unsettled: Int,
     val season: String, val points: Int, val peakPoints: Int, val wins: Int, val losses: Int, val draws: Int, val winStreak: Int,
     val history: List<Season> = emptyList(),
-    /** How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped or abandoned. */
+    /** How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped, unverified or abandoned. */
     val settlement: String? = null,
+    /** The server's move on the ladder for that result (null when it didn't count, or was already settled). */
+    val change: Change? = null,
+    /** Why a win settled unverified: too_short, too_fast, no_record, … */
+    val check: String? = null,
 ) {
     data class Season(val season: String, val finalPoints: Int, val peakPoints: Int, val wins: Int, val losses: Int)
+    data class Change(val pointsBefore: Int, val pointsAfter: Int, val bonuses: List<String>)
 
     companion object {
         fun parse(value: JsonObject): RankedStanding {
@@ -448,7 +590,12 @@ data class RankedStanding(
                     (row as? JsonObject)?.let { Season(it["season"]?.jsonPrimitive?.content ?: return@let null, i(it, "finalPoints"),
                         i(it, "peakPoints"), i(it, "wins"), i(it, "losses")) }
                 },
-                value["settlement"]?.jsonPrimitive?.takeIf { it.isString }?.content)
+                value["settlement"]?.jsonPrimitive?.takeIf { it.isString }?.content,
+                (value["change"] as? JsonObject)?.takeIf { it["pointsBefore"] != null && it["pointsAfter"] != null }?.let { c ->
+                    Change(i(c, "pointsBefore"), i(c, "pointsAfter"),
+                        (c["bonuses"] as? JsonArray).orEmpty().mapNotNull { b -> b.jsonPrimitive.takeIf { it.isString }?.content })
+                },
+                value["check"]?.jsonPrimitive?.takeIf { it.isString }?.content)
         }
     }
 }
@@ -457,13 +604,21 @@ data class RankedStanding(
  * The season leaderboard from the server's standings (mm_ranked_leaderboard; RankedLeaderboard in RankLadder.swift): everyone
  * or friends, private profiles and blocked players already left out by the server, plus the caller's own row.
  */
-data class RankedLeaderboard(val season: String, val scope: String, val total: Int, val online: Int, val entries: List<Entry>, val me: Entry?) {
+data class RankedLeaderboard(val season: String, val scope: String, val total: Int, val online: Int, val entries: List<Entry>, val me: Entry?,
+                             /** Last season's top three; null from a server before 2026-10-27. */
+                             val champions: Champions? = null) {
     enum class Scope(val raw: String) { EVERYONE("everyone"), FRIENDS("friends") }
 
     data class Entry(val position: Int, val username: String, val title: String?, val commander: String?, val points: Int,
-                     val wins: Int, val losses: Int, val online: Boolean, val you: Boolean) {
+                     val wins: Int, val losses: Int, val online: Boolean, val you: Boolean,
+                     /** Straight wins right now; null from a server before 2026-10-27. */
+                     val streak: Int? = null) {
         val rank: RankPosition get() = RankPosition.ofPoints(points)
+        val winRate: Int? get() = if (wins + losses == 0) null else Math.round(wins * 100.0 / (wins + losses)).toInt()
     }
+
+    /** Last season's top three (the champions), by where they finished. */
+    data class Champions(val season: String, val entries: List<Entry>)
 
     /** The caller's row is pinned at the foot when it isn't among the shown entries. */
     val pinnedMe: Entry? get() = me?.takeIf { mine -> entries.none { it.username == mine.username } }
@@ -474,12 +629,19 @@ data class RankedLeaderboard(val season: String, val scope: String, val total: I
                 o ?: return null
                 fun s(key: String) = o[key]?.jsonPrimitive?.takeIf { it.isString }?.content
                 fun i(key: String) = o[key]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
-                return Entry(i("position"), s("username") ?: return null, s("title"), s("commander"), i("points"), i("wins"), i("losses"),
-                    o["online"]?.jsonPrimitive?.content == "true", o["you"]?.jsonPrimitive?.content == "true")
+                // A champion's row has its step and pips instead of points.
+                val points = o["points"]?.jsonPrimitive?.content?.toIntOrNull()
+                    ?: o["step"]?.jsonPrimitive?.content?.toIntOrNull()?.let { RankPosition.published(it, i("pips")).points } ?: 0
+                return Entry(i("position"), s("username") ?: return null, s("title"), s("commander"), points, i("wins"), i("losses"),
+                    o["online"]?.jsonPrimitive?.content == "true", o["you"]?.jsonPrimitive?.content == "true",
+                    o["streak"]?.jsonPrimitive?.content?.toIntOrNull())
+            }
+            val champions = (value["champions"] as? JsonObject)?.let { c ->
+                Champions(c["season"]?.jsonPrimitive?.content ?: "", (c["entries"] as? JsonArray).orEmpty().mapNotNull { entry(it as? JsonObject) })
             }
             return RankedLeaderboard(value["season"]?.jsonPrimitive?.content ?: "", value["scope"]?.jsonPrimitive?.content ?: "everyone",
                 value["total"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0, value["online"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
-                (value["entries"] as? JsonArray).orEmpty().mapNotNull { entry(it as? JsonObject) }, entry(value["me"] as? JsonObject))
+                (value["entries"] as? JsonArray).orEmpty().mapNotNull { entry(it as? JsonObject) }, entry(value["me"] as? JsonObject), champions)
         }
     }
 }
@@ -493,14 +655,33 @@ data class PendingRankedResult(val ticket: String, val outcome: RankOutcome, val
                                val recordFile: String? = null)
 
 /** The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2). */
-data class RankedAITicket(val id: String, val seed: Long) {
+data class RankedAITicket(val id: String, val seed: Long, val ai: RankedAITuning? = null) {
     companion object {
-        /** `{"id": uuid, "seed": "<64-bit decimal>"}` (the seed is text: JSON numbers lose precision past 2^53). */
+        /**
+         * `{"id": uuid, "seed": "<64-bit decimal>", "aiSkill": 3, "aiMistakePercent": 8, "aiPower": 5.63}` (the seed is
+         * text: JSON numbers lose precision past 2^53). The AI fields count only together and in the engine's ranges.
+         */
         fun parse(text: String): RankedAITicket? = runCatching {
             val value = kotlinx.serialization.json.Json.parseToJsonElement(text) as JsonObject
             val id = value["id"]!!.jsonPrimitive.also { require(it.isString) }.content
             val seed = value["seed"]!!.jsonPrimitive.also { require(it.isString) }.content.toLong()
-            RankedAITicket(java.util.UUID.fromString(id).toString(), seed)
+            RankedAITicket(java.util.UUID.fromString(id).toString(), seed, RankedAITuning.parse(value))
+        }.getOrNull()
+    }
+}
+
+/**
+ * The AI the server tuned for one ranked game (ranked_ai_tuning, mm_ranked_ai_start2): its skill, deliberate-mistake chance
+ * and the AI deck's Power target. Absent from servers before that tuning, when the tier's bundled values apply.
+ */
+data class RankedAITuning(val skill: Int, val mistakePercent: Int, val power: Double) {
+    companion object {
+        fun parse(value: JsonObject): RankedAITuning? = runCatching {
+            val skill = value["aiSkill"]!!.jsonPrimitive.content.toInt()
+            val mistakes = value["aiMistakePercent"]!!.jsonPrimitive.content.toInt()
+            val power = value["aiPower"]!!.jsonPrimitive.also { require(!it.isString) }.content.toDouble()
+            require(skill in 1..10 && mistakes in 0..100 && power.isFinite())
+            RankedAITuning(skill, mistakes, power)
         }.getOrNull()
     }
 }
@@ -520,13 +701,16 @@ data class PlayerRecordFile(
     /** Records one finished game; a ranked game moves the ladder. */
     fun recording(now: Long, mode: PlayMode, outcome: RankOutcome, opponents: List<MatchOpponent>, opponentBracket: Int?, aiSkill: Int?,
                   deckID: String, deckName: String, commander: String?, colors: List<String>, deckBracket: Int, turns: Int,
-                  aiDeckID: String? = null, engineMatchID: String? = null, gameRecordFile: String? = null): Pair<PlayerRecordFile, RankChange?> {
+                  aiDeckID: String? = null, engineMatchID: String? = null, gameRecordFile: String? = null,
+                  durationSeconds: Int? = null): Pair<PlayerRecordFile, RankChange?> {
         var rank = RankLadder.rollover(rank, RankLadder.season(now))
         var change: RankChange? = null
         if (mode == PlayMode.RANKED) { val (next, c) = RankLadder.apply(outcome, rank, deckBracket); rank = next; change = c }
         val match = MatchRecord(date = now, mode = mode, opponents = opponents, opponentBracket = opponentBracket, aiSkill = aiSkill,
             deckID = deckID, deckName = deckName, commander = commander, colors = colors, deckBracket = deckBracket, outcome = outcome,
-            turns = turns, rankChange = change, season = if (mode == PlayMode.RANKED) rank.season else null, engineMatchID = engineMatchID)
+            turns = turns, rankChange = change, season = if (mode == PlayMode.RANKED) rank.season else null, engineMatchID = engineMatchID,
+            rankedTicket = rankedTicket.takeIf { mode == PlayMode.RANKED && opponents.all { it.isAI } },
+            durationSeconds = durationSeconds?.coerceIn(0, 86_400))
         val recent = if (aiDeckID == null) recentAIDecks else (listOf(aiDeckID) + recentAIDecks.filter { it != aiDeckID }).take(4)
         val ticket = rankedTicket.takeIf { mode == PlayMode.RANKED && opponents.all { it.isAI } }
         val pending = if (ticket == null) pendingRankedResults
@@ -534,6 +718,24 @@ data class PlayerRecordFile(
         return copy(rank = rank, matches = (listOf(match) + matches).take(MAX_MATCHES), recentAIDecks = recent,
             rankedTicket = if (ticket == null) rankedTicket else null, rankedTicketSeeded = ticket == null && rankedTicketSeeded,
             pendingRankedResults = pending) to change
+    }
+
+    /** The server's answer for a ranked AI game: how it counted, and its own move on the ladder in place of the phone's. */
+    /** `points`: the server's standing now, so a win it held back shows where the player really stands. */
+    fun settlingRanked(ticket: String, settlement: String?, check: String?, change: RankedStanding.Change?, points: Int? = null): PlayerRecordFile {
+        val index = matches.indexOfFirst { it.rankedTicket == ticket }
+        if (index < 0) return this
+        val match = matches[index]
+        val local = match.rankChange
+        val rankChange = when {
+            change != null -> RankChange(match.outcome, RankPosition.ofPoints(change.pointsBefore), RankPosition.ofPoints(change.pointsAfter),
+                change.bonuses.mapNotNull { raw -> RankBonus.entries.firstOrNull { it.raw == raw } })
+            RankSettlement.held(settlement) && local != null -> (points?.let(RankPosition::ofPoints) ?: local.before).let { stands ->
+                RankChange(local.outcome, stands, stands, emptyList()) }
+            else -> local
+        }
+        val settled = match.copy(settlement = settlement, settlementCheck = check, rankChange = rankChange)
+        return if (settled == match) this else copy(matches = matches.toMutableList().also { it[index] = settled })
     }
 
     /**

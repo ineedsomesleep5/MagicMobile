@@ -1,19 +1,18 @@
 import SwiftUI
 
-/// Walnut & Ember's workbench: aged parchment pages in dark brown ink, so real card artwork
-/// still supplies the colour.
+/// Deck Studio's colours in the Arena menus (Caleb, 2026-10-22): light type on dark glass, gold for accents.
+/// (It was parchment in dark brown ink.) The names stay: `ink` is the main type, `background` and the surfaces glass.
 enum DeckStudioPalette {
-    static let background = Color(red: 0.87, green: 0.79, blue: 0.64)
-    static let surface = Color(red: 0.95, green: 0.90, blue: 0.79)
-    static let surfaceElevated = Color(red: 0.98, green: 0.95, blue: 0.87)
-    static let ink = Color(red: 0.20, green: 0.11, blue: 0.05)
-    static let secondaryInk = Color(red: 0.40, green: 0.29, blue: 0.18)
-    // The menu's ember hue, darkened for readable text on parchment.
-    static let accent = Color(red: 0.60, green: 0.23, blue: 0.10)
-    static let success = Color(red: 0.17, green: 0.36, blue: 0.20)
-    static let warning = Color(red: 0.50, green: 0.28, blue: 0.06)
-    static let danger = Color(red: 0.62, green: 0.13, blue: 0.10)
-    static let separator = Color(red: 0.74, green: 0.60, blue: 0.38)
+    static let background = Color(red: 0.07, green: 0.075, blue: 0.09)
+    static let surface = Color(red: 0.12, green: 0.125, blue: 0.15)
+    static let surfaceElevated = Color(red: 0.17, green: 0.17, blue: 0.20)
+    static let ink = Color(red: 0.95, green: 0.92, blue: 0.86)
+    static let secondaryInk = Color(red: 0.95, green: 0.92, blue: 0.86).opacity(0.66)
+    static let accent = Color(red: 0.98, green: 0.84, blue: 0.52)
+    static let success = Color(red: 0.60, green: 0.86, blue: 0.58)
+    static let warning = Color(red: 1.0, green: 0.74, blue: 0.40)
+    static let danger = Color(red: 1.0, green: 0.52, blue: 0.46)
+    static let separator = Color(red: 0.62, green: 0.47, blue: 0.24)
 }
 
 /// Geometry and motion shared with the rest of the app, so a Deck Studio control has the
@@ -35,8 +34,8 @@ struct DeckStudioButtonStyle: ButtonStyle {
     @ViewBuilder
     func makeBody(configuration: Configuration) -> some View {
         if TavernUIKit.available {
-            // Walnut & Ember plaques: ember glass for the main action, leather for the rest.
-            TavernButtonStyle(kind: primary ? .primary : .secondary, fontSize: 15).makeBody(configuration: configuration)
+            // The Arena board's plaques: ember glass for the main action, leather for the rest.
+            ArenaButtonStyle(kind: primary ? .primary : .secondary, fontSize: 15).makeBody(configuration: configuration)
         } else {
             plain(configuration)
         }
@@ -70,12 +69,12 @@ struct DeckStudioPanel<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         content.padding(DeckStudioMetrics.panelPadding).frame(maxWidth: .infinity, alignment: .leading)
-            // A plate of the book's own paper, a shade lighter than the page, edged with a hairline of ink.
+            // A lighter pane of glass in the gold hairline.
             .background {
                 GrimoirePaper(tone: .plate)
                     .clipShape(RoundedRectangle(cornerRadius: DeckStudioMetrics.panelRadius))
                     .overlay(RoundedRectangle(cornerRadius: DeckStudioMetrics.panelRadius)
-                        .strokeBorder(DeckStudioPalette.ink.opacity(0.14), lineWidth: 0.8))
+                        .strokeBorder(ArenaGlass.hairline, lineWidth: 0.8).opacity(0.7))
             }
     }
 }

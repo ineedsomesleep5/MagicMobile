@@ -35,6 +35,27 @@ final class RankedStandingTests: XCTestCase {
         XCTAssertEqual(value.settlement, "counted")
     }
 
+    func testTheServersAnswerReplacesThePhonesGuessOnThatGame() throws {
+        let store = PlayerRecordStore(directory: directory(), now: { self.october })
+        let ticket = UUID()
+        store.beginRankedAIGame(ticket: ticket, seeded: true)
+        play(store, .win)
+        XCTAssertEqual(store.matches.first?.rankedTicket, ticket)
+        // Counted: the server's own move on the ladder.
+        let counted = try RankedStanding.parse(Data(#"{"seeded": true, "unsettled": 0, "season": "2026-10", "points": 6, "peakPoints": 6, "wins": 1, "losses": 0, "draws": 0, "winStreak": 1, "settlement": "counted", "change": {"pointsBefore": 4, "pointsAfter": 6, "bonuses": ["underdog"]}, "check": null}"#.utf8))
+        store.settleRanked(ticket: ticket, settlement: counted.settlement, check: counted.check, change: counted.change)
+        XCTAssertEqual(store.matches.first?.rankChange?.after, RankPosition(points: 6))
+        XCTAssertEqual(store.matches.first?.rankChange?.bonuses, [.underdog])
+        XCTAssertNil(store.matches.first?.rankNote)
+        // Held back: no move, and why.
+        store.settleRanked(ticket: ticket, settlement: "unverified", check: "too_short", change: nil)
+        XCTAssertEqual(store.matches.first?.rankChange?.pipDelta, 0)
+        XCTAssertEqual(store.matches.first?.rankNote, "Not ranked: wins before turn 5 don't count")
+        XCTAssertEqual(RankSettlement.note("unverified", check: "too_short", deckBracket: 5), "Not ranked: wins before turn 3 don't count")
+        XCTAssertEqual(RankSettlement.note("capped", check: nil, deckBracket: 2), "Not ranked: 12 ranked wins a day")
+        XCTAssertNil(RankSettlement.note("counted", check: nil, deckBracket: 2))
+    }
+
     func testAdoptsTheServerStanding() throws {
         let store = PlayerRecordStore(directory: directory(), now: { self.october })
         play(store, .win)
@@ -159,6 +180,10 @@ final class RankedStandingTests: XCTestCase {
         let id = UUID()
         XCTAssertEqual(PlayerAccount.rankedAITicket(Data(#"{"id":"\#(id.uuidString)","seed":"-4123456789012345678","aiSkill":1}"#.utf8)),
                        PlayerAccount.RankedAITicket(id: id, seed: -4_123_456_789_012_345_678))
+        XCTAssertEqual(PlayerAccount.rankedAITicket(Data(#"{"id":"\#(id.uuidString)","seed":"7","aiSkill":3,"aiMistakePercent":8,"aiPower":5.63}"#.utf8)),
+                       .init(id: id, seed: 7, ai: .init(skill: 3, mistakePercent: 8, power: 5.63)))
+        XCTAssertEqual(PlayerAccount.rankedAITicket(Data(#"{"id":"\#(id.uuidString)","seed":"7","aiSkill":3,"aiMistakePercent":101,"aiPower":5.63}"#.utf8)),
+                       .init(id: id, seed: 7))
         XCTAssertNil(PlayerAccount.rankedAITicket(Data(#"{"id":"\#(id.uuidString)","seed":4.5}"#.utf8)))
         XCTAssertNil(PlayerAccount.rankedAITicket(Data(#""\#(id.uuidString)""#.utf8)))
     }
@@ -174,6 +199,22 @@ final class RankedStandingTests: XCTestCase {
         let empty = try RankedLeaderboard.parse(Data(#"{"season":"2026-10","scope":"friends","total":0,"online":0,"entries":[],"me":null}"#.utf8))
         XCTAssertTrue(empty.entries.isEmpty)
         XCTAssertNil(empty.pinnedMe)
+    }
+
+    /// The 2026-10-27 reply adds streaks and last season's champions (20261027000000_leaderboard_streaks_champions.sql).
+    func testLeaderboardReadsStreaksChampionsAndTheCountdown() throws {
+        let json = #"{"season":"2026-11","seasonEnds":"2027-02-01T00:00:00+00:00","scope":"everyone","total":1,"online":0,"entries":[{"position":1,"username":"254DADDY","title":null,"commander":"Magus Lucea Kane","points":51,"step":12,"pips":3,"peakStep":13,"wins":37,"losses":22,"streak":3,"online":false,"you":false}],"me":null,"champions":{"season":"2026-10","entries":[{"position":1,"username":"254DADDY","step":12,"pips":3,"wins":37,"losses":22,"commander":"Magus Lucea Kane","you":false}]}}"#
+        let board = try RankedLeaderboard.parse(Data(json.utf8))
+        XCTAssertEqual(board.entries[0].streak, 3)
+        XCTAssertEqual(board.entries[0].winRate, 63)
+        XCTAssertEqual(board.champions?.season, "2026-10")
+        XCTAssertEqual(board.champions?.entries.first?.row.rank.title, RankPosition.published(step: 12, pips: 3).title)
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let midJanuary = utc.date(from: DateComponents(year: 2027, month: 1, day: 15, hour: 12))!
+        XCTAssertEqual(RankLadder.seasonCountdown("2026-11", now: midJanuary), "ends in 17 days")
+        XCTAssertEqual(RankLadder.seasonCountdown("2026-11", now: utc.date(from: DateComponents(year: 2027, month: 1, day: 31, hour: 20))!), "ends today")
+        XCTAssertNil(RankLadder.seasonCountdown("2026-10", now: midJanuary))
     }
 
     /// The fixture leaderboard follows the server's visibility rules.

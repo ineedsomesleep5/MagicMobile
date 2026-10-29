@@ -33,6 +33,25 @@ final class OnDeviceDeckResolverTests: XCTestCase {
         XCTAssertThrowsError(try resolver.importDeck(text: "1 Front // Wrong", name: "Invalid"))
     }
 
+    /// Archidekt links (2026-10-26): an adventure card's full name finds its front, accents fall back to plain letters, and
+    /// a double-faced card's front never stands in for a different back. parity/card-name-cases.json holds the candidates.
+    func testLinkNamesFindAdventuresAndPlainLettersButNotWrongBacks() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../android/core/src/test/resources/parity/card-name-cases.json").standardizedFileURL
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        for item in try XCTUnwrap(root["cases"] as? [[String: Any]]) {
+            XCTAssertEqual(NativeDeckCanonicalNames.candidates(item["name"] as! String), item["candidates"] as? [String], item["name"] as? String ?? "")
+        }
+        let resolver = try OnDeviceDeckResolver.bundled()
+        XCTAssertEqual(resolver.canonicalCardName("Brazen Borrower // Petty Theft"), "Brazen Borrower")
+        XCTAssertEqual(resolver.canonicalCardName("Troll of Khazad-dûm"), "Troll of Khazad-dum")
+        XCTAssertEqual(resolver.canonicalCardName("Fire // Ice"), "Fire // Ice")
+        XCTAssertNil(resolver.canonicalCardName("Revitalizing Repast // Wrong Grove"))
+        let aliased = try OnDeviceDeckResolver(catalogueData: aliasCatalogue())
+        XCTAssertNil(aliased.canonicalCardName("Front // Wrong"))
+        XCTAssertEqual(aliased.canonicalCardName("Fire // Something"), "Fire")
+    }
+
     func testInvalidAliasTargetsAndMissingMetadataIdentityReject() throws {
         for aliases in [["Front // Back": "Missing"], ["Front // Back": "Front // Other"], ["Wrong // Back": "Front"], ["Front // ": "Front"]] {
             XCTAssertThrowsError(try OnDeviceDeckResolver(catalogueData: aliasCatalogue(aliases: aliases)))

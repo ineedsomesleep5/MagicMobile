@@ -188,6 +188,482 @@ final class ParityGoldenTests: XCTestCase {
         }
     }
 
+    /// arena-pace-cases.json: the Arena board's events, schedule, smart-pass hold and wipe recap. The web port
+    /// (apps/web test/arenaPace.test.ts) runs the same cases.
+    func testArenaPaceCasesOnBothPlatforms() throws {
+        let root = try caseFile("arena-pace-cases.json")
+        let scheduler = try XCTUnwrap(root["scheduler"] as? [String: Double])
+        XCTAssertEqual(scheduler, ["sweepStep": BoardFXScheduler.sweepStep, "sweepSpread": BoardFXScheduler.sweepSpread,
+                                   "sweepMinimum": Double(BoardFXScheduler.sweepMinimum), "maximumHold": BoardFXScheduler.maximumHold,
+                                   "arenaStrikeSpacing": BoardFXScheduler.arenaStrikeSpacing])
+        func state(_ json: [String: Any]) -> BoardFXState {
+            let cards = (json["cards"] as? [[String: Any]] ?? []).map { card in
+                BoardFXState.Card(id: card["id"] as! String, playerID: card["player"] as! String,
+                                  zone: BoardFXZone(rawValue: card["zone"] as? String ?? "battlefield")!,
+                                  name: card["name"] as? String ?? card["id"] as! String,
+                                  tint: BoardFXTint(rawValue: card["tint"] as? String ?? "red")!, damage: card["damage"] as? Int ?? 0,
+                                  counters: card["counters"] as? Int ?? 0, attacking: card["attacking"] as? Bool ?? false,
+                                  blocking: card["blocking"] as? [String] ?? [], isLand: card["land"] as? Bool ?? false,
+                                  isToken: card["token"] as? Bool ?? false,
+                                  keywords: Set((card["keywords"] as? [String] ?? []).compactMap(CombatKeyword.init(rawValue:))),
+                                  counterKinds: card["counterKinds"] as? [String: Int] ?? [:], power: card["power"] as? Int,
+                                  toughness: card["toughness"] as? Int, phasedOut: card["phasedOut"] as? Bool ?? false)
+            }
+            let stack = (json["stack"] as? [[String: Any]] ?? []).map { item in
+                BoardFXState.StackItem(id: item["id"] as! String, name: item["name"] as? String ?? item["id"] as! String,
+                                       controllerID: item["controller"] as? String,
+                                       tint: BoardFXTint(rawValue: item["tint"] as? String ?? "colorless")!,
+                                       isAbility: item["ability"] as? Bool ?? false, manaValue: item["manaValue"] as? Int ?? 0)
+            }
+            return BoardFXState(gameID: "arena", step: json["step"] as! String, lives: json["lives"] as? [String: Int] ?? [:],
+                                cards: Dictionary(uniqueKeysWithValues: cards.map { ($0.id, $0) }), stack: stack,
+                                defenders: json["defenders"] as? [String: String] ?? [:],
+                                commandNames: Set(json["commandNames"] as? [String] ?? []),
+                                blockedAttackers: Set(json["blocked"] as? [String] ?? []))
+        }
+        let summary = Self.eventSummary
+        func three(_ value: TimeInterval) -> String { String(format: "%.3f", value) }
+        let transitions = try XCTUnwrap(root["transitions"] as? [[String: Any]])
+        XCTAssertFalse(transitions.isEmpty)
+        for item in transitions {
+            let at = "arena pace · \(item["name"] ?? "")"
+            let pace: BoardFXPace = item["pace"] as? String == "hearth" ? .hearth : .arena
+            let events = BoardEventDiffer.events(from: state(item["old"] as! [String: Any]), to: state(item["new"] as! [String: Any]),
+                                                 commanders: Set(item["commanders"] as? [String] ?? []))
+            XCTAssertEqual(events.map(summary), item["events"] as? [String], at)
+            for (level, key) in [(BoardFXLevel.full, "full"), (.reduced, "reduced")] {
+                guard let expect = item[key] as? [String: Any] else { continue }
+                let scheduled = BoardFXScheduler.schedule(events, level: level, hold: item["hold"] as? Double ?? 0, pace: pace,
+                                                          viewerID: item["viewer"] as? String)
+                XCTAssertEqual(scheduled.map { "\(summary($0.event)) @\(three($0.delay)) +\(three($0.duration))" },
+                               expect["plan"] as? [String], "\(at) · \(key)")
+                XCTAssertEqual(scheduled.filter(\.holdsSmartPass).map(\.end).max().map(three), expect["smartPassHold"] as? String,
+                               "\(at) · \(key) · hold")
+                XCTAssertEqual(scheduled.compactMap(\.holdsLaterBatchesUntil).max().map(three), expect["holdsLater"] as? String,
+                               "\(at) · \(key) · later")
+            }
+            if item.keys.contains("recap") {
+                XCTAssertEqual(ArenaSweepRecap.text(spell: item["spell"] as? String, events: events), item["recap"] as? String, "\(at) · recap")
+            }
+        }
+    }
+
+    /// One board event in a line, the same words as test/paceCases.ts eventSummary on the web.
+    static func eventSummary(_ event: BoardFXEvent) -> String {
+        switch event {
+        case let .spellCast(id, _, controller, _, weight):
+            let name: String
+            switch weight { case .ability: name = "ability"; case .spell: name = "spell"; case .big: name = "big"; case .commander: name = "commander" }
+            return "cast \(id) \(name) by \(controller ?? "nil")"
+        case let .attackDeclared(id, _): return "attack \(id)"
+        case let .blockDeclared(id, attacker): return "block \(id) \(attacker)"
+        case .firstStrikeBeat: return "first-strike"
+        case let .combatStrike(id, target, _, first):
+            let aim: String
+            switch target { case let .card(card): aim = "card:\(card)"; case let .player(player): aim = "player:\(player)" }
+            return "strike \(id) -> \(aim) \(first ? "first" : "regular")"
+        case let .damageMarked(id, amount): return "damage \(id) \(amount)"
+        case let .leftBattlefield(id, _, zone, _): return "left \(id) \(zone?.rawValue ?? "nil")"
+        case let .enteredBattlefield(id, _, from, _, entrance):
+            let how: String
+            switch entrance { case .plain: how = "plain"; case .showcase: how = "showcase"; case .commander: how = "commander" }
+            return "entered \(id) \(from?.rawValue ?? "nil") \(how)"
+        case let .countersChanged(id, kind, delta):
+            let name: String
+            switch kind { case .plusOne: name = "plusOne"; case .minusOne: name = "minusOne"; case .loyalty: name = "loyalty"; case .other: name = "other" }
+            return "counters \(id) \(name) \(delta)"
+        case let .statsChanged(id, power, toughness): return "stats \(id) \(power)/\(toughness)"
+        case let .phased(id, out): return "phased \(id) \(out ? "out" : "in")"
+        case let .transformed(id, name): return "transformed \(id) \(name)"
+        case let .controlChanged(id, from, to): return "control \(id) \(from) -> \(to)"
+        case let .lifeChanged(id, delta): return "life \(id) \(delta)"
+        }
+    }
+
+    /// trigger-plan-cases.json: a chosen trigger order answering XMage's ordering prompts (ArenaTriggerPlan). The web's
+    /// TriggerPlan (apps/web test/triggerPlan.test.ts) runs the same cases.
+    func testTriggerPlanCasesOnBothPlatforms() throws {
+        let root = try caseFile("trigger-plan-cases.json")
+        let viewer = try XCTUnwrap(root["viewer"] as? String)
+        for item in try XCTUnwrap(root["cases"] as? [[String: Any]]) {
+            let name = item["name"] as? String ?? ""
+            let order = try JSONDecoder().decode([XmagePromptAbility].self, from: JSONSerialization.data(withJSONObject:
+                (item["resolveOrder"] as! [String]).map { ["id": $0, "label": $0] }))
+            var plan = ArenaTriggerPlan.start(order)
+            XCTAssertEqual(plan, item["plan"] as? [String], name)
+            var sent = item["sent"] as? String
+            for (index, step) in (item["steps"] as? [[String: Any]] ?? []).enumerated() {
+                let at = "\(name) · step \(index + 1)"
+                let p = try XCTUnwrap(step["prompt"] as? [String: Any])
+                let prompt: [String: Any] = ["id": p["id"]!, "messageId": p["messageId"]!, "playerId": p["playerId"]!, "method": p["method"]!,
+                                             "responseKind": p["responseKind"]!, "message": "",
+                                             "abilities": (p["abilities"] as? [String] ?? []).map { ["id": $0, "label": $0] },
+                                             "responseCommand": ["type": p["command"]!]]
+                let snapshot = try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: [
+                    "id": "g", "phase": "main1", "turn": 3, "players": [], "log": [], "viewerPlayerId": viewer, "promptEnvelopeV2": prompt]))
+                XCTAssertEqual(ArenaTriggerPlan.answers(plan: plan, sent: sent, snapshot: snapshot), step["answers"] as? Bool, "\(at) · answers")
+                let result = ArenaTriggerPlan.step(plan: plan, sent: sent, snapshot: snapshot, pending: step["pending"] as? Bool ?? false)
+                plan = result.plan; sent = result.sent
+                XCTAssertEqual(result.pick?.id, step["pick"] as? String, "\(at) · pick")
+                XCTAssertEqual(plan, step["plan"] as? [String], "\(at) · plan")
+                XCTAssertEqual(sent, step["sent"] as? String, "\(at) · sent")
+            }
+        }
+    }
+
+    /// parity/replay: real web games' engine polls, replayed through the iOS code. For every poll: the prompt, smart pass's
+    /// decision with the default settings, Auto Pay's next step and the board events since the previous poll. The web runs
+    /// the same polls (apps/web test/replay.test.ts) and must produce this golden exactly.
+    func testWebReplaysMatchGoldens() throws {
+        let directory = parityDirectory.appendingPathComponent("replay")
+        let names = try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { $0.hasSuffix(".deflate") }.sorted()
+        XCTAssertFalse(names.isEmpty)
+        for name in names {
+            // Raw DEFLATE (Node's deflateRawSync), which Foundation's zlib algorithm reads.
+            let packed = try Data(contentsOf: directory.appendingPathComponent(name)) as NSData
+            let root = try XCTUnwrap(JSONSerialization.jsonObject(with: packed.decompressed(using: .zlib) as Data) as? [String: Any])
+            let polls = try XCTUnwrap(root["polls"] as? [Any])
+            var trace: [[String: Any]] = []
+            var previous: BoardFXState?
+            var commanders = Set<String>()
+            for raw in polls {
+                let poll = try MatchPoll(MagicMobileOnDevice.JSONValue.decode(JSONSerialization.data(withJSONObject: raw)))
+                let snapshot = poll.snapshot == nil ? nil : try OnDeviceSnapshotAdapter.snapshot(poll, expectedSeatID: poll.seatID, log: [])
+                let situation = Self.smartPassSituation(poll, snapshot: snapshot)
+                let paying = snapshot.map { $0.manaPayment?.active == true || $0.promptEnvelopeV2?.responseKind.lowercased() == "mana" } ?? false
+                var autoPay: Any = NSNull()
+                if paying, let snapshot {
+                    switch ArenaAutoPay.next(in: snapshot) {
+                    case let .tap(actionID, color): autoPay = "tap \(actionID)\(color.map { " \($0)" } ?? "")"
+                    case let .spend(symbol): autoPay = "spend \(symbol)"
+                    case .done: autoPay = "done"
+                    case let .blocked(reason): autoPay = "blocked \(reason)"
+                    }
+                }
+                var events: [String] = []
+                if let snapshot {
+                    let state = BoardFXState(snapshot: snapshot)
+                    commanders.formUnion(state.commandNames)
+                    if let previous, previous.gameID == state.gameID {
+                        events = BoardEventDiffer.events(from: previous, to: state, commanders: commanders).map(Self.eventSummary)
+                    }
+                    previous = state
+                }
+                let pass: String? = situation.map { OnDeviceSmartPass.passPrompt($0, settings: .init()) != nil ? "pass" : "stop" }
+                trace.append(["revision": Int(poll.revision), "phase": poll.phase, "prompt": ParitySummary.o(poll.prompt?.kind),
+                              "smartPass": ParitySummary.o(pass), "autoPay": autoPay, "events": events])
+            }
+            try check(["trace": trace], name: "replay-" + name.replacingOccurrences(of: ".deflate", with: ".json"))
+        }
+    }
+
+    /// OnDeviceSession.yieldContext and smartPassSituation for a solo seat in the foreground, from one poll (a test copy of
+    /// the session's private assembly; the decision itself is OnDeviceSmartPass's).
+    private static func smartPassSituation(_ poll: MatchPoll, snapshot: GameSnapshot?) -> OnDeviceSmartPass.Situation? {
+        guard let root = poll.snapshot, let view = root["gameView"],
+              let viewer = root["enginePlayerId"]?.string, view["myPlayerId"]?.string == viewer,
+              let turn = view["turn"]?.integer, let active = view["activePlayerId"]?.string,
+              let stack = view["stack"]?.object, let controls = root["controlledPlayerViews"]?.object,
+              let players = view["players"]?.array,
+              let owner = players.first(where: { $0["playerId"]?.string == viewer }),
+              owner["isHuman"]?.bool == true,
+              let priority = owner["hasPriority"]?.bool, let timer = owner["timerActive"]?.bool else { return nil }
+        let prompt = poll.prompt.map {
+            OnDeviceYieldPolicy.Prompt(id: $0.id, revision: $0.revision, kind: $0.kind, selectMode: $0.payload["selectMode"]?.string,
+                                       allowsBoolean: $0.responseTypes.contains("boolean"), submitted: $0.submitted,
+                                       manaPlayerID: $0.payload["manaPlayerId"]?.string)
+        }
+        let selfAuthority = controls.isEmpty && (!priority || timer) && (prompt == nil || priority)
+        let context = OnDeviceYieldPolicy.Context(matchID: poll.matchID, seatID: poll.seatID, viewerID: viewer, activePlayerID: active,
+                                                  turn: turn, phase: poll.phase, localHumanEnabled: true, foreground: true,
+                                                  emptyStack: stack.isEmpty, selfAuthority: selfAuthority,
+                                                  resyncRequired: poll.resyncRequired, prompt: prompt, threatToMe: false)
+        let floating = (owner["manaPool"]?.object ?? [:]).values.contains { ($0.integer ?? 0) > 0 }
+        return .init(context: context, step: view["step"]?.string, hasPlay: OnDeviceSmartPass.hasPlay(view), manaFloating: floating,
+                     topStackIsMine: OnDeviceSmartPass.topStackIsMine(root, viewer: viewer), hasResponse: OnDeviceSmartPass.hasResponse(view),
+                     threatensMe: !stack.isEmpty && (snapshot.map(OnDeviceSmartPass.threatensViewer) ?? false),
+                     hasAbilityResponse: OnDeviceSmartPass.hasAbilityResponse(view))
+    }
+
+    /// smart-pass-cases.json: smart pass, Stop for Removal and the skip modes. The web port
+    /// (apps/web test/smartPass.test.ts) runs the same cases.
+    func testSmartPassCasesOnBothPlatforms() throws {
+        let root = try caseFile("smart-pass-cases.json")
+        let base = try XCTUnwrap(root["context"] as? [String: Any])
+        func context(_ patch: [String: Any]?) -> OnDeviceYieldPolicy.Context {
+            var json = base
+            for (key, value) in patch ?? [:] where key != "prompt" { json[key] = value }
+            var prompt = base["prompt"] as? [String: Any]
+            if let patch, patch.keys.contains("prompt") {
+                if let fields = patch["prompt"] as? [String: Any] { for (key, value) in fields { prompt?[key] = value } } else { prompt = nil }
+            }
+            return .init(matchID: json["matchID"] as! String, seatID: json["seatID"] as! String, viewerID: json["viewerID"] as! String,
+                         activePlayerID: json["activePlayerID"] as? String, turn: Int64(json["turn"] as! Int), phase: json["phase"] as! String,
+                         localHumanEnabled: json["localHumanEnabled"] as! Bool, foreground: json["foreground"] as! Bool,
+                         emptyStack: json["emptyStack"] as! Bool, selfAuthority: json["selfAuthority"] as! Bool,
+                         resyncRequired: json["resyncRequired"] as! Bool,
+                         prompt: prompt.map { .init(id: $0["id"] as! String, revision: Int64($0["revision"] as! Int), kind: $0["kind"] as! String,
+                                                    selectMode: $0["selectMode"] as? String, allowsBoolean: $0["allowsBoolean"] as! Bool,
+                                                    submitted: $0["submitted"] as! Bool, manaPlayerID: $0["manaPlayerID"] as? String) },
+                         threatToMe: json["threatToMe"] as? Bool ?? false)
+        }
+        let baseSettings = try XCTUnwrap(root["settings"] as? [String: Any])
+        func settings(_ patch: [String: Any]?) -> OnDeviceSmartPass.Settings {
+            var json = baseSettings
+            for (key, value) in patch ?? [:] { json[key] = value }
+            return .init(enabled: json["enabled"] as! Bool, stops: Set(json["stops"] as! [String]),
+                         stopForOwnSpells: json["stopForOwnSpells"] as! Bool, stopForThreats: json["stopForThreats"] as! Bool)
+        }
+        XCTAssertEqual(settings(nil), OnDeviceSmartPass.Settings())
+        XCTAssertEqual(OnDeviceSmartPass.Settings.decode(nil), Set(baseSettings["stops"] as! [String]))
+        for (raw, key) in try XCTUnwrap(root["steps"] as? [String: Any]) {
+            XCTAssertEqual(OnDeviceSmartPass.Step(engine: raw)?.rawValue, key as? String, raw)
+        }
+        let modes: [String: OnDeviceYieldPolicy.Mode] = ["safeEndTurn": .safeEndTurn, "endTurnSkippingResponses": .endTurnSkippingResponses,
+                                                         "untilMyTurn": .untilMyTurn]
+        for (name, value) in try XCTUnwrap(root["modes"] as? [String: [String: Int]]) {
+            let mode = try XCTUnwrap(modes[name])
+            XCTAssertEqual(["duration": Int(mode.duration), "passLimit": mode.passLimit], value, name)
+        }
+        for (id, automatic) in try XCTUnwrap(root["automaticPass"] as? [String: Bool]) {
+            XCTAssertEqual(OnDeviceYieldPolicy.isAutomaticPass(actionID: id), automatic, id)
+        }
+        for item in try XCTUnwrap(root["passPrompt"] as? [[String: Any]]) {
+            let s = try XCTUnwrap(item["situation"] as? [String: Any])
+            let value = OnDeviceSmartPass.Situation(context: context(item["context"] as? [String: Any]), step: s["step"] as? String,
+                                                    hasPlay: s["hasPlay"] as? Bool ?? false, manaFloating: s["manaFloating"] as? Bool ?? false,
+                                                    topStackIsMine: s["topStackIsMine"] as? Bool, hasResponse: s["hasResponse"] as? Bool ?? true,
+                                                    threatensMe: s["threatensMe"] as? Bool ?? false,
+                                                    hasAbilityResponse: s["hasAbilityResponse"] as? Bool ?? false)
+            XCTAssertEqual(OnDeviceSmartPass.passPrompt(value, settings: settings(item["settings"] as? [String: Any])) != nil,
+                           item["pass"] as? Bool, "passPrompt · \(item["name"] ?? "")")
+        }
+        for item in try XCTUnwrap(root["threats"] as? [[String: Any]]) {
+            func zones(_ field: [String]) -> [String: Any] {
+                ["library": [], "hand": [], "battlefield": field.map { ["instanceId": $0, "card": ["name": "Bear", "typeLine": "Creature"]] },
+                 "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 1, "libraryCount": 50]
+            }
+            let players: [[String: Any]] = [
+                ["playerId": "a", "displayName": "You", "life": 40, "poison": 0, "commanderTax": 0, "zones": zones(item["battlefield"] as! [String])],
+                ["playerId": "b", "displayName": "AI", "life": 40, "poison": 0, "commanderTax": 0, "zones": zones([])]]
+            let stack: [String: Any] = ["id": "s1", "objectId": "s1", "objectType": item["objectType"]!, "name": "Spell", "rulesText": item["text"]!,
+                                        "controllerId": item["controller"]!, "targetIds": item["targets"]!]
+            let xmage: [String: Any] = ["schemaVersion": 1, "gameId": "match", "bridgeRevision": 1, "callbackCoverage": [], "players": [],
+                                        "stack": [stack], "combat": [], "exileZones": [], "revealed": [], "lookedAt": [], "companion": [],
+                                        "playableObjects": [], "panels": ["stack": true, "command": true, "graveyard": true, "exile": true,
+                                                                          "revealed": false, "lookedAt": false, "search": false]]
+            let json: [String: Any] = ["id": "match", "source": "xmage-ondevice", "phase": "PRECOMBAT_MAIN", "turn": 3, "activePlayerId": "b",
+                                       "viewerPlayerId": "a", "priorityPlayerId": "a", "players": players, "log": [], "xmage": xmage]
+            let snapshot = try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
+            XCTAssertEqual(OnDeviceSmartPass.threatensViewer(snapshot), item["threatens"] as? Bool, "threats · \(item["name"] ?? "")")
+        }
+        for scenario in try XCTUnwrap(root["yield"] as? [[String: Any]]) {
+            let name = scenario["name"] as? String ?? ""
+            let mode = try XCTUnwrap(modes[scenario["mode"] as! String])
+            let start = context(scenario["start"] as? [String: Any])
+            var policy = OnDeviceYieldPolicy()
+            XCTAssertEqual(OnDeviceYieldPolicy.canStart(start, mode: mode), scenario["started"] as? Bool, "\(name) · canStart")
+            XCTAssertEqual(policy.start(start, now: 0, mode: mode), scenario["started"] as? Bool, "\(name) · start")
+            for (index, step) in (scenario["steps"] as? [[String: Any]] ?? []).enumerated() {
+                if step["stop"] as? Bool == true { policy.stop(); continue }
+                let value = context(step["context"] as? [String: Any])
+                let decision = policy.evaluate(value, now: (step["now"] as! NSNumber).doubleValue)
+                let summary: String
+                switch decision {
+                case .wait: summary = "wait"
+                case let .pass(prompt):
+                    summary = "pass"
+                    XCTAssertEqual(prompt, value.prompt, "\(name) · step \(index)")
+                    if step["record"] as? Bool == true { policy.recordPass(prompt) }
+                case let .stop(reason): summary = "stop:\(reason)"
+                }
+                XCTAssertEqual(summary, step["expect"] as? String, "\(name) · step \(index)")
+            }
+        }
+    }
+
+    /// auto-pay-cases.json: Auto Pay's costs, mana abilities, plan and next step. The web port
+    /// (apps/web test/autoPay.test.ts) runs the same cases.
+    func testAutoPayCasesOnBothPlatforms() throws {
+        let root = try caseFile("auto-pay-cases.json")
+        var actions: [String: LegalAction] = [:]
+        for item in try XCTUnwrap(root["actions"] as? [[String: Any]]) {
+            var json: [String: Any] = ["id": item["id"]!, "type": "make_mana", "playerId": "p1", "label": item["label"]!,
+                                       "sourceInstanceId": item["source"]!, "cardInstanceId": item["source"]!]
+            if let produced = item["produced"] { json["producedMana"] = produced }
+            if let card = item["card"] { json["cardName"] = card }
+            let action = try JSONDecoder().decode(LegalAction.self, from: JSONSerialization.data(withJSONObject: json))
+            actions[action.id] = action
+        }
+        func named(_ value: Any?) -> [LegalAction] { (value as? [String] ?? []).compactMap { actions[$0] } }
+        for item in try XCTUnwrap(root["need"] as? [[String: Any]]) {
+            let need = ArenaAutoPay.need(from: item["text"] as! String)
+            let at = "need · \(item["text"] ?? "")"
+            XCTAssertEqual(need.generic, item["generic"] as? Int, at)
+            XCTAssertEqual(need.symbols, item["symbols"] as? [String: Int], at)
+            XCTAssertEqual(need.hybrids, item["hybrids"] as? [[String]], at)
+        }
+        for item in try XCTUnwrap(root["production"] as? [[String: Any]]) {
+            let at = "production · \(item["action"] ?? "")"
+            let value = ArenaAutoPay.production(of: try XCTUnwrap(actions[item["action"] as! String], at))
+            if item["none"] as? Bool == true { XCTAssertNil(value, at); continue }
+            let made = try XCTUnwrap(value, at)
+            XCTAssertEqual(made.options, item["options"] as? [[String]], at)
+            XCTAssertEqual(made.anyColor, item["anyColor"] as? Bool, at)
+            XCTAssertEqual(made.sacrifices, item["sacrifices"] as? Bool, at)
+            XCTAssertEqual(made.amount, item["amount"] as? Int, at)
+            XCTAssertEqual(made.colorlessOnly, item["colorlessOnly"] as? Bool, at)
+        }
+        let kindNames: [String: ArenaAutoPay.SourceKind] = ["land": .land, "creature": .creature, "other": .other]
+        for item in try XCTUnwrap(root["next"] as? [[String: Any]]) {
+            let at = "next · \(item["name"] ?? "")"
+            let kinds = (item["kinds"] as? [String: String] ?? [:]).compactMapValues { kindNames[$0] }
+            let text = item["text"] as! String
+            if let expected = item["step"] as? String {
+                let summary: String
+                switch ArenaAutoPay.next(remainingText: text, floating: item["floating"] as? [String: Int] ?? [:], actions: named(item["actions"]), kinds: kinds) {
+                case let .tap(actionID, color): summary = "tap:\(actionID)" + (color.map { ":\($0)" } ?? "")
+                case let .spend(symbol): summary = "spend:\(symbol)"
+                case .done: summary = "done"
+                case let .blocked(reason): summary = "blocked:\(reason)"
+                }
+                XCTAssertEqual(summary, expected, at)
+            }
+            let plan = ArenaAutoPay.plan(need: ArenaAutoPay.need(from: text), sources: ArenaAutoPay.sources(from: named(item["actions"]), kinds: kinds))
+            if item.keys.contains("plan") {
+                XCTAssertEqual(plan?.map(\.key).sorted(), (item["plan"] as? [String])?.sorted(), at)
+            }
+            for (key, color) in item["colors"] as? [String: String] ?? [:] {
+                XCTAssertEqual(plan?.first { $0.key == key }?.color, color, at)
+            }
+            for key in item["planExcludes"] as? [String] ?? [] { XCTAssertEqual(plan?.contains { $0.key == key }, false, at) }
+            if let expected = item["planActions"] as? [String] { XCTAssertEqual(plan?.map(\.actionID).sorted(), expected.sorted(), at) }
+        }
+    }
+
+    /// arena-board-cases.json: the Arena board's small helpers. The web port (apps/web test/arenaBoard.test.ts) runs the
+    /// same cases.
+    func testArenaBoardCasesOnBothPlatforms() throws {
+        let root = try caseFile("arena-board-cases.json")
+        for item in try XCTUnwrap(root["drops"] as? [[String: Any]]) {
+            let point = item["point"] as! [Double], start = item["start"] as! [Double]
+            XCTAssertEqual(ArenaLayout.landscapeLayout.drops(at: CGPoint(x: point[0], y: point[1]), from: CGPoint(x: start[0], y: start[1])),
+                           item["drops"] as? Bool, "drops · \(item["name"] ?? "")")
+        }
+        for item in try XCTUnwrap(root["glossary"] as? [[String: Any]]) {
+            XCTAssertEqual(ArenaKeywordGlossary.entries(rules: item["rules"] as! String).map(\.keyword), item["keywords"] as? [String],
+                           "glossary · \(item["rules"] ?? "")")
+        }
+        func zones(_ field: [[String: Any]]) -> [String: Any] {
+            ["library": [], "hand": [], "battlefield": field, "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 1, "libraryCount": 50]
+        }
+        for item in try XCTUnwrap(root["commanderTaken"] as? [[String: Any]]) {
+            let theirs = (item["theirs"] as! [String]).enumerated().map { ["instanceId": "x\($0.offset)", "card": ["name": $0.element, "typeLine": "Legendary Creature"]] }
+            let players: [[String: Any]] = [
+                ["playerId": "a", "displayName": "You", "life": 40, "poison": 0, "commanderTax": 0, "zones": zones([]),
+                 "commanders": [["id": "c1", "name": "Chatterfang, Squirrel General", "ownerPlayerId": "a"]]],
+                ["playerId": "b", "displayName": "AI 1", "life": 32, "poison": 0, "commanderTax": 0, "zones": zones(theirs)]]
+            let json: [String: Any] = ["id": "match", "phase": "PRECOMBAT_MAIN", "turn": 9, "activePlayerId": "b", "viewerPlayerId": "a",
+                                       "priorityPlayerId": "b", "players": players, "log": []]
+            let snapshot = try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
+            let taken = ArenaCommanderSteal.taken(in: snapshot)
+            XCTAssertEqual(taken, item["taken"] as? [String], "commander · \(item["name"] ?? "")")
+            if let start = item["noticeStarts"] as? String {
+                XCTAssertTrue(ArenaCommanderSteal.notice(taken[0], snapshot: snapshot).hasPrefix(start), "commander · \(item["name"] ?? "")")
+            }
+        }
+        func card(_ id: String, _ name: String) -> ZoneCard {
+            ZoneCard(instanceId: id, card: CardIdentity(name: name, typeLine: "Sorcery", oracleText: nil), tapped: nil,
+                     summoningSickness: nil, cardIcons: nil, counters: nil, power: nil, toughness: nil, isCreaturePermanent: nil,
+                     damage: nil, isAttacking: nil, blocking: nil, attachedToInstanceId: nil)
+        }
+        let extraZones = PlayerZones(library: [], hand: [card("h1", "Shock")], battlefield: [],
+                                     graveyard: [card("g1", "Think Twice"), card("g2", "Lava Spike")],
+                                     exile: [card("e1", "Light Up the Stage"), card("e2", "Gone")], command: [], stack: [])
+        let player = PlayerGameState(playerId: "p1", displayName: "You", life: 40, poison: 0, commanderTax: 0, manaPool: nil,
+                                     zones: extraZones, commanderDamage: nil)
+        for item in try XCTUnwrap(root["extraHand"] as? [[String: Any]]) {
+            let actions: [LegalAction] = try (item["casts"] as! [String]).map { id in
+                try JSONDecoder().decode(LegalAction.self, from: JSONSerialization.data(withJSONObject:
+                    ["id": "cast-\(id)", "type": "cast_spell", "playerId": "p1", "label": "Cast", "cardInstanceId": id]))
+            }
+            XCTAssertEqual(ArenaExtraHand.cards(for: player, actions: actions).map(\.instanceId), item["cards"] as? [String],
+                           "extra hand · \(item["name"] ?? "")")
+        }
+        for item in try XCTUnwrap(root["handPosture"] as? [[String: Any]]) {
+            let s = item["situation"] as? [String: Bool] ?? [:]
+            let posture = ArenaHandPosture.resolve(.init(opened: s["opened"] ?? false, spread: s["spread"] ?? false,
+                                                         boardDecision: s["boardDecision"] ?? false, dragging: s["dragging"] ?? false,
+                                                         spectating: s["spectating"] ?? false))
+            let name: String
+            switch posture { case .raised: name = "raised"; case .resting: name = "resting"; case .spread: name = "spread" }
+            XCTAssertEqual(name, item["posture"] as? String, "posture · \(s)")
+        }
+        for item in try XCTUnwrap(root["loyalty"] as? [[String: Any]]) {
+            let split = ArenaLoyalty.split(item["text"] as! String)
+            XCTAssertEqual(split?.cost, item["cost"] as? String, "loyalty · \(item["text"] ?? "")")
+            if let rest = item["rest"] as? String { XCTAssertEqual(split?.text, rest) }
+        }
+        for item in try XCTUnwrap(root["amounts"] as? [[String: Any]]) {
+            let range = ArenaAmountRange(amounts: item["amounts"] as? [Int], minimum: item["minimum"] as? Int, maximum: item["maximum"] as? Int)
+            for step in item["steps"] as? [[Int]] ?? [] { XCTAssertEqual(range.step(step[0], by: step[1]), step[2]) }
+            if let maximum = item["max"] as? Int { XCTAssertEqual(range.maximum, maximum) }
+            if let values = item["values"] as? [Int] { XCTAssertEqual(range.values, values) }
+            for clamp in item["clamp"] as? [[Int]] ?? [] { XCTAssertEqual(range.clamp(clamp[0]), clamp[1]) }
+        }
+        for item in try XCTUnwrap(root["affordableX"] as? [[String: Any]]) {
+            XCTAssertEqual(ArenaAmountRange.affordableX(cost: item["cost"] as! String, sources: item["sources"] as! Int), item["x"] as? Int)
+        }
+        for item in try XCTUnwrap(root["split"] as? [[String: Any]]) { XCTAssertEqual(ArenaSplit.name(of: item["label"] as! String), item["name"] as? String) }
+        for item in try XCTUnwrap(root["lethal"] as? [[String: Any]]) {
+            XCTAssertEqual(ArenaSplit.lethal(toughness: item["toughness"] as! Int, damage: item["damage"] as! Int, deathtouch: item["deathtouch"] as! Bool),
+                           item["lethal"] as? Int)
+        }
+        for item in try XCTUnwrap(root["choices"] as? [[String: Any]]) {
+            let options = ArenaChoiceList.options((item["options"] as! [[String]]).map { (id: $0[0], label: $0[1]) })
+            XCTAssertEqual(options.map(\.id), item["ids"] as? [String])
+            XCTAssertEqual(options.map(\.rememberID), (item["remember"] as! [Any]).map { $0 as? String })
+            XCTAssertEqual(options.map(\.name), (item["names"] as! [Any]).map { $0 as? String })
+        }
+        for pair in try XCTUnwrap(root["colors"] as? [[Any]]) {
+            XCTAssertEqual(ArenaChoiceList.colorSymbol(pair[0] as! String), pair[1] as? String, "colour · \(pair[0])")
+        }
+    }
+
+    /// answer-action-cases.json: which answer actions a decision can carry. The web port (apps/web
+    /// test/answerActions.test.ts) runs the same cases.
+    func testAnswerActionCasesOnBothPlatforms() throws {
+        let root = try caseFile("answer-action-cases.json")
+        let viewer = try XCTUnwrap(root["viewer"] as? String)
+        func value(_ any: Any) throws -> MagicMobileOnDevice.JSONValue {
+            try MagicMobileOnDevice.JSONValue.decode(JSONSerialization.data(withJSONObject: any, options: [.fragmentsAllowed]))
+        }
+        for item in try XCTUnwrap(root["cases"] as? [[String: Any]]) {
+            let at = "answer actions · \(item["name"] ?? "")"
+            let spec = try XCTUnwrap(item["prompt"] as? [String: Any])
+            var payload: [String: Any] = ["message": "Engine question", "required": true, "options": [String: Any]()]
+            payload.merge(spec["payload"] as? [String: Any] ?? [:]) { _, new in new }
+            let prompt = try EnginePrompt(value(["promptId": "real-prompt", "revision": 37, "kind": spec["kind"]!, "payload": payload, "submitted": false,
+                                                 "responseTypes": spec["types"]!, "min": 0, "max": 0]))
+            let fields = try XCTUnwrap(item["command"] as? [String: Any])
+            let command = GameCommand(type: fields["type"] as! String, gameId: "match", playerId: viewer,
+                                      sourceInstanceId: fields["sourceInstanceId"] as? String, abilityId: fields["abilityId"] as? String,
+                                      promptId: prompt.id, messageId: 37, confirmed: fields["confirmed"] as? Bool)
+            let requested = item["requested"] as? [String] ?? []
+            let envelope = try OnDevicePromptAdapter.presentation(prompt, viewerPlayerID: viewer, cards: []).envelope
+            if let remember = item["canRemember"] as? Bool { XCTAssertEqual(envelope.canRememberAnswer, remember, at) }
+            if let order = item["triggerOrder"] as? Bool { XCTAssertEqual(envelope.isTriggerOrder, order, at) }
+            if item["error"] as? Bool == true {
+                XCTAssertThrowsError(try OnDevicePromptAdapter.answerActions(requested, command: command, prompt: prompt), at)
+                continue
+            }
+            let actions = try OnDevicePromptAdapter.answerActions(requested, command: command, prompt: prompt)
+            XCTAssertEqual(actions, try value(item["actions"]!).array, at)
+            let answer = OnDevicePromptAdapter.answer(try OnDevicePromptAdapter.answer(for: command, prompt: prompt, viewerPlayerID: viewer), with: actions)
+            XCTAssertEqual(answer, try value(item["answer"]!), at)
+        }
+    }
+
     /// resume-cases.json: the save/resume strings, files, launch outcomes, prompt detail and
     /// game-over rule. ParityGoldenTest.kt runs the same cases on Android.
     @MainActor

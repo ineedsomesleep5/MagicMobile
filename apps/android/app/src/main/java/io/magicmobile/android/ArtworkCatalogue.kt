@@ -76,7 +76,9 @@ internal class ArtworkCatalogue {
     val unavailableTokens=linkedSetOf<String>()
     /** Every token or emblem any card in this catalogue points to, by Scryfall ID. */
     private val referenced=linkedMapOf<String,ArtworkPart>()
-    fun card(name:String)=names[name.lowercase(Locale.ROOT)]
+    fun card(name:String)=names[nameKey(name)]
+    /** XMage spells names in plain ASCII ("Seance", "Lim-Dul's Vault"), Scryfall with accents: both fold to one key (NativeArtworkCatalogue.swift). */
+    private fun nameKey(name:String)=java.text.Normalizer.normalize(name,java.text.Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"),"").lowercase(Locale.ROOT)
     /**
      * Tokens and emblems that cards point to which this catalogue cannot download: not in it, and with no token of the
      * same name and type in it either (Oracle bulk keeps one printing per token, so another printing of the same token
@@ -101,7 +103,7 @@ internal class ArtworkCatalogue {
             return
         }
         fun index(name:String, value:ArtworkRecord) {
-            val key=name.lowercase(Locale.ROOT)
+            val key=nameKey(name)
             if(key in ambiguous)return
             val previous=names[key]
             if(previous!=null && previous.id!=value.id){names.remove(key);ambiguous+=key}else names[key]=value

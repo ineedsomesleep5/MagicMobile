@@ -187,6 +187,15 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
 
     /** The ranked queue, once the player has a profile name. */
     val rankedQueue: RankedQueueService? get() = if (phase == Phase.READY && username != null) SupabaseRankedQueue(api) else null
+    /** Deck sync's server functions (docs/DECK_SYNC.md). */
+    internal val deckSyncAPI: io.magicmobile.android.studio.DeckSyncAPI get() = SupabaseDeckSync(api)
+
+    /** The signed-in profile's id (the access token's `sub`) for deck sync; null until the profile is ready, and in fixtures and UI tests. */
+    suspend fun profileID(): String? {
+        if (phase != Phase.READY || SocialFixtures.isActive || HowToPlayLaunch.isAutomated(LaunchEnvironment.values)) return null
+        return runCatching { api.userID() }.getOrNull()
+    }
+
     /** Friend challenges, once the player has a profile name. */
     val challenges: io.magicmobile.android.game.FriendChallengeService? get() =
         if (phase == Phase.READY && username != null) SupabaseFriendChallenges(api) else null
@@ -212,6 +221,8 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
         if (phase != Phase.READY || username == null) return
         fun parse(text: String) = runCatching { io.magicmobile.android.game.RankedStanding.parse(Json.parseToJsonElement(text) as JsonObject) }.getOrNull()
         for (pending in record.file.pendingRankedResults) {
+            // A record kept on this phone but unreadable for now waits for the next sync rather than going without it.
+            if (pending.seeded && pending.recordFile?.let { record.gameRecordIsKept(it) && record.gameRecord(it) == null } == true) continue
             try {
                 val text = if (pending.seeded) {
                     // The game record backs the result; without one a win settles as unverified.
@@ -223,7 +234,7 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
                     api.rpc("mm_ranked_ai_result", mapOf("p_game" to JsonPrimitive(pending.ticket), "p_result" to JsonPrimitive(pending.outcome.raw)))
                 }
                 record.resolvePendingRankedResult(pending.ticket)
-                parse(text)?.let(record::adopt)
+                parse(text)?.let { standing -> record.settleRanked(pending.ticket, standing); record.adopt(standing) }
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -325,6 +336,27 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
         }
     }
 
+    /**
+     * The server's settings for this build (mm_app_config): the menu's notice, card-name fixes and feature switches, kept in
+     * [AppConfigStore]. Best effort: the last copy stays when this fails.
+     */
+    /** A voice chat token for one seat of one game (the agora-token function; VoiceRoom): the App ID and the token. */
+    suspend fun voiceToken(channel: String, seat: String): Pair<String, String> {
+        val reply = api.invoke("agora-token", mapOf("channel" to JsonPrimitive(channel), "account" to JsonPrimitive(seat)))
+        val json = kotlinx.serialization.json.Json.parseToJsonElement(reply) as? JsonObject ?: throw SupabaseLite.Failure("error")
+        val appId = (json["appId"] as? JsonPrimitive)?.content ?: throw SupabaseLite.Failure("error")
+        val token = (json["token"] as? JsonPrimitive)?.content ?: throw SupabaseLite.Failure("error")
+        return appId to token
+    }
+
+    suspend fun refreshAppConfig() {
+        if (phase != Phase.READY) return
+        runCatching {
+            api.rpc("mm_app_config", mapOf("p_platform" to JsonPrimitive("android"),
+                "p_build" to JsonPrimitive(io.magicmobile.android.BuildConfig.RELEASE_BUILD)))
+        }.getOrNull()?.let(io.magicmobile.android.ui.AppConfigStore::store)
+    }
+
     /** Sends one finished game. Never throws: the caller keeps what could not be sent and tries again later. */
     suspend fun recordGame(match: MatchRecord): GameUploadResult {
         if (phase != Phase.READY || username == null) return GameUploadResult.UNAVAILABLE
@@ -342,6 +374,7 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
                 "ai" to JsonPrimitive(opponent.isAI)))
         })
         if (match.turns > 0) params["p_turns"] = JsonPrimitive(minOf(1000, match.turns))
+        match.durationSeconds?.takeIf { it > 0 }?.let { params["p_duration_seconds"] = JsonPrimitive(minOf(86_400, it)) }
         match.rankChange?.let { params["p_rank_points"] = JsonPrimitive(it.after.points) }
         return try {
             api.rpc("mm_record_game", params)
@@ -462,6 +495,21 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
         if (notice == null) notice = "Thanks. $name was reported."
     }
 
+    /**
+     * A freeze report (docs/FREEZE_LOG.md), only after the player taps Send: true once the server stored it. Fails quietly
+     * offline or over the hourly limit; the report stays on the phone.
+     */
+    suspend fun sendDiagnostic(kind: String, report: String): Boolean {
+        if (SocialFixtures.isActive || HowToPlayLaunch.isAutomated(LaunchEnvironment.values)) return false
+        return try {
+            api.rpc("mm_send_diagnostic", mapOf("p_platform" to JsonPrimitive("android"),
+                "p_app_version" to JsonPrimitive(io.magicmobile.android.BuildConfig.VERSION_NAME),
+                "p_build" to JsonPrimitive(io.magicmobile.android.BuildConfig.VERSION_CODE.toString()),
+                "p_kind" to JsonPrimitive(kind), "p_report" to JsonPrimitive(report.take(io.magicmobile.android.game.FreezeReport.MAX_CHARACTERS))))
+                .trim() == "true"
+        } catch (error: Exception) { false }
+    }
+
     /** Deletes the account and everything tied to it; a new one is made the next time. */
     suspend fun deleteAccount(): Boolean = try {
         api.rpc("mm_delete_account")
@@ -533,9 +581,14 @@ internal class SupabaseLite(context: Context) {
         prefs.getString("refresh", null)?.let { refresh -> Session(access, refresh, prefs.getLong("expiresAt", 0)) }
     }
 
-    suspend fun rpc(function: String, params: Map<String, JsonElement> = emptyMap()): String {
+    suspend fun rpc(function: String, params: Map<String, JsonElement> = emptyMap()): String = call("$BASE/rest/v1/rpc/$function", params)
+
+    /** Calls the edge function functions/v1/[function] as the player (agora-token). */
+    suspend fun invoke(function: String, params: Map<String, JsonElement> = emptyMap()): String = call("$BASE/functions/v1/$function", params)
+
+    private suspend fun call(url: String, params: Map<String, JsonElement>): String {
         val token = accessToken()
-        val (status, body) = post("$BASE/rest/v1/rpc/$function", JsonObject(params).toString(), token)
+        val (status, body) = post(url, JsonObject(params).toString(), token)
         if (status == 401) session = session?.copy(expiresAt = 0)
         if (status !in 200..299) throw Failure(errorCode(body) ?: if (status == 401) "not_signed_in" else if (status == 404) "feature_unavailable" else "error")
         return body
@@ -580,6 +633,13 @@ internal class SupabaseLite(context: Context) {
         }
         if (status != 200) throw Failure(errorCode(text) ?: "error")
         return LinkedIdentity.parse(Json.parseToJsonElement(text) as JsonObject)
+    }
+
+    /** The signed-in user's id: the access token's `sub` claim. */
+    suspend fun userID(): String? {
+        val payload = accessToken().split('.').getOrNull(1) ?: return null
+        val claims = Json.parseToJsonElement(String(java.util.Base64.getUrlDecoder().decode(payload.trimEnd('=')), Charsets.UTF_8)) as? JsonObject
+        return (claims?.get("sub") as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotEmpty() }
     }
 
     fun forgetSession() {
@@ -673,6 +733,36 @@ internal class SupabaseRankedQueue(private val api: SupabaseLite) : RankedQueueS
 }
 
 /** Friend challenges on the profile server (supabase/migrations/20261004180000_friend_challenges.sql). */
+/** Deck sync over mm_decks_since / mm_deck_save / mm_deck_delete (supabaseDeckSync in the web's deckStudio/sync.ts). */
+internal class SupabaseDeckSync(private val api: SupabaseLite) : io.magicmobile.android.studio.DeckSyncAPI {
+    private fun fields(text: String) = Json.parseToJsonElement(text) as? JsonObject ?: JsonObject(emptyMap())
+    private fun long(value: JsonElement?) = (value as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull
+    private fun view(value: JsonElement?): io.magicmobile.android.studio.ServerDeck {
+        val row = value as? JsonObject ?: JsonObject(emptyMap())
+        return io.magicmobile.android.studio.ServerDeck((row["id"] as? JsonPrimitive)?.contentOrNull ?: "", (row["name"] as? JsonPrimitive)?.contentOrNull ?: "",
+            long(row["revision"]) ?: 0, long(row["changeSeq"]) ?: 0, (row["deleted"] as? JsonPrimitive)?.booleanOrNull == true,
+            row["deck"]?.takeIf { it !is JsonNull })
+    }
+
+    override suspend fun since(cursor: Long): io.magicmobile.android.studio.DeckSyncAPI.Page {
+        val answer = fields(api.rpc("mm_decks_since", mapOf("p_cursor" to JsonPrimitive(cursor))))
+        return io.magicmobile.android.studio.DeckSyncAPI.Page((answer["decks"] as? JsonArray).orEmpty().map(::view),
+            long(answer["cursor"]) ?: cursor, (answer["more"] as? JsonPrimitive)?.booleanOrNull == true)
+    }
+
+    override suspend fun save(id: String, name: String, document: JsonObject, base: Long?): io.magicmobile.android.studio.DeckSyncAPI.Saved {
+        val answer = fields(api.rpc("mm_deck_save", mapOf("p_id" to JsonPrimitive(id), "p_name" to JsonPrimitive(name), "p_deck" to document,
+            "p_base" to (base?.let(::JsonPrimitive) ?: JsonNull))))
+        return io.magicmobile.android.studio.DeckSyncAPI.Saved((answer["status"] as? JsonPrimitive)?.contentOrNull == "saved", view(answer["deck"]))
+    }
+
+    override suspend fun remove(id: String, base: Long): io.magicmobile.android.studio.DeckSyncAPI.Deleted {
+        val answer = fields(api.rpc("mm_deck_delete", mapOf("p_id" to JsonPrimitive(id), "p_base" to JsonPrimitive(base))))
+        return io.magicmobile.android.studio.DeckSyncAPI.Deleted((answer["status"] as? JsonPrimitive)?.contentOrNull == "conflict",
+            answer["deck"]?.takeIf { it !is JsonNull }?.let(::view))
+    }
+}
+
 internal class SupabaseFriendChallenges(private val api: SupabaseLite) : io.magicmobile.android.game.FriendChallengeService {
     private fun decode(text: String, id: String? = null) = io.magicmobile.android.game.FriendChallenge.parse(
         Json.parseToJsonElement(text) as? JsonObject ?: JsonObject(emptyMap()), id)

@@ -46,6 +46,7 @@ public final class RealStackResponseTests {
         tests.put("targeted-threat", RealStackResponseTests::targetedThreat);
         tests.put("untargeted-sweeper", RealStackResponseTests::untargetedSweeper);
         tests.put("combat", RealStackResponseTests::combat);
+        tests.put("attack-tax", RealStackResponseTests::attackTax);
         int passed = 0;
         for (Map.Entry<String,Runnable> test : tests.entrySet()) {
             if (args.length > 0 && !args[0].equals(test.getKey())) continue;
@@ -208,6 +209,45 @@ public final class RealStackResponseTests {
         }
     }
 
+    /**
+     * An attack tax (Propaganda) is paid while attackers are declared, before anyone has priority in that step:
+     * upstream offers no plays there, and priority is still the defender's. The paying seat gets its untapped mana
+     * sources anyway; nobody else gets them, and an ordinary question keeps upstream's rule.
+     */
+    private static void attackTax() {
+        try (Fixture f = new Fixture()) {
+            Card attacker = f.battlefield(f.card(GrizzlyBears::new, "Grizzly Bears", "M10", "189", f.owner));
+            Card forest = f.battlefield(f.card(Forest::new, "Forest", "M10", "246", f.owner));
+            Card tapped = f.battlefield(f.card(Forest::new, "Forest", "M10", "246", f.owner));
+            f.game.getPermanent(tapped.getId()).setTapped(true);
+            Card theirs = f.battlefield(f.card(Forest::new, "Forest", "M10", "246", f.opponent));
+            CombatPhase phase = new CombatPhase();
+            phase.setStep(new DeclareAttackersStep());
+            f.game.getTurn().setPhase(phase);
+            f.game.getCombat().setAttacker(f.owner.getId());
+            f.game.getCombat().setDefenders(f.game);
+            check(f.game.getCombat().declareAttacker(attacker.getId(), f.opponent.getId(), f.owner.getId(), f.game), "real attack");
+            f.priorityTo(f.opponent);
+            PlayerQueryEvent tax = PlayerQueryEvent.playManaEvent(f.owner.getId(), "Pay {2}", null);
+            eq(playable(f.snapshot("owner")), Map.of());
+            eq(playable(f.snapshot("owner", PlayerQueryEvent.selectEvent(f.owner.getId(), "Play spells and abilities"))), Map.of());
+            Map<String,Object> paying = playable(f.snapshot("owner", tax));
+            eq(paying.keySet(), Set.of(forest.getId().toString()));
+            int rows = 0;
+            for (Object category : Json.object(paying.get(forest.getId().toString())).values())
+                for (Object row : Json.array(category)) {
+                    Map<String,Object> fields = Json.object(row);
+                    eq(fields.get("manaAbility"), true);
+                    eq(fields.get("spellAbility"), false);
+                    eq(fields.get("respondsToStack"), false);
+                    rows++;
+                }
+            eq(rows, 1);
+            check(!playable(f.snapshot("opponent", tax)).containsKey(forest.getId().toString()), "the payer's sources are the payer's");
+            check(!playable(f.snapshot("owner", tax)).containsKey(theirs.getId().toString()), "the defender's land is not the payer's");
+        }
+    }
+
     private static Map<String,Object> playable(Map<String,Object> snapshot) {
         Object actions = Json.object(snapshot.get("gameView")).get("canPlayObjects");
         return actions == null ? Map.of() : Json.object(Json.object(actions).get("objects"));
@@ -297,8 +337,9 @@ public final class RealStackResponseTests {
             Card source = new GrizzlyBears(owner.getId(), new CardSetInfo("Grizzly Bears", "M10", "189", Rarity.COMMON));
             owner.getManaPool().addMana(new Mana(3, 3, 3, 3, 3, 0, 0, 0), game, source.getSpellAbility());
         }
-        Map<String,Object> snapshot(String seat) {
-            return Json.parseObject(Json.write(ViewProjector.project(game, seats).get(seat)));
+        Map<String,Object> snapshot(String seat) { return snapshot(seat, null); }
+        Map<String,Object> snapshot(String seat, PlayerQueryEvent query) {
+            return Json.parseObject(Json.write(ViewProjector.project(game, seats, query).get(seat)));
         }
         @Override public void close() { seats.values().forEach(MobileHumanPlayer::closeChannel); }
     }

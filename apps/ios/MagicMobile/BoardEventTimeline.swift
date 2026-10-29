@@ -596,6 +596,12 @@ enum BoardFXLevel: String, CaseIterable, Identifiable {
     }
 }
 
+/// Whose clock the board's effects keep. The Hearth board reads every spell at the centre; the Arena board keeps the
+/// reference game's pace (measured from its gameplay video, `GAP_ANALYSIS.md` §2): a spell of yours lands on the stack card
+/// in about 0.3 s, an opponent's is revealed for about 1.6 s, a trigger reaches the stack in 0.5 s, an arrival takes
+/// 0.6 s and strikes land one after another, 0.45 s each.
+enum BoardFXPace: Equatable, Sendable { case hearth, arena }
+
 struct ScheduledBoardFX: Equatable, Identifiable {
     let id: Int
     let event: BoardFXEvent
@@ -603,6 +609,7 @@ struct ScheduledBoardFX: Equatable, Identifiable {
     let duration: TimeInterval
     /// Particles, shake and large motion are omitted when false.
     let usesMotion: Bool
+    var pace: BoardFXPace = .hearth
 
     var end: TimeInterval { delay + duration }
 
@@ -611,7 +618,9 @@ struct ScheduledBoardFX: Equatable, Identifiable {
     var landing: TimeInterval {
         guard usesMotion else { return delay }
         switch event {
-        case let .enteredBattlefield(_, _, _, _, entrance): return delay + duration * BoardFXScheduler.landingFraction(entrance)
+        case let .enteredBattlefield(_, _, _, _, entrance):
+            // The Arena board flies every arrival plainly from the stack card.
+            return delay + duration * BoardFXScheduler.landingFraction(pace == .arena ? .plain : entrance)
         case .controlChanged: return delay + duration * BoardFXScheduler.stealLandingFraction
         default: return delay
         }
@@ -623,13 +632,14 @@ struct ScheduledBoardFX: Equatable, Identifiable {
         switch event {
         case let .spellCast(_, _, _, _, weight):
             guard usesMotion else { return delay + 0.4 }
+            if pace == .arena { return weight == .ability ? delay + 0.3 : end - min(0.3, duration * 0.3) }
             return weight == .ability ? delay + 0.55 : end - 0.3
         case .combatStrike where usesMotion:
             return delay + duration * BoardFXScheduler.strikeImpactFraction
         case .firstStrikeBeat:
             // The label opens the beat; its strikes follow at once.
             return delay + (usesMotion ? 0.15 : 0.06)
-        case let .enteredBattlefield(_, _, _, _, entrance) where usesMotion && entrance != .plain:
+        case let .enteredBattlefield(_, _, _, _, entrance) where usesMotion && entrance != .plain && pace == .hearth:
             return landing
         default:
             return delay + (usesMotion ? 0.16 : 0.06)
@@ -658,6 +668,8 @@ struct ScheduledBoardFX: Equatable, Identifiable {
     /// Showcases share the center of the board, so they play one after another.
     var isSequential: Bool {
         guard usesMotion else { return false }
+        // The reference's strikes land one after another, each with its own number.
+        if pace == .arena, case .combatStrike = event { return true }
         switch event {
         case let .spellCast(_, _, _, _, weight): return weight != .ability
         case let .enteredBattlefield(_, _, _, _, entrance): return entrance != .plain
@@ -682,11 +694,20 @@ enum BoardFXScheduler {
     /// Decorative effects per transition; board wipes collapse to the first few.
     static let decorativeLimit = 10
     static let stagger: TimeInterval = 0.07
+    /// A board wipe on the Arena board (three or more permanents leaving in one update): they leave one after another,
+    /// this far apart, so you can see what went (Caleb, 2026-10-21). The whole cascade stays within `sweepSpread`, and
+    /// smart pass still waits no longer than BoardPresentationHold.maximumWait; the engine is never slowed.
+    static let sweepStep: TimeInterval = 0.16
+    static let sweepSpread: TimeInterval = 1.2
+    static let sweepMinimum = 3
     /// Effects never wait more than this for a showcase from an earlier snapshot (a spell read, then what it removed).
     static let maximumHold: TimeInterval = 4
 
+    /// The gap between the reference's strikes: 11–13 frames at 30 fps.
+    static let arenaStrikeSpacing: TimeInterval = 0.38
+
     static func schedule(_ events: [BoardFXEvent], level: BoardFXLevel, firstID: Int = 0,
-                         hold: TimeInterval = 0) -> [ScheduledBoardFX] {
+                         hold: TimeInterval = 0, pace: BoardFXPace = .hearth, viewerID: String? = nil) -> [ScheduledBoardFX] {
         guard level != .off else { return [] }
         let motion = level == .full
         var decorativeCount = 0
@@ -700,6 +721,10 @@ enum BoardFXScheduler {
             }
         }
         var result: [ScheduledBoardFX] = []
+        let departures = kept.filter { if case .leftBattlefield = $0 { return true } else { return false } }.count
+        let sweepGap = pace == .arena && motion && departures >= sweepMinimum
+            ? min(sweepStep, sweepSpread / Double(departures - 1)) : nil
+        var departureIndex = 0
         var groupStart = min(max(hold, 0), maximumHold)
         var sequentialCursor = groupStart
         var previousOrder: Int?
@@ -715,16 +740,24 @@ enum BoardFXScheduler {
                 indexInGroup = 0
             }
             previousOrder = event.order
-            let duration = duration(of: event, motion: motion)
+            let duration = duration(of: event, motion: motion, pace: pace, viewerID: viewerID)
             let id = firstID + result.count
-            let probe = ScheduledBoardFX(id: id, event: event, delay: 0, duration: duration, usesMotion: motion)
+            let probe = ScheduledBoardFX(id: id, event: event, delay: 0, duration: duration, usesMotion: motion, pace: pace)
             let fx: ScheduledBoardFX
             if probe.isSequential {
-                fx = ScheduledBoardFX(id: id, event: event, delay: sequentialCursor, duration: duration, usesMotion: motion)
-                sequentialCursor = fx.handoff + 0.1
+                fx = ScheduledBoardFX(id: id, event: event, delay: sequentialCursor, duration: duration, usesMotion: motion, pace: pace)
+                if pace == .arena, case .combatStrike = event {
+                    sequentialCursor = fx.delay + arenaStrikeSpacing
+                } else {
+                    sequentialCursor = fx.handoff + 0.1
+                }
+            } else if let sweepGap, case .leftBattlefield = event {
+                fx = ScheduledBoardFX(id: id, event: event, delay: groupStart + Double(departureIndex) * sweepGap,
+                                      duration: duration, usesMotion: motion, pace: pace)
+                departureIndex += 1
             } else {
                 let delay = groupStart + Double(indexInGroup) * (motion ? stagger : 0.02)
-                fx = ScheduledBoardFX(id: id, event: event, delay: delay, duration: duration, usesMotion: motion)
+                fx = ScheduledBoardFX(id: id, event: event, delay: delay, duration: duration, usesMotion: motion, pace: pace)
                 indexInGroup += 1
             }
             result.append(fx)
@@ -734,7 +767,7 @@ enum BoardFXScheduler {
             let label = result[index]
             let end = firstStrikeBeatEnd(result, motion: motion) ?? label.end
             result[index] = ScheduledBoardFX(id: label.id, event: label.event, delay: label.delay,
-                                             duration: max(label.duration, end - label.delay), usesMotion: motion)
+                                             duration: max(label.duration, end - label.delay), usesMotion: motion, pace: pace)
         }
         return result
     }
@@ -773,7 +806,8 @@ enum BoardFXScheduler {
         }
     }
 
-    static func duration(of event: BoardFXEvent, motion: Bool) -> TimeInterval {
+    static func duration(of event: BoardFXEvent, motion: Bool, pace: BoardFXPace = .hearth, viewerID: String? = nil) -> TimeInterval {
+        if pace == .arena { return arenaDuration(of: event, motion: motion, viewerID: viewerID) }
         switch event {
         case let .spellCast(_, _, _, _, weight):
             // Long enough to read the card at the center before it moves on.
@@ -804,6 +838,35 @@ enum BoardFXScheduler {
         case .lifeChanged: return motion ? 1.3 : 0.9
         }
     }
+
+    /// The reference game's beats (GAP_ANALYSIS.md §2, at 30 fps): your spell drops onto the stack card in 8–10 frames and
+    /// stays readable there; an opponent's grows for ~12 frames, holds ~24–30 and settles in ~9 (about 1.6 s, the reveal
+    /// smart pass waits for); a trigger grows and flares in 15; a card lands in under 8 plus its settle; a strike is
+    /// 12–14 frames; the attack and block marks drop in at once.
+    static func arenaDuration(of event: BoardFXEvent, motion: Bool, viewerID: String?) -> TimeInterval {
+        switch event {
+        case let .spellCast(_, _, controllerID, _, weight):
+            let yours = controllerID == nil || controllerID == viewerID
+            switch weight {
+            case .ability: return motion ? 0.5 : 0.4
+            case .spell, .big: return yours ? (motion ? 0.35 : 0.3) : (motion ? 1.6 : 1.2)
+            case .commander: return yours ? (motion ? 1.0 : 0.6) : (motion ? 1.6 : 1.2)
+            }
+        case .enteredBattlefield: return motion ? 0.6 : 0.5
+        case .leftBattlefield: return motion ? 0.8 : 0.7
+        case .damageMarked: return 0.6
+        case .countersChanged: return motion ? 0.8 : 0.6
+        case .statsChanged: return motion ? 0.8 : 0.6
+        case .phased: return motion ? 0.9 : 0.6
+        case .transformed: return motion ? 0.8 : 0.6
+        case .controlChanged: return motion ? 1.2 : 0.7
+        case .attackDeclared: return 0.25
+        case .blockDeclared: return 0.3
+        case .combatStrike: return motion ? 0.45 : 0.4
+        case .firstStrikeBeat: return motion ? 1.0 : 0.8
+        case .lifeChanged: return motion ? 1.0 : 0.8
+        }
+    }
 }
 
 struct ActiveBoardFX: Equatable, Identifiable {
@@ -831,7 +894,8 @@ struct BoardFXDirector: Equatable {
     /// Returns only the newly scheduled effects, for haptics and accessibility.
     @discardableResult
     /// `holdUntil`: the centre of the board is taken (the turn banner) until then, so showcases wait.
-    mutating func ingest(_ snapshot: GameSnapshot, level: BoardFXLevel, now: Date, holdUntil: Date? = nil) -> [ScheduledBoardFX] {
+    mutating func ingest(_ snapshot: GameSnapshot, level: BoardFXLevel, now: Date, holdUntil: Date? = nil,
+                         pace: BoardFXPace = .hearth) -> [ScheduledBoardFX] {
         let state = BoardFXState(snapshot: snapshot)
         let battlefield = Dictionary(snapshot.players.flatMap(\.zones.battlefield).map { ($0.instanceId, $0) },
                                      uniquingKeysWith: { first, _ in first })
@@ -854,7 +918,7 @@ struct BoardFXDirector: Equatable {
             effect.scheduled.holdsLaterBatchesUntil.map { effect.start.addingTimeInterval($0) }
         }.max()
         let hold = max(showcaseEnd.map { $0.timeIntervalSince(now) } ?? 0, holdUntil?.timeIntervalSince(now) ?? 0)
-        let scheduled = BoardFXScheduler.schedule(events, level: level, firstID: nextID, hold: hold)
+        let scheduled = BoardFXScheduler.schedule(events, level: level, firstID: nextID, hold: hold, pace: pace, viewerID: snapshot.viewerID)
         nextID += scheduled.count
         active += scheduled.map { ActiveBoardFX(scheduled: $0, start: now) }
         for fx in scheduled {
@@ -942,8 +1006,14 @@ final class BoardPresentationHold {
     /// can take longer than a tenth of a second, and passing before the board has seen the snapshot skips its hold.
     static let ingestWait: TimeInterval = 1
 
+    /// How long smart pass waits while you read a card (Caleb, 2026-10-21: an opponent's spell went by before he could
+    /// read it). Long, but still a bound, so a forgotten inspector can't hold the game forever.
+    static let readingWait: TimeInterval = 60
+
     private(set) var ingested: BoardFXRevisionKey?
     private(set) var until: Date?
+    /// The player is reading a card (the inspector is open): smart pass waits until it closes.
+    var reading = false
 
     func record(_ key: BoardFXRevisionKey?, until: Date?) {
         ingested = key

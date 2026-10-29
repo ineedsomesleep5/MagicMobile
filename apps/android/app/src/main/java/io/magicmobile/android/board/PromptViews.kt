@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +58,7 @@ import io.magicmobile.android.game.XmageResponseCommand
 import io.magicmobile.android.ui.FitText
 import io.magicmobile.android.ui.MagicPalette
 import io.magicmobile.android.ui.SfDesign
+import io.magicmobile.android.menus.arenaGlassPanel
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfText
 import io.magicmobile.android.ui.SfWeight
@@ -339,7 +341,9 @@ fun InlinePaymentPromptBar(snapshot: GameSnapshot, pendingActionId: String?, run
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CompactPromptPopupView(snapshot: GameSnapshot, pendingActionId: String?, runAction: (LegalAction) -> Unit,
-                           runCommand: (GameCommand, String, String) -> Unit, openDetails: () -> Unit, modifier: Modifier = Modifier) {
+                           runCommand: (GameCommand, String, String) -> Unit, openDetails: () -> Unit, modifier: Modifier = Modifier,
+                           /** The Arena question stage (ArenaQuestionStage) shows the question and its card itself: only the answers, as pills. */
+                           stage: Boolean = false) {
     val promptV2 = snapshot.promptEnvelopeV2
     val legalActions = snapshot.legalActions ?: emptyList()
     val compactPromptActions = CompactPromptPopup.compactLegalPromptActions(snapshot)
@@ -380,9 +384,10 @@ fun CompactPromptPopupView(snapshot: GameSnapshot, pendingActionId: String?, run
 
     @Composable
     fun commandButton(label: String, systemImage: String?, pendingId: String, command: GameCommand?, buttonModifier: Modifier = Modifier) {
-        PanelActionButton({ command?.let { runCommand(it, label, pendingId) } }, buttonModifier, isPrimary = true, compact = true,
-            enabled = pendingActionId == null && command != null) {
-            PromptButtonLabel(label, systemImage = systemImage, isPending = pendingActionId == pendingId)
+        // On the Arena question screen "No" and "Cancel" are Arena's blue pill, the rest orange; its pills carry words only.
+        PanelActionButton({ command?.let { runCommand(it, label, pendingId) } }, buttonModifier, isPrimary = !stage || !io.magicmobile.android.game.ArenaScreens.declines(label),
+            compact = true, enabled = pendingActionId == null && command != null) {
+            PromptButtonLabel(label, systemImage = if (stage) null else systemImage, isPending = pendingActionId == pendingId)
         }
     }
 
@@ -390,10 +395,10 @@ fun CompactPromptPopupView(snapshot: GameSnapshot, pendingActionId: String?, run
     fun actionButtons(actions: List<LegalAction>) {
         Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             for (action in actions.take(3)) {
-                PanelActionButton({ runAction(action) }, Modifier.weight(1f), isPrimary = action.isPrimary == true || action.type == "keep_hand",
-                    compact = true, enabled = pendingActionId == null) {
-                    PromptButtonLabel(CompactPromptPopup.compactActionLabel(action), systemImage = LegalActionDisplay.systemImage(action),
-                        isPending = pendingActionId == action.id)
+                val title = CompactPromptPopup.compactActionLabel(action)
+                PanelActionButton({ runAction(action) }, Modifier.weight(1f), isPrimary = if (stage) !io.magicmobile.android.game.ArenaScreens.declines(title)
+                    else action.isPrimary == true || action.type == "keep_hand", compact = true, enabled = pendingActionId == null) {
+                    PromptButtonLabel(title, systemImage = if (stage) null else LegalActionDisplay.systemImage(action), isPending = pendingActionId == action.id)
                 }
             }
             if (actions.size > 3 || (snapshot.source == "xmage-ondevice" && CompactPromptPopup.needsDetails(snapshot))) detailButton()
@@ -492,9 +497,28 @@ fun CompactPromptPopupView(snapshot: GameSnapshot, pendingActionId: String?, run
         }
     }
 
+    if (stage) {
+        CompositionLocalProvider(LocalArenaPlaques provides true) {
+            Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                when {
+                    pendingActionId != null -> Row(Modifier.heightIn(min = 46.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(14.dp), color = io.magicmobile.android.menus.ArenaGlass.text, strokeWidth = 2.dp)
+                        Text("Waiting for the table…", color = io.magicmobile.android.menus.ArenaGlass.text.copy(alpha = 0.8f),
+                            style = sf(14f, SfWeight.medium, SfDesign.SERIF).copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic))
+                    }
+                    promptV2 != null -> promptControls(promptV2)
+                    snapshot.choicePrompt != null -> choicePromptControls(snapshot.choicePrompt!!)
+                    snapshot.promptEnvelope != null -> legacyPromptControls(snapshot.promptEnvelope!!)
+                }
+            }
+        }
+        return
+    }
     val tavern = LocalTavernBoard.current
-    // The compact prompt's panel: dark iron and leather, or on the tavern board tooled leather in brass trim.
-    val panel = if (tavern) Modifier.glow(Color.Black.copy(alpha = 0.45f), 10.dp, 12.dp)
+    val arena = io.magicmobile.android.menus.LocalArenaBoard.current
+    // The compact prompt's panel: dark iron and leather, on the tavern board tooled leather in brass trim, on the Arena board glass.
+    val panel = if (arena) Modifier.arenaGlassPanel(14.dp).padding(horizontal = 12.dp, vertical = 11.dp)
+    else if (tavern) Modifier.glow(Color.Black.copy(alpha = 0.45f), 10.dp, 12.dp)
         .tavernFill(TavernMaterial.LEATHER, RoundedCornerShape(12.dp), overlayBrush = Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.3f))))
         .tavernBrassFrame(0.5f).padding(horizontal = 12.dp, vertical = 11.dp)
     else Modifier.glow(Color.Black.copy(alpha = 0.30f), 10.dp, 10.dp)

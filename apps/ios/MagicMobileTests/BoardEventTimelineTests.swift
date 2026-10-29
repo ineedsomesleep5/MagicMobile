@@ -559,4 +559,47 @@ extension BoardEventTimelineTests {
                        departureEnd?.timeIntervalSince1970 ?? 0, accuracy: 0.001)
     }
 
+
+    /// The Arena board keeps the reference game's pace (GAP_ANALYSIS.md §2): your spell lands on the stack card in
+    /// about 0.3 s, an opponent's is revealed for 1.6 s (what smart pass waits for), and strikes land one after another
+    /// 0.38 s apart, 0.45 s each.
+    func testArenaPaceFollowsTheReference() {
+        let mine = BoardFXEvent.spellCast(stackID: "s1", name: "Shock", controllerID: "a", tint: .red, weight: .spell)
+        let theirs = BoardFXEvent.spellCast(stackID: "s2", name: "Shock", controllerID: "b", tint: .red, weight: .spell)
+        let trigger = BoardFXEvent.spellCast(stackID: "t", name: "Soul Warden", controllerID: "b", tint: .white, weight: .ability)
+        XCTAssertEqual(BoardFXScheduler.duration(of: mine, motion: true, pace: .arena, viewerID: "a"), 0.35)
+        XCTAssertEqual(BoardFXScheduler.duration(of: theirs, motion: true, pace: .arena, viewerID: "a"), 1.6)
+        XCTAssertEqual(BoardFXScheduler.duration(of: trigger, motion: true, pace: .arena, viewerID: "a"), 0.5)
+        XCTAssertEqual(BoardFXScheduler.duration(of: theirs, motion: true), 2.4, "the Hearth board keeps its showcase")
+
+        let strikes = (1...3).map { BoardFXEvent.combatStrike(attackerID: "atk\($0)", target: .player("b"), tint: .green) }
+        let arena = BoardFXScheduler.schedule(strikes, level: .full, pace: .arena, viewerID: "a")
+        XCTAssertEqual(arena.map(\.duration), [0.45, 0.45, 0.45])
+        XCTAssertEqual(arena.map(\.delay)[1] - arena.map(\.delay)[0], 0.38, accuracy: 0.001)
+        XCTAssertEqual(arena.map(\.delay)[2] - arena.map(\.delay)[1], 0.38, accuracy: 0.001)
+        let hearth = BoardFXScheduler.schedule(strikes, level: .full)
+        XCTAssertLessThan(hearth.map(\.delay).max()!, 0.2, "the Hearth board strikes together")
+
+        let reveal = BoardFXScheduler.schedule([theirs], level: .full, pace: .arena, viewerID: "a")
+        XCTAssertTrue(reveal[0].holdsSmartPass)
+        XCTAssertEqual(reveal[0].release, 1.6, accuracy: 0.001, "later effects wait for the reveal")
+    }
+
+    /// A board wipe on the Arena board: the permanents leave one after another within about a second, the creature the
+    /// spell returns arrives after them, and smart pass waits for them; two deaths still go together (Caleb, 2026-10-21).
+    func testArenaBoardWipeLeavesInACascade() {
+        let deaths = (1...6).map { BoardFXEvent.leftBattlefield(cardID: "c\($0)", playerID: "a", to: .graveyard, tint: .green) }
+        let wipe = BoardFXScheduler.schedule(deaths, level: .full, pace: .arena, viewerID: "a")
+        let delays = wipe.map(\.delay)
+        XCTAssertEqual(delays[1] - delays[0], BoardFXScheduler.sweepStep, accuracy: 0.001)
+        XCTAssertLessThanOrEqual(delays.max()! - delays.min()!, BoardFXScheduler.sweepSpread + 0.001)
+        XCTAssertTrue(wipe.allSatisfy(\.holdsSmartPass))
+        let many = (1...20).map { BoardFXEvent.leftBattlefield(cardID: "m\($0)", playerID: "a", to: .graveyard, tint: .green) }
+        let big = BoardFXScheduler.schedule(many, level: .full, pace: .arena, viewerID: "a").map(\.delay)
+        XCTAssertLessThanOrEqual(big.max()! - big.min()!, BoardFXScheduler.sweepSpread + 0.001, "a huge wipe stays short")
+        let pair = BoardFXScheduler.schedule(Array(deaths.prefix(2)), level: .full, pace: .arena, viewerID: "a").map(\.delay)
+        XCTAssertLessThan(pair[1] - pair[0], 0.1, "two deaths still go together")
+        let hearth = BoardFXScheduler.schedule(deaths, level: .full).map(\.delay)
+        XCTAssertLessThan(hearth.max()! - hearth.min()!, 0.5, "Hearth unchanged")
+    }
 }

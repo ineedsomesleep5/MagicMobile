@@ -1,0 +1,508 @@
+{
+  "trace" : [
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 271,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "SELECT",
+      "revision" : 272,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : "tap ba35d6f3-bad7-4422-80fe-96052741bb50:basicManaAbilities:07047f13-45e7-449e-ab5e-01973623abc6",
+      "events" : [
+        "cast b0c4011a-eb1a-4d5c-bed1-b641c1cc145f big by c057db88-0f08-49aa-ab98-9e63d9ad56f5"
+      ],
+      "phase" : "running",
+      "prompt" : "PLAY_MANA",
+      "revision" : 275,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 277,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : "tap c5f59b9e-7bc8-438a-8f60-ccfef95bd43f:basicManaAbilities:246fa382-1ce7-411d-8345-477c74553739",
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "PLAY_MANA",
+      "revision" : 278,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 280,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : "tap 023a6eb1-4f88-4dde-9c68-b45b7340277f:basicManaAbilities:5e6dd73a-ad45-4d02-a805-b1e1d042a37e",
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "PLAY_MANA",
+      "revision" : 281,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 283,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : "tap c201cd8f-d84f-4dde-9fd2-209de55cdb0a:basicManaAbilities:76fc50de-11e5-4613-971b-b9f741b6cb1d",
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "PLAY_MANA",
+      "revision" : 284,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : "tap 64099a95-cbb9-4804-ad29-abf5ddad1487:basicManaAbilities:bc022411-195e-47b1-9147-34c42cf90f61",
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "PLAY_MANA",
+      "revision" : 287,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 289,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : "tap afca8862-7c59-4a41-904a-c410686a9f22:other:fcca7a9f-b39b-4605-9253-02e02c36b127:make_mana",
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "PLAY_MANA",
+      "revision" : 290,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 293,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+        "cast dd81ba0b-264d-4411-a8ad-91161fc86203 ability by 518a6afa-3b01-4d87-840f-a50492f6e3d6"
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 295,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "SELECT",
+      "revision" : 296,
+      "smartPass" : "pass"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+        "life c057db88-0f08-49aa-ab98-9e63d9ad56f5 -1"
+      ],
+      "phase" : "running",
+      "prompt" : "SELECT",
+      "revision" : 300,
+      "smartPass" : "pass"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 302,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+        "cast cb6e91ef-68ca-43c4-b9cd-4a758a71b8f8 ability by c057db88-0f08-49aa-ab98-9e63d9ad56f5",
+        "entered 0de6f4f1-22c0-49a1-b792-0d0605d67e20 stack plain"
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 304,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "PICK_TARGET",
+      "revision" : 305,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "SELECT",
+      "revision" : 309,
+      "smartPass" : "pass"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 311,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 312,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "ASK",
+      "revision" : 313,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+        "cast 1293001f-efa6-49a1-a58f-57984fbe950d ability by c057db88-0f08-49aa-ab98-9e63d9ad56f5",
+        "left bd296227-64f2-42d1-84f2-50659e207191 graveyard"
+      ],
+      "phase" : "running",
+      "prompt" : "SELECT",
+      "revision" : 319,
+      "smartPass" : "pass"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 321,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 322,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "SELECT",
+      "revision" : 323,
+      "smartPass" : "pass"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 325,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 326,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+        "attack 27b40b42-040d-4e83-81ca-ab2c488117b5"
+      ],
+      "phase" : "running",
+      "prompt" : "SELECT",
+      "revision" : 329,
+      "smartPass" : "pass"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 331,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "SELECT",
+      "revision" : 334,
+      "smartPass" : "pass"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 336,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+        "strike 27b40b42-040d-4e83-81ca-ab2c488117b5 -> player:518a6afa-3b01-4d87-840f-a50492f6e3d6 regular",
+        "life 518a6afa-3b01-4d87-840f-a50492f6e3d6 -5"
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 338,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "SELECT",
+      "revision" : 339,
+      "smartPass" : "pass"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 341,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 342,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 343,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "SELECT",
+      "revision" : 344,
+      "smartPass" : "pass"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 346,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 347,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "PICK_ABILITY",
+      "revision" : 348,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+        "cast e86f4c32-18e9-4298-a016-8ff4e972e38d ability by c057db88-0f08-49aa-ab98-9e63d9ad56f5",
+        "cast bb688d83-ad79-4b68-937e-5b5d41f93f6e ability by c057db88-0f08-49aa-ab98-9e63d9ad56f5"
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 352,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "SELECT",
+      "revision" : 353,
+      "smartPass" : "pass"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 355,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+        "counters 0de6f4f1-22c0-49a1-b792-0d0605d67e20 plusOne 2"
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 357,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "SELECT",
+      "revision" : 358,
+      "smartPass" : "pass"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 360,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : null,
+      "revision" : 361,
+      "smartPass" : "stop"
+    },
+    {
+      "autoPay" : null,
+      "events" : [
+
+      ],
+      "phase" : "running",
+      "prompt" : "ASK",
+      "revision" : 362,
+      "smartPass" : "stop"
+    }
+  ]
+}

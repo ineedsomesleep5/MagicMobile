@@ -267,10 +267,15 @@ struct PromptDebugInspector: View {
 
 struct GameManagementMenu: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.boardPanelClose) private var panelClose
+    /// Closes the sheet, or the Arena board's panel on the table.
+    private func close() { if let panelClose { panelClose() } else { dismiss() } }
     @Environment(\.gameConcede) private var gameConcede
     @Environment(\.tavernBoard) private var tavern
     @Environment(\.friendMessages) private var friendMessages
+    @Environment(\.gameFreezeReport) private var gameFreezeReport
     @State private var confirmingConcede = false
+    @State private var confirmingFreezeReport = false
     @State private var showHowToPlay = false
     @State private var showMessages = false
     let snapshot: GameSnapshot
@@ -286,7 +291,7 @@ struct GameManagementMenu: View {
             HStack {
                 TavernPanelTitle(text: "Game Menu")
                 Spacer()
-                Button("Done") { dismiss() }
+                Button("Done") { close() }
                     .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
                     .accessibilityIdentifier("board.menu.done")
             }
@@ -333,6 +338,16 @@ struct GameManagementMenu: View {
                     .buttonStyle(CompactActionButtonStyle(isPrimary: false))
                     .accessibilityIdentifier("board.menu.howToPlay")
 
+                    // The game stopped moving: send what it looks like now (docs/FREEZE_LOG.md).
+                    if gameFreezeReport != nil {
+                        Button { confirmingFreezeReport = true } label: {
+                            Label("Report a freeze", systemImage: "exclamationmark.bubble.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+                        .accessibilityIdentifier("board.menu.reportFreeze")
+                    }
+
                     // Friends' messages without leaving the game.
                     if let friendMessages {
                         Button { showMessages = true } label: {
@@ -355,6 +370,8 @@ struct GameManagementMenu: View {
                     RememberedChoicesPanel()
 
                     GameMenuSectionLabel(text: "Options")
+                    BoardModePicker()
+                    CardFramesToggle()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     FollowTurnsToggle()
                     AutoPassAfterCastToggle()
@@ -377,8 +394,8 @@ struct GameManagementMenu: View {
             // The leather sheet backing on the tavern (`.tavernSheet`); the table plate behind a menu read as clutter.
             if tavern && TavernUIKit.available { Color.clear } else { BattlefieldSurface().ignoresSafeArea() }
         }
-        .sheet(isPresented: $showHowToPlay) { HowToPlayView() }
-        .sheet(isPresented: $showMessages) { friendMessages?.hub() }
+        .sheet(isPresented: $showHowToPlay) { HowToPlayView().environment(\.boardPanelClose, nil) }
+        .sheet(isPresented: $showMessages) { friendMessages?.hub().environment(\.boardPanelClose, nil) }
         .tavernConfirmation(
             active: tavern,
             title: "Concede this game?",
@@ -387,10 +404,20 @@ struct GameManagementMenu: View {
                 : "Your opponent wins this game.",
             isPresented: $confirmingConcede,
             actions: [TavernDialogAction(title: "Concede", destructive: true) {
-                dismiss()
+                close()
                 if let gameConcede { gameConcede.concede() } else if let concedeAction { runAction(concedeAction) }
             }],
             cancelTitle: "Keep Playing"
+        )
+        .tavernConfirmation(
+            active: tavern,
+            title: "Report a freeze?",
+            message: "Sends this game's state and your recent actions to the developer. Not your account or decks.",
+            isPresented: $confirmingFreezeReport,
+            actions: [TavernDialogAction(title: "Send") {
+                close()
+                gameFreezeReport?.report()
+            }]
         )
     }
 

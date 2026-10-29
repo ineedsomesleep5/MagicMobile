@@ -230,6 +230,8 @@ final class OnDeviceSession: ObservableObject {
     private var pollReader: OnDevicePollReader?
     private var pollExchange: OnDevicePollReader.Exchange?
     private var messageLog = OnDeviceMessageLog()
+    /// Presentation only: the round the board's turn labels show (the engine's turn counts every player's turn).
+    private var tableRounds = TableRounds()
     private var pollingTask: Task<Void, Never>?
     private var closeEndpoint: (@MainActor () async throws -> Void)?
     private var epoch = UUID()
@@ -273,6 +275,13 @@ final class OnDeviceSession: ObservableObject {
     lazy var presentationHold: BoardPresentationHold = .shared
     /// Full control (long-press Pass, or the controls menu): smart pass stops at every priority until this turn ends.
     @Published private(set) var fullControlTurn: Int64?
+    /// What the root view calls this game (quick, ranked vs AI, a table), for the freeze log (docs/FREEZE_LOG.md).
+    var freezeMode = "game"
+    /// Uptime of the game's last change and of the answer waiting on the engine; one record per stall.
+    private var lastGameChangeAt = ProcessInfo.processInfo.systemUptime
+    private var answerSentAt: TimeInterval?
+    private var stallRecorded = false
+    private var stallWatch: Task<Void, Never>?
     /// A local log line was added since the last snapshot: the next poll republishes even if the game didn't change.
     private var logChanged = false
 
@@ -287,7 +296,7 @@ final class OnDeviceSession: ObservableObject {
         self.client = client; self.matchID = matchID; self.seatID = seatID
         self.pollReader = pollReader; pollExchange = nil
         supportedAnswerActions = answerActions; rememberedAnswers = 0; rememberedTriggerOrders = 0; standingActions = [:]
-        comboHistory = []; comboOffer = nil; comboDeclined = nil; comboResult = nil
+        comboHistory = []; comboOffer = nil; comboWinForecast = nil; comboDeclined = nil; comboResult = nil
         if let autoPassAfterCast { setAutoPassAfterCast(autoPassAfterCast) }
         if devicePaceHot { queueDevicePace() }
         self.smartPass = smartPass; smartPassTask?.cancel(); smartPassTask = nil; smartPassedPromptID = nil; fullControlTurn = nil
@@ -296,8 +305,12 @@ final class OnDeviceSession: ObservableObject {
         self.table = table; lastActionAt = nil
         autoPassStatus = ""; checkpoint = nil; isOverForSeat = false
         closeEndpoint = close; automaticPolling = autoPoll; epoch = UUID()
+        lastGameChangeAt = ProcessInfo.processInfo.systemUptime; answerSentAt = nil; stallRecorded = false
+        FreezeLog.shared.note("Game started: \(freezeMode)\(table == nil ? "" : ", at a table")")
+        startStallWatch()
         refreshSequence = 0; appliedRefreshSequence = 0; isClosing = false
         messageLog = OnDeviceMessageLog()
+        tableRounds = TableRounds()
         status = "Starting game"
         do { try await refresh() }
         catch {
@@ -364,7 +377,8 @@ final class OnDeviceSession: ObservableObject {
             nextLog = OnDeviceMessageLog()
             pending = nil; pendingActionID = nil; pendingCardID = nil
         } else if next.snapshot != nil {
-            let adapted = try OnDeviceSnapshotAdapter.snapshot(next, expectedSeatID: seatID, log: nextLog.entries)
+            var adapted = try OnDeviceSnapshotAdapter.snapshot(next, expectedSeatID: seatID, log: nextLog.entries)
+            adapted.round = tableRounds.observe(adapted)
             if let autoAbility, let prompt = next.prompt {
                 heldAbilitySnapshot = (prompt.id, adapted)
                 pendingActionID = "auto-ability-\(autoAbility.abilityID)"; pendingCardID = autoAbility.sourceID
@@ -375,6 +389,7 @@ final class OnDeviceSession: ObservableObject {
         }
         messageLog = nextLog
         poll = next
+        if !unchanged { gameChanged() }
         pollExchange = exchange
         if let saved = next.checkpoint, saved != checkpoint { checkpoint = saved }
         let over = GameResumePolicy.isOver(next)
@@ -400,7 +415,10 @@ final class OnDeviceSession: ObservableObject {
         // Assigned only on a change: a published property announces every assignment, even an equal one.
         if status != nextStatus { status = nextStatus }
         let nextError = next.raw["failure"]?["message"]?.string
-        if errorMessage != nextError { errorMessage = nextError }
+        if errorMessage != nextError {
+            errorMessage = nextError
+            if let nextError { FreezeLog.shared.note("Engine failure: \(nextError)") }
+        }
         if errorMessage != nil { stopAutoPass(reason: OnDeviceYieldPolicy.StopReason.interrupted.message) }
         if isAutoPassing {
             if let context = yieldContext {
@@ -442,7 +460,9 @@ final class OnDeviceSession: ObservableObject {
         let floating = (owner["manaPool"]?.object ?? [:]).values.contains { ($0.integer ?? 0) > 0 }
         return .init(context: context, step: view["step"]?.string, hasPlay: OnDeviceSmartPass.hasPlay(view), manaFloating: floating,
                      topStackIsMine: OnDeviceSmartPass.topStackIsMine(root, viewer: context.viewerID),
-                     hasResponse: OnDeviceSmartPass.hasResponse(view))
+                     hasResponse: OnDeviceSmartPass.hasResponse(view),
+                     threatensMe: !context.emptyStack && (snapshot.map(OnDeviceSmartPass.threatensViewer) ?? false),
+                     hasAbilityResponse: OnDeviceSmartPass.hasAbilityResponse(view))
     }
 
     /// Passes this seat's ordinary priority when it has nothing to play, or nothing it stops for.
@@ -505,6 +525,10 @@ final class OnDeviceSession: ObservableObject {
         while let until = presentationHold.until, until.timeIntervalSinceNow > 0,
               elapsed() < BoardPresentationHold.maximumWait, !Task.isCancelled {
             try? await Task.sleep(for: .seconds(min(until.timeIntervalSinceNow, 0.1)))
+        }
+        // Holding a card to read it holds the pass too, as tapping the reference game's spell does.
+        while presentationHold.reading, elapsed() < BoardPresentationHold.readingWait, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(100))
         }
     }
 
@@ -608,10 +632,12 @@ final class OnDeviceSession: ObservableObject {
         // `controlled` is only a viewer marker upstream, not turn-control proof.
         // A routed self-priority prompt and active timer are required to send.
         let selfAuthority = controls.isEmpty && (!priority || timer) && (prompt == nil || priority)
+        // A skip that passes responses still stops for an opponent's removal or sweeper, if you asked to.
+        let threat = !stack.isEmpty && (smartPass ?? .load()).stopForThreats && (snapshot.map(OnDeviceSmartPass.threatensViewer) ?? false)
         return .init(matchID: poll.matchID, seatID: poll.seatID, viewerID: viewer, activePlayerID: active,
                      turn: turn, phase: poll.phase, localHumanEnabled: allowsSeatScopedAutoYield,
                      foreground: isForeground && !isClosing, emptyStack: stack.isEmpty,
-                     selfAuthority: selfAuthority, resyncRequired: poll.resyncRequired, prompt: prompt)
+                     selfAuthority: selfAuthority, resyncRequired: poll.resyncRequired, prompt: prompt, threatToMe: threat)
     }
 
     func send(action: LegalAction) async throws {
@@ -662,9 +688,11 @@ final class OnDeviceSession: ObservableObject {
     // MARK: Combo loop shortcut (ComboLoop)
 
     /// Solo games only: the root turns it on for games against the AI.
-    var comboLoopsAllowed = false { didSet { if !comboLoopsAllowed { comboHistory = []; comboOffer = nil } } }
+    var comboLoopsAllowed = false { didSet { if !comboLoopsAllowed { comboHistory = []; comboOffer = nil; comboWinForecast = nil } } }
     /// A round the player has made three times in a row this turn, offered for repeating.
     @Published private(set) var comboOffer: [ComboStep]?
+    /// Whether repeating the offered round ends the game: "Until they lose" is offered only then.
+    @Published private(set) var comboWinForecast: ComboWinForecast?
     /// Repeating a round: how far it has got, and the last few rounds and notes.
     @Published private(set) var comboRun: ComboRun?
     /// The line shown when repeating stops: rounds, life changes and why.
@@ -680,10 +708,12 @@ final class OnDeviceSession: ObservableObject {
     }
     /// The board's snapshot: the live game, or the repeats' quiet copy while a loop runs.
     var presentedSnapshot: GameSnapshot? { comboRun == nil ? snapshot : (comboPresented ?? snapshot?.withoutPrompts) }
-    private var comboHistory: [(step: ComboStep, turn: Int)] = []
+    private var comboHistory: [(step: ComboStep, turn: Int, standings: [String: ComboWinForecast.Standing])] = []
     private var comboDeclined: [ComboStep]?
     private var comboStopRequested = false
     private var comboFastMode = false
+    /// Rounds a winning loop still needs, while it finishes behind its curtain; nil otherwise.
+    @Published private(set) var comboFinishing: Int?
     private var comboTask: Task<Void, Never>?
 
     private func noteComboStep(_ command: GameCommand, label: String, actionID: String, decision: GameSnapshot?) {
@@ -692,15 +722,23 @@ final class OnDeviceSession: ObservableObject {
         case .ignore:
             return
         case .breaks:
-            comboHistory = []; comboOffer = nil
+            comboHistory = []; comboOffer = nil; comboWinForecast = nil
         case .step(let step):
             let turn = decision?.turn ?? 0
             // A loop is offered only for rounds made in one turn.
             if let last = comboHistory.last, last.turn != turn { comboHistory = [] }
-            comboHistory.append((step, turn))
+            comboHistory.append((step, turn, decision.map(ComboWinForecast.standings) ?? [:]))
             if comboHistory.count > ComboLoop.historyLimit { comboHistory.removeFirst(comboHistory.count - ComboLoop.historyLimit) }
             let round = ComboLoop.cycle(in: comboHistory.map(\.step))
             comboOffer = round != nil && round != comboDeclined ? round : nil
+            comboWinForecast = comboOffer.flatMap { round in
+                // The opponents' standings at the start of each of the last rounds.
+                let length = round.count
+                let starts = stride(from: comboHistory.count - length * ComboLoop.repeatsToOffer, to: comboHistory.count, by: length)
+                    .filter { $0 >= 0 }.map { comboHistory[$0].standings }
+                guard let current = snapshot ?? decision else { return nil }
+                return ComboWinForecast.forecast(starts: starts, opponentsCanRespond: ComboWinForecast.opponentsCanRespond(current))
+            }
         }
     }
 
@@ -708,13 +746,18 @@ final class OnDeviceSession: ObservableObject {
     func declineComboLoop() {
         comboDeclined = comboOffer
         comboOffer = nil
+        comboWinForecast = nil
     }
 
     /// Repeats the offered round: a number of times, until a step can't be taken, or until every opponent has lost (at
     /// most ComboLoop.maxRepeats rounds).
     func startComboLoop(_ mode: ComboRepeat) {
         guard let round = comboOffer, comboRun == nil, let start = snapshot else { return }
+        // "Until they lose" only runs when the rounds so far show it wins; it then goes straight to the end.
+        if mode == .untilWin, comboWinForecast?.canFinish != true { return }
+        comboFinishing = mode == .untilWin ? comboWinForecast?.rounds : nil
         comboOffer = nil
+        comboWinForecast = nil
         comboResult = nil
         comboStopRequested = false
         comboPresented = start.withoutPrompts
@@ -741,7 +784,7 @@ final class OnDeviceSession: ObservableObject {
         comboFastMode = !watch
         BoardFXLevel.suppressedForLoop = !watch
         defer { BoardFXLevel.suppressedForLoop = false; comboFastMode = false }
-        let limit = min(mode.count ?? ComboLoop.maxRepeats, ComboLoop.maxRepeats)
+        let limit = min(mode.count ?? comboFinishing.map { $0 + 2 } ?? ComboLoop.maxRepeats, ComboLoop.maxRepeats)
         var rounds = 0, unchanged = 0
         var lastDigest = ComboLoop.digest(start)
         var prefer: [Int: [String]] = [:]
@@ -768,7 +811,7 @@ final class OnDeviceSession: ObservableObject {
             comboRun?.done = rounds
             noteComboLine(ComboLoop.roundLine(rounds, round, chosen: chosen))
             guard let current = snapshot else { break }
-            comboPresented = current.withoutPrompts
+            if comboFinishing == nil { comboPresented = current.withoutPrompts }
             if current.isCompleted { stop = .gameOver; break }
             if watch {
                 await waitForBoardPresentation()
@@ -782,7 +825,7 @@ final class OnDeviceSession: ObservableObject {
                 if unchanged >= ComboLoop.unchangedRoundsToStop { stop = .nothingChanged; break }
             }
         }
-        if mode.count == nil, stop == .finished { stop = .reachedLimit }
+        if mode.count == nil, stop == .finished { stop = comboFinishing != nil ? .didNotFinish(rounds) : .reachedLimit }
         let summary = ComboLoop.summary(rounds: rounds, before: start, after: snapshot ?? start)
         switch stop {
         case .finished, .gameOver:
@@ -794,6 +837,7 @@ final class OnDeviceSession: ObservableObject {
         }
         comboRun = nil
         comboPresented = nil
+        comboFinishing = nil
         comboHistory = []
         comboDeclined = round
         comboTask = nil
@@ -839,7 +883,8 @@ final class OnDeviceSession: ObservableObject {
                     }
                 }
             }
-            try? await Task.sleep(for: .milliseconds(120))
+            // A long or winning run checks back quickly; nothing is drawn between its rounds.
+            try? await Task.sleep(for: .milliseconds(comboFastMode ? 40 : 120))
         }
         return .stop(.stepMissing(ComboLoop.missing(step)))
     }
@@ -867,6 +912,8 @@ final class OnDeviceSession: ObservableObject {
             chosenAbility = nil
         }
         pending = Submission(prompt: prompt, answer: answer, requestID: UUID(), label: label)
+        answerSentAt = ProcessInfo.processInfo.systemUptime; stallRecorded = false
+        FreezeLog.shared.note("Answer: \(label) (\(command.type))")
         pendingActionID = actionID; pendingCardID = command.cardInstanceId ?? command.sourceInstanceId
         try await performPendingResponse()
         // Delivered: the standing instructions went with it, and what was remembered is counted for the forget controls.
@@ -940,7 +987,8 @@ final class OnDeviceSession: ObservableObject {
         } catch {
             responding = false
             if epoch == token {
-                errorMessage = error.localizedDescription
+                if !error.isLessonNudge { errorMessage = error.localizedDescription }
+                FreezeLog.shared.note("Answer failed: \(error.localizedDescription)")
                 // An engine rejection is certain. A transport timeout or busy RPC is not:
                 // retain the exact request ID and answer for a safe user-triggered retry.
                 // A rejected follow-up poll cannot retract an acknowledged answer.
@@ -1015,7 +1063,7 @@ final class OnDeviceSession: ObservableObject {
     }
 
     func close() async throws {
-        comboStopRequested = true; comboTask?.cancel(); comboHistory = []; comboOffer = nil
+        comboStopRequested = true; comboTask?.cancel(); comboHistory = []; comboOffer = nil; comboWinForecast = nil
         stopAutoPass()
         smartPassTask?.cancel(); smartPassTask = nil
         abilityAutoAnswer?.cancel(); abilityAutoAnswer = nil
@@ -1038,11 +1086,20 @@ final class OnDeviceSession: ObservableObject {
         pollReader = nil; pollExchange = nil
         table = nil; lastActionAt = nil; checkpoint = nil; isOverForSeat = false
         messageLog = OnDeviceMessageLog()
+        tableRounds = TableRounds()
         self.closeEndpoint = nil; pending = nil; pendingActionID = nil; pendingCardID = nil; errorMessage = nil; status = "Ready"
+        stallWatch?.cancel(); stallWatch = nil; answerSentAt = nil
+        FreezeLog.shared.note("Game closed")
+        FreezeLog.shared.setContext(FreezeLog.noGame)
     }
 
     func setForeground(_ value: Bool) {
-        if isForeground != value { visibilityEpoch = UUID() }
+        if isForeground != value {
+            visibilityEpoch = UUID()
+            FreezeLog.shared.note(value ? "Back in the foreground" : "To the background")
+            // Time in the background is not a stall.
+            if value { lastGameChangeAt = ProcessInfo.processInfo.systemUptime; stallRecorded = false }
+        }
         if !value { stopAutoPass(); smartPassTask?.cancel(); smartPassTask = nil }
         isForeground = value
         if value { beginPolling() }
@@ -1052,6 +1109,61 @@ final class OnDeviceSession: ObservableObject {
                 status = "Paused while this app is in the background"
             }
         }
+    }
+
+    // MARK: Freeze log (docs/FREEZE_LOG.md)
+
+    private func gameChanged() {
+        lastGameChangeAt = ProcessInfo.processInfo.systemUptime; stallRecorded = false
+        if let snapshot {
+            let prompt = poll?.prompt == nil ? "nothing for you" : (snapshot.promptEnvelopeV2?.responseKind ?? "a prompt for you")
+            FreezeLog.shared.note("Turn \(snapshot.turn) \(snapshot.step ?? snapshot.phase), \(snapshot.isViewer(snapshot.activePlayerId) ? "yours" : "theirs"), \(prompt)")
+        } else if let phase = poll?.phase {
+            FreezeLog.shared.note("Game \(phase)")
+        }
+        updateFreezeContext(now: lastGameChangeAt)
+    }
+
+    private func startStallWatch() {
+        stallWatch?.cancel()
+        stallWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                self?.checkForStall()
+            }
+        }
+    }
+
+    /// Every 5 s while a game is on: a stall by FreezeRules is recorded once until the game moves again.
+    func checkForStall(now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        guard isForeground, !isClosing, client != nil else { return }
+        updateFreezeContext(now: now)
+        let kind = FreezeRules.stall(
+            inGame: snapshot != nil, over: isOverForSeat || snapshot?.isCompleted == true,
+            waitingOnYou: poll?.prompt != nil && pending == nil,
+            waitingOnPerson: table != nil && snapshot?.waitingOnPersonID != nil,
+            answerPendingSeconds: pending == nil ? nil : answerSentAt.map { now - $0 },
+            quietSeconds: now - lastGameChangeAt, withPeople: table != nil)
+        guard let kind, !stallRecorded else { return }
+        stallRecorded = true
+        FreezeLog.shared.record(kind: kind, extra: FreezeDevice.summary(foreground: isForeground))
+    }
+
+    /// Brings the freeze log's picture of the game up to date (a manual report).
+    func refreshFreezeContext() { updateFreezeContext(now: ProcessInfo.processInfo.systemUptime) }
+
+    /// The game as a freeze report describes it, kept current so the watchdog can read it while the main thread is stuck.
+    private func updateFreezeContext(now: TimeInterval) {
+        var lines = ["Game: \(freezeMode)\(table == nil ? "" : " (a table)") · status \(status)"]
+        if let snapshot {
+            let prompt = snapshot.promptEnvelopeV2.map { "\($0.responseKind): \($0.message.prefix(160))" } ?? "none shown"
+            lines.append("Turn \(snapshot.turn)\(snapshot.round.map { " (round \($0))" } ?? "") · \(snapshot.step ?? snapshot.phase) · \(snapshot.isViewer(snapshot.activePlayerId) ? "your turn" : "their turn") · revision \(snapshot.bridgeRevision.map(String.init) ?? "?")")
+            lines.append("Waiting on you: \(poll?.prompt != nil ? "yes" : "no") · prompt \(prompt)")
+        }
+        lines.append("Answer pending: \(pending.map { "\($0.label), \(Int(now - (answerSentAt ?? now))) s" } ?? "none") · working \(isWorking) · auto-pass \(isAutoPassing)\(autoPassStatus.isEmpty ? "" : " (\(autoPassStatus))") · smart pass \(smartPass == nil ? "off" : "on") · idle polls \(idlePolls)")
+        lines.append(String(format: "Game unchanged for %.0f s", now - lastGameChangeAt))
+        if let errorMessage { lines.append("Error: \(errorMessage.prefix(300))") }
+        FreezeLog.shared.setContext(lines.joined(separator: "\n"))
     }
 
     private func beginPolling() {

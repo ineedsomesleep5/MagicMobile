@@ -1,0 +1,119 @@
+{
+ "portrait": {
+  "width": 1200,
+  "height": 2600,
+  "lights": [
+   {
+    "x": 0.5,
+    "y": 0.6314,
+    "layer": "back",
+    "kind": "hearth",
+    "radius": 0.1353
+   },
+   {
+    "x": 0.2929,
+    "y": 0.4207,
+    "layer": "back",
+    "kind": "candle",
+    "radius": 0.0337
+   },
+   {
+    "x": 0.7071,
+    "y": 0.4207,
+    "layer": "back",
+    "kind": "candle",
+    "radius": 0.0337
+   },
+   {
+    "x": 0.0876,
+    "y": 0.2574,
+    "layer": "mid",
+    "kind": "candle",
+    "radius": 0.0462
+   },
+   {
+    "x": 0.9124,
+    "y": 0.2574,
+    "layer": "mid",
+    "kind": "candle",
+    "radius": 0.0462
+   },
+   {
+    "x": 0.2245,
+    "y": 0.1212,
+    "layer": "mid",
+    "kind": "lantern",
+    "radius": 0.1331
+   },
+   {
+    "x": 0.7755,
+    "y": 0.1212,
+    "layer": "mid",
+    "kind": "lantern",
+    "radius": 0.1331
+   }
+  ]
+ },
+ "landscape": {
+  "width": 2600,
+  "height": 1200,
+  "lights": [
+   {
+    "x": 0.5,
+    "y": 0.7443,
+    "layer": "back",
+    "kind": "hearth",
+    "radius": 0.1804
+   },
+   {
+    "x": 0.418,
+    "y": 0.3525,
+    "layer": "back",
+    "kind": "candle",
+    "radius": 0.0449
+   },
+   {
+    "x": 0.582,
+    "y": 0.3525,
+    "layer": "back",
+    "kind": "candle",
+    "radius": 0.0449
+   },
+   {
+    "x": 0.2982,
+    "y": 0.3149,
+    "layer": "back",
+    "kind": "candle",
+    "radius": 0.0432
+   },
+   {
+    "x": 0.7018,
+    "y": 0.3149,
+    "layer": "back",
+    "kind": "candle",
+    "radius": 0.0432
+   },
+   {
+    "x": 0.2671,
+    "y": 0.0984,
+    "layer": "mid",
+    "kind": "candle",
+    "radius": 0.0542
+   },
+   {
+    "x": 0.7329,
+    "y": 0.0984,
+    "layer": "mid",
+    "kind": "candle",
+    "radius": 0.0542
+   },
+   {
+    "x": 0.9176,
+    "y": 0.7079,
+    "layer": "front",
+    "kind": "candle",
+    "radius": 0.1495
+   }
+  ]
+ }
+}

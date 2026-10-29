@@ -37,6 +37,33 @@ const RESUME_GRACE_MS = 90_000;
 const IDLE_MS = 30 * 60_000;
 const NAME_LIMIT = 40;
 /**
+ * The web app's own addresses, which may open a table from a browser (CORS on POST /v1/tables; WebSockets aren't
+ * CORS-checked). Phones send no Origin and are unaffected. Each browser then counts against its own creation limit.
+ */
+const WEB_ORIGINS = new Set(["https://magicmobile-web.vercel.app", "http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:4173", "http://127.0.0.1:4173"]);
+
+/** The CORS headers for an allowed web origin; none for anything else. */
+function corsHeaders(request) {
+  const origin = request.headers.get("Origin");
+  if (!origin || !WEB_ORIGINS.has(origin)) return {};
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-headers": "content-type",
+    "access-control-max-age": "86400",
+    vary: "Origin",
+  };
+}
+
+/** The same answer with the caller's CORS headers added. */
+function withCors(response, request) {
+  const headers = corsHeaders(request);
+  if (Object.keys(headers).length === 0) return response;
+  const copy = new Response(response.body, response);
+  for (const [name, value] of Object.entries(headers)) copy.headers.set(name, value);
+  return copy;
+}
+/**
  * Current apps open their socket offering this WebSocket subprotocol, plus their credential as a
  * second one (`magicmobile.key.<hostKey>` or `magicmobile.resume.<token>`), so a host key or resume
  * token never appears in a URL or a request log. The relay answers with this protocol. Android
@@ -150,6 +177,31 @@ const pieceKeys = (peerID, item) => Array.from({ length: item.pieces }, (_, piec
 const legacyQueueKey = (peerID) => `q:${peerID}`;
 const staleAnswer = (item, now) => item.answer && now - item.at > ANSWER_WAIT_MS;
 
+/** POST /v1/tables: opens a table with 2–4 seats and answers its code and the host's key. */
+async function createTable(request, env) {
+  if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  if (!(await mayCreateTable(request, env))) {
+    return json({ error: "rate_limited", message: "You opened several tables in the last minute. Wait a minute, then try again." },
+      429, { "retry-after": String(CREATE_LIMIT_PERIOD_SECONDS) });
+  }
+  const body = await request.json().catch(() => null);
+  const seats = body?.seats;
+  if (!Number.isInteger(seats) || seats < 2 || seats > 4) {
+    return json({ error: "bad_request", message: "A table has 2–4 player seats." }, 400);
+  }
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const code = randomCode();
+    const stub = env.TABLES.get(env.TABLES.idFromName(code));
+    const response = await stub.fetch("https://table/claim", {
+      method: "POST",
+      body: JSON.stringify({ code, seats }),
+    });
+    if (response.status !== 409) return response;
+  }
+  return json({ error: "busy", message: "No table code is free right now. Try again." }, 503);
+
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -157,26 +209,9 @@ export default {
       return json({ ok: true, service: "magicmobile-table-relay", protocol: PROTOCOL });
     }
     if (url.pathname === "/v1/tables") {
-      if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-      if (!(await mayCreateTable(request, env))) {
-        return json({ error: "rate_limited", message: "You opened several tables in the last minute. Wait a minute, then try again." },
-          429, { "retry-after": String(CREATE_LIMIT_PERIOD_SECONDS) });
-      }
-      const body = await request.json().catch(() => null);
-      const seats = body?.seats;
-      if (!Number.isInteger(seats) || seats < 2 || seats > 4) {
-        return json({ error: "bad_request", message: "A table has 2–4 player seats." }, 400);
-      }
-      for (let attempt = 0; attempt < 8; attempt++) {
-        const code = randomCode();
-        const stub = env.TABLES.get(env.TABLES.idFromName(code));
-        const response = await stub.fetch("https://table/claim", {
-          method: "POST",
-          body: JSON.stringify({ code, seats }),
-        });
-        if (response.status !== 409) return response;
-      }
-      return json({ error: "busy", message: "No table code is free right now. Try again." }, 503);
+      // A browser asks first whether the web app may post here (CORS preflight).
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { vary: "Origin", ...corsHeaders(request) } });
+      return withCors(await createTable(request, env), request);
     }
     const match = url.pathname.match(/^\/v1\/tables\/([^/]+)\/socket$/);
     if (match) {

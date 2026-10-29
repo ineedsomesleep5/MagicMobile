@@ -36,6 +36,14 @@ data class ProfileOpponent(val name: String, val commander: String?, val isAI: B
 data class ProfileGame(
     val id: String, val date: Long, val mode: PlayMode, val outcome: RankOutcome, val deckName: String, val commanders: List<String>,
     val colors: List<String>, val opponents: List<ProfileOpponent>, val turns: Int?, val rankDelta: Int? = null, val engineMatchID: String? = null,
+    /** A ranked game's move on the ladder, "Gold II: 3 → 5 pips" (own games only). */
+    val rankLine: String? = null,
+    /** Why a ranked win left the ladder alone (own games only). */
+    val rankNote: String? = null,
+    /** How long it ran (own games from 2026-10-26 on). */
+    val durationSeconds: Int? = null,
+    /** The tier a ranked game was played at (own games only). */
+    val rankTier: RankTier? = null,
 ) {
     val commander: String? get() = commanders.firstOrNull()
     val vsHuman: Boolean get() = opponents.any { !it.isAI }
@@ -43,7 +51,64 @@ data class ProfileGame(
     companion object {
         fun of(match: MatchRecord) = ProfileGame(match.id, match.date, match.mode, match.outcome, match.deckName,
             listOfNotNull(match.commander), match.colors, match.opponents.map { ProfileOpponent(it.name, it.commander, it.isAI) },
-            match.turns.takeIf { it > 0 }, match.rankChange?.pipDelta, match.engineMatchID)
+            match.turns.takeIf { it > 0 }, match.rankChange?.pipDelta, match.engineMatchID,
+            match.rankChange?.let(RankSettlement::line), match.rankNote, match.durationSeconds,
+            match.rankChange?.before?.tier?.takeIf { match.mode == PlayMode.RANKED })
+    }
+}
+
+/**
+ * More of the player's story from their own games (iOS ProfileInsights; parity/profile-cases.json "insights"): the last ten
+ * results, records by mode and by ranked tier, how they do against each commander, and highlights.
+ */
+data class ProfileInsights(
+    /** Newest first. */
+    val form: List<RankOutcome>,
+    /** Ranked, Quick, Casual: the ones played. */
+    val modes: List<Line>,
+    /** Ranked games by the tier they were played at, Bronze up. */
+    val tiers: List<Line>,
+    /** Opponents' commanders, most faced first. */
+    val matchups: List<Line>,
+    val fastestWin: Int?,
+    val averageTurnsInWins: Double?,
+    val averageTurnsInLosses: Double?,
+    val averageMinutes: Double?,
+    val bestDeck: Line?,
+) {
+    data class Line(val id: String, val games: Int, val wins: Int, val losses: Int) {
+        val winRate: Double get() = if (games == 0) 0.0 else wins.toDouble() / games
+    }
+
+    companion object {
+        const val FORM_COUNT = 10
+        const val MAX_MATCHUPS = 5
+        /** A deck needs this many games to be the best one. */
+        const val BEST_DECK_GAMES = 3
+
+        /** Games newest first (the record's order). */
+        fun of(games: List<ProfileGame>): ProfileInsights {
+            fun line(id: String, list: List<ProfileGame>) =
+                Line(id, list.size, list.count { it.outcome == RankOutcome.WIN }, list.count { it.outcome == RankOutcome.LOSS })
+            val modes = listOf(PlayMode.RANKED, PlayMode.QUICK, PlayMode.CASUAL).mapNotNull { mode ->
+                games.filter { it.mode == mode }.takeIf { it.isNotEmpty() }?.let { line(mode.raw, it) }
+            }
+            val tiers = RankTier.entries.mapNotNull { tier ->
+                games.filter { it.mode == PlayMode.RANKED && it.rankTier == tier }.takeIf { it.isNotEmpty() }?.let { line(tier.name.lowercase(), it) }
+            }
+            val faced = LinkedHashMap<String, MutableList<ProfileGame>>()
+            for (game in games) for (commander in game.opponents.mapNotNull { it.commander }.toSet()) faced.getOrPut(commander) { mutableListOf() } += game
+            val matchups = faced.map { line(it.key, it.value) }.sortedWith(compareBy<Line>({ -it.games }, { it.id })).take(MAX_MATCHUPS)
+            val wins = games.filter { it.outcome == RankOutcome.WIN }.mapNotNull { it.turns }
+            val losses = games.filter { it.outcome == RankOutcome.LOSS }.mapNotNull { it.turns }
+            val lengths = games.mapNotNull { it.durationSeconds }.filter { it > 0 }
+            val best = games.filter { it.deckName.isNotEmpty() }.groupBy { it.deckName }.map { line(it.key, it.value) }
+                .filter { it.games >= BEST_DECK_GAMES }
+                .sortedWith(compareBy<Line>({ -it.winRate }, { -it.games }, { it.id })).firstOrNull()
+            return ProfileInsights(games.take(FORM_COUNT).map { it.outcome }, modes, tiers, matchups, wins.minOrNull(),
+                if (wins.isEmpty()) null else wins.sum().toDouble() / wins.size, if (losses.isEmpty()) null else losses.sum().toDouble() / losses.size,
+                if (lengths.isEmpty()) null else lengths.sum().toDouble() / lengths.size / 60, best)
+        }
     }
 }
 
@@ -121,6 +186,8 @@ data class ProfileSummary(
 data class PublicProfile(
     val username: String, val restricted: Boolean, val visibility: ProfileVisibility, val relation: String, val online: Boolean?,
     val title: String?, val favoriteCommander: String?, val rank: Rank?, val summary: ProfileSummary, val games: List<ProfileGame>,
+    /** Finished seasons at their peak, newest first (mm_public_profile `seasons`). */
+    val seasons: List<SeasonBadge> = emptyList(),
 ) {
     data class Rank(val season: String, val step: Int, val pips: Int, val peakStep: Int, val wins: Int, val losses: Int) {
         /** This season's place, or null when it is from an earlier season. */
@@ -172,8 +239,12 @@ data class PublicProfile(
                     row["opponents"].rows().mapNotNull { o -> o["name"].text()?.let { ProfileOpponent(it, o["commander"].text(), o["ai"].flag() ?: true, o["hidden"].flag() ?: false) } },
                     row["turns"].number())
             }
+            val seasons = root["seasons"].rows().mapNotNull { row ->
+                val season = row["season"].text(); val peak = row["peakPoints"].number()
+                if (season == null || peak == null) null else SeasonBadge(season, RankPosition.ofPoints(peak))
+            }
             return PublicProfile(username, false, visibility, relation, root["online"].flag(), root["title"].text(), root["favoriteCommander"].text(),
-                rank, summary, games)
+                rank, summary, games, seasons)
         }
 
         /** PostgREST timestamps: "2026-10-05T12:30:00+00:00", with or without fractions. */

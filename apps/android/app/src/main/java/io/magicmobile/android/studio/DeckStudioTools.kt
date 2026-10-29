@@ -596,8 +596,10 @@ fun DeckStudioPreflightBar(preflight: DeckStudioPreflight, filter: DeckStudioPre
             Text("${preflight.count}/${DeckStudioPreflight.targetCount}",
                 Modifier.semantics { contentDescription = "${CardCountText.label(preflight.count)} of ${DeckStudioPreflight.targetCount}" },
                 color = DeckStudioPalette.ink, style = sf(17f, SfWeight.heavy).copy(fontFeatureSettings = "tnum"))
-            Text(preflight.summary, color = if (preflight.issueCount == 0) DeckStudioPalette.success else DeckStudioPalette.warning,
-                style = sf(13f, SfWeight.semibold))
+            // One line, still honest: it is a quick check, and XMage decides (the judge, 2026-10-22: no separate caption).
+            Text("Quick check · ${preflight.summary}", Modifier.semantics { contentDescription = "${preflight.summary}. ${DeckStudioPreflight.caption}" },
+                color = if (preflight.issueCount == 0) io.magicmobile.android.menus.ArenaMenuStyle.gold else DeckStudioPalette.warning,
+                style = sf(13f, SfWeight.semibold), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         BinderGauge(preflight.count, Modifier.clearAndSetSemantics {}, target = DeckStudioPreflight.targetCount, showsCount = false)
         if (preflight.activeIssues.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -615,7 +617,6 @@ fun DeckStudioPreflightBar(preflight: DeckStudioPreflight, filter: DeckStudioPre
                 }
             }
         }
-        Text(DeckStudioPreflight.caption, color = DeckStudioPalette.secondaryInk, style = sf(12f))
     }
 }
 
@@ -672,7 +673,7 @@ fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStu
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (focused && suggestions.isNotEmpty()) Column(Modifier.fillMaxWidth().shadow(if (binder) 4.dp else 0.dp, RoundedCornerShape(12.dp))
             .grimoirePaper(DeckStudioPalette.surface, 0.2f, RoundedCornerShape(12.dp))
-            .border(if (binder) 1.5.dp else 1.dp, if (binder) Binder.brass else androidx.compose.ui.graphics.SolidColor(DeckStudioPalette.separator), RoundedCornerShape(12.dp))
+            .border(1.dp, binderHairline(), RoundedCornerShape(12.dp))
             .clip(RoundedCornerShape(12.dp))) {
             suggestions.forEachIndexed { index, card ->
                 Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).clickable { commit(card) }.padding(horizontal = 12.dp)
@@ -691,25 +692,27 @@ fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStu
             focused && text.isEmpty() -> Text(DeckStudioPlayText.quickAddHint, color = hintInk, style = StudioText.caption)
         }
         toast?.let { shown ->
-            // A leather slip in brass with a brass Undo plaque.
-            Row(Modifier.fillMaxWidth().shadow(4.dp, RoundedCornerShape(12.dp)).binderLeather(Binder.oxblood, 0.4f, RoundedCornerShape(12.dp))
-                .border(1.5.dp, Binder.brass, RoundedCornerShape(12.dp)).padding(start = 12.dp, end = 4.dp)
+            // A slip of glass in the gold hairline with an Undo pill.
+            Row(Modifier.fillMaxWidth().shadow(4.dp, RoundedCornerShape(12.dp))
+                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(io.magicmobile.android.menus.ArenaGlass.top, io.magicmobile.android.menus.ArenaGlass.bottom)), RoundedCornerShape(12.dp))
+                .border(1.dp, io.magicmobile.android.menus.ArenaGlass.hairline, RoundedCornerShape(12.dp)).padding(start = 12.dp, end = 4.dp)
                 .semantics { liveRegion = LiveRegionMode.Polite }, verticalAlignment = Alignment.CenterVertically) {
-                Text(shown.message, Modifier.weight(1f), color = rgb(0.98, 0.86, 0.62), style = sf(13f, SfWeight.bold), maxLines = 2)
+                Text(shown.message, Modifier.weight(1f), color = io.magicmobile.android.menus.ArenaMenuStyle.text, style = sf(13f, SfWeight.bold), maxLines = 2)
                 val canUndo = model.history.generation == shown.generation
                 BinderPlaque(Modifier.testTag("deckStudio.quickAdd.undo"), title = DeckStudioPlayText.undo, enabled = canUndo) { model.undo(); toast = null }
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            val fieldInk = if (binder) io.magicmobile.android.ui.TavernPalette.parchment else DeckStudioPalette.ink
+            val fieldInk = DeckStudioPalette.ink
+            // Floating over the page's cards, the field is solid glass so nothing shows through it.
             Row(Modifier.weight(1f).defaultMinSize(minHeight = DeckStudioMetrics.controlHeight)
-                .background(if (binder) Color.Black.copy(alpha = 0.5f) else DeckStudioPalette.surfaceElevated, shape)
-                .border(1.dp, if (binder) Binder.brassLight.copy(alpha = 0.3f) else DeckStudioPalette.separator, shape).padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically,
+                .background(if (binder) io.magicmobile.android.menus.ArenaGlass.bottom else DeckStudioPalette.surfaceElevated, shape)
+                .border(0.9.dp, binderHairline(0.7f), shape).padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                SfImage("magnifyingglass", if (binder) Binder.brassLight else DeckStudioPalette.secondaryInk, 15.dp)
+                SfImage("magnifyingglass", DeckStudioPalette.secondaryInk, 15.dp)
                 BasicTextField(text, { text = it; if (it.isNotEmpty()) { error = null; note = null } },
                     Modifier.weight(1f).onFocusChanged { focused = it.isFocused }.testTag("deckStudio.quickAdd").semantics { contentDescription = "Quick add" },
-                    singleLine = true, textStyle = StudioText.body.copy(color = fieldInk), cursorBrush = SolidColor(if (binder) Binder.brassLight else DeckStudioPalette.ink),
+                    singleLine = true, textStyle = StudioText.body.copy(color = fieldInk), cursorBrush = SolidColor(DeckStudioPalette.accent),
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, autoCorrectEnabled = false, imeAction = ImeAction.Done),
                     // Handling Done here, without clearing focus, keeps the keyboard up for the next card.
                     keyboardActions = KeyboardActions(onDone = { commit(null) }),

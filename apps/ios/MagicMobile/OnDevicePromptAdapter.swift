@@ -8,7 +8,7 @@ struct OnDevicePromptPresentation {
 }
 
 enum OnDevicePromptAdapter {
-    static func presentation(_ prompt: MagicMobileOnDevice.EnginePrompt, viewerPlayerID: String, cards: [ZoneCard], players: [PlayerGameState] = [], actingAttackerPlayerID: String? = nil) throws -> OnDevicePromptPresentation {
+    static func presentation(_ prompt: MagicMobileOnDevice.EnginePrompt, viewerPlayerID: String, cards: [ZoneCard], players: [PlayerGameState] = [], stack: [XmageStackObject] = [], actingAttackerPlayerID: String? = nil) throws -> OnDevicePromptPresentation {
         try validate(prompt, viewer: viewerPlayerID)
         let revision = Int(prompt.revision)
         var fields: [String: Any] = [
@@ -27,8 +27,11 @@ enum OnDevicePromptAdapter {
         }
         func targetLabel(_ id: String) -> String {
             if id == viewerPlayerID { return "You" }
+            // An ability on the stack has no card of its own: it goes by its source ("Zur the Enchanter’s ability").
+            let ability = stack.first { $0.id == id && $0.sourceCard?.id != id }.map { "\($0.displaySourceName)’s ability" }
             return EngineDisplayText.label(players.first(where: { $0.playerId == id })?.displayName
                 ?? cards.first(where: { $0.id == id })?.card.name
+                ?? ability
                 ?? id)
         }
         switch prompt.kind {
@@ -155,6 +158,10 @@ enum OnDevicePromptAdapter {
                     }
                 }
                 if row["sourceCard"] == nil { row["sourceUnavailableReason"] = "Source details unavailable" }
+                let rules = item["sourceCard"]?["hideInfo"]?.bool == true ? [] : (item["sourceCard"]?["rules"]?.array?.compactMap(\.string) ?? [])
+                if let rule = EngineDisplayText.abilityRule(label: label, sourceRules: rules, sourceName: row["sourceName"] as? String) {
+                    row["rulesText"] = rule
+                }
                 return row
             }
             if prompt.responseTypes.contains("boolean"), prompt.payload["required"]?.bool == false {
@@ -472,6 +479,29 @@ enum OnDevicePromptAdapter {
 /// Plain-text presentation only: never use these results as engine IDs or answers.
 /// No HTML renderer, network requests, attributed links, or hidden-card lookup.
 enum EngineDisplayText {
+    private static let pickerNumber = try! NSRegularExpression(pattern: #"^\s*\d+\.\s*"#)
+    private static let triggerLine = try! NSRegularExpression(pattern: #"^(?:[^—\n]{1,40}—\s*)?(?:When|Whenever|At)\b"#)
+
+    /// The full rule a trigger or ability choice shows. XMage's picker labels are "N. " plus the ability's rule, which some
+    /// abilities give without their trigger or not at all (Caleb, 2026-10-25: Wrathful Raptors read only "2."), so the
+    /// line comes from the source card's rules: the one line that holds the label's text, or the card's only triggered
+    /// line when the label is empty; else the label without its number. Shared cases: parity/ability-rule-cases.json.
+    /// `sourceName` stands in for the label's {this} (XMage's picker keeps the placeholder), so the card's line is found
+    /// and no raw "{this}" reaches the rules text, which would draw it as a symbol.
+    static func abilityRule(label: String, sourceRules: [String], sourceName: String? = nil) -> String? {
+        let ns = label as NSString
+        var fragment = text(pickerNumber.stringByReplacingMatches(in: label, range: NSRange(location: 0, length: ns.length), withTemplate: ""))
+        if let sourceName, !sourceName.isEmpty { fragment = fragment.replacingOccurrences(of: "{this}", with: sourceName, options: .caseInsensitive) }
+        let lines = sourceRules.flatMap { text($0).components(separatedBy: .newlines) }.filter { !$0.isEmpty }
+        if !fragment.isEmpty {
+            let holding = lines.filter { $0.range(of: fragment, options: .caseInsensitive) != nil }
+            if holding.count == 1 { return holding[0] }
+            return fragment.prefix(1).uppercased() + fragment.dropFirst()
+        }
+        let triggers = lines.filter { triggerLine.firstMatch(in: $0, range: NSRange(location: 0, length: ($0 as NSString).length)) != nil }
+        return triggers.count == 1 ? triggers[0] : nil
+    }
+
     static func label(_ source: String, fallback: String = "") -> String {
         let value = text(source).split(whereSeparator: \.isWhitespace).joined(separator: " ")
         return value.isEmpty ? fallback : value

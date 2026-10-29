@@ -184,6 +184,7 @@ single MIT file with its license header when that is enough.
 | 14 Smart pass waits for effects (2026-10-14, `claude/smart-pass-wait-for-animations`) | Smart auto-pass holds its pass until the board has played what `ScheduledBoardFX.holdsSmartPass` marks (spell showcases, showcase arrivals, cards leaving play, combat hits), read from `BoardPresentationHold` (`BoardFXDirector.smartPassHoldUntil`), at most 4 s per prompt. Ability and trigger resolutions, life, damage and counters never hold. iOS and Android; unit tests pass; phone feel pending Caleb. |
 | 15 Removal plays in order (2026-10-15, `claude/fx-hold-piles`) | A spell is read to its end and a card leaving play finishes before the next group or snapshot plays (`ScheduledBoardFX.release`; abilities keep their quick handoff). The turn banner waits for spells, departures and hits (`centreBusyUntil`). Smart pass gives the board up to 1 s to take in a snapshot (was 150 ms) and waits at most 5 s per prompt; `maximumHold` 4 s. iOS and Android; unit tests pass; phone feel pending Caleb. |
 | 16 Card moments (2026-10-19, `claude/art-fx-plan`) | New events from per-card state (counters by kind, power/toughness, phasing, face, controller): `countersChanged` (replaces `countersAdded`), `statsChanged`, `phased`, `transformed`, `controlChanged`. 3D sprite strips from Blender (`scripts/brand/fx_sprites.py`, image sets `tavern-fx-*`): a +1/+1 emerald, a -1/-1 violet drop, a loyalty shield and a brass coin drop onto the card with a spin and bounce (labels say what they do: "-2/-2"), an exile pillar with a turning sigil ring, phase bands, a brass chain for control changes (since 2026-10-19 it shoots from the taker's portrait, hooks the card on its old side and drags it home), a tile flip for new faces, motes gathering into new tokens. Phased-out tiles keep ArenaBattlefieldCard's own dimmed look. iOS (`BoardFXCardMoments.swift`) and Android (`BoardFXCardMoments.kt`); walkthrough steps 10–15. Unit tests on both; iOS simulator walkthrough checked; Android emulator and phone feel pending. |
+| 17 Arena board mode (2026-10-20, `claude/arena-mode`) | A second board mode beside Hearth (Settings → Board): the Duel Board Prototype artifact on the leaning tavern table (`tavern-arena-*` plates, `scripts/brand/arena_layout.json`), laid out by `ArenaLayout` (`ArenaBoardModel.swift`, `NativeGameView+Arena.swift`). Effects in Arena: no centre showcase (the stack's top card stays on the right and lands with a bloom of its colour behind it, a shine and a few motes, since 2026-10-21 replacing the light-ray flare; permanents fly from it), a slim 0.9 s turn banner that holds effects only that long, your medallion on the result screen; a commander gets a gold bloom at its stack card, a gold rim and a crown (no Hearth showcase). The stack's top, a spell or an ability, has an arc to its targets and a reticle on each. Highlights are the glow border (`ArenaOutlineGlow`) around the frame or card outline. Board tiles lean back with the table and a tapped tile tilts 12° under a big tap mark. Auto Pay, All Attack and the hand postures live in the Arena files. iOS only; Android port pending. Unit tests (incl. real-XMage polls), Arena UI test and presentation-smoke pass; phone feel pending Caleb. |
 
 ## Log
 
@@ -618,3 +619,37 @@ single MIT file with its license header when that is enough.
   (a showcased card from hand lands ~2.05 s in; a voice longer than the entry starts with it). Android reads each
   file's length with MediaMetadataRetriever. Card and land sounds still play at the landing. Voices rebuilt longer
   (`library(gentle:)`, Sonniss slices run into their tails): 0.6-2.0 s instead of 0.4-1.2 s.
+- 2026-10-20 (Claude): Arena board mode (phase 17). `BoardFXOverlay(arena:)` drops the centre showcase for every spell but a commander and draws `rays` at the stack card instead; arrivals take the plain flight from the stack point. `BoardTurnBanner` has an `arenaBanner` (slim title on a hairline) and NativeGameView holds effects 0.9 s behind it in Arena. Next: phone feel, then the Android port.
+- 2026-10-20 (Claude): Arena battlefield sections. Front row: creatures centred, then a side section for planeswalkers,
+  battles and other non-creature permanents (`ArenaFrontSection`); back row: lands, then mana rocks and Treasures.
+  `ArenaRowFit` sizes each row at one card size across the full table width, and BattlefieldRow takes `preferredRows`
+  from it. Tiles lean with `ArenaTableLean` (the plate's camera). Preview: `crowded-battlefield` with
+  `MAGICMOBILE_BOARD_RESOURCE_LAYOUT_UI_TEST=sections`.
+- 2026-10-20 (Claude): Arena layout after the current reference game (Caleb's desktop screenshot): a hand that stays
+  tucked (a tap or a slide pops one card; carry it up to play) on one touch surface (`ArenaHandTouch`), piles bottom left / top
+  right, your medallion above the hand, a standalone side section at the right edge, back-row support right of
+  centre, enamel-and-brass phase icons. Build 51 (internal) predates this. Preview hooks: `MAGICMOBILE_ARENA_HAND=open|pop`
+  on design fixtures.
+- 2026-10-20 (Claude): Arena rollout for build 53. The commander cast no longer plays the Hearth moment: gold rays at the
+  stack card, a gold rim and a crown on it. An ability on the stack is an `ArenaAbilityCard` with an `ArenaStackArc` to its
+  target (or its source, or a player's medallion). The phase strip always has 8 icons, so main 2 lights. Choices are
+  full-table browsers (stack, abilities, scry/surveil/search, modes, questions; see TAVERN_STYLE "Board modes"), studied
+  from Arena gameplay frames. Next: phone feel.
+- 2026-10-21 (Claude): Arena pace. `BoardFXPace.arena` (BoardEventTimeline.swift) keeps the reference game's timings
+  from GAP_ANALYSIS.md §2: your spell 0.35 s onto the stack card, an opponent's revealed for 1.6 s (the stack card grows
+  toward the middle, holds, settles: `arenaRevealID`), triggers 0.5 s, arrivals 0.6 s, strikes 0.45 s one after another
+  0.38 s apart. A cast the board never saw on the stack shows at the stack card's place for its reveal. Smart pass waits
+  for the reveal only. Hearth unchanged. Tests: `testArenaPaceFollowsTheReference`. Next: phone feel with the engine.
+- 2026-10-21 (Claude): Arena polish from Caleb's playtest notes (build 55).
+  - Cast moment: the light rays are gone. `ArenaStackCard` lands with a settle spring, a bloom of the spell's colour
+    behind it (gold for commanders and abilities), a shine sweep and six motes, about 0.55 s, on a `TimelineView` that
+    stops. `BoardFXOverlay` paints nothing over the stack card in Arena.
+  - Targets: `ArenaStackArc` is now a trimmed shape, from the stack card's upper left edge to every target of a spell
+    or ability. `ArenaTargetReticle` (cyan for yours, red for theirs) shows while it waits.
+  - Glow border: `ArenaOutlineGlow` follows the tavern frame, the card or the token arch, as the web board's
+    `glowCanvas` does.
+  - Next: phone feel.
+- 2026-10-21 (Claude): Arena board wipes. When three or more permanents leave in one update, they go one after another
+  (`BoardFXScheduler.sweepStep` 0.16 s, the whole cascade within `sweepSpread` 1.2 s), and whatever the spell returns
+  arrives after them. The caption names the spell and what went (`ArenaSweepRecap`). Smart pass waits for the cascade
+  within its 5 s cap; the engine is never slowed. Hearth unchanged. Test: `testArenaBoardWipeLeavesInACascade`.

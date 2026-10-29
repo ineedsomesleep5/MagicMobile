@@ -4,6 +4,9 @@ import UIKit
 
 struct UniversalPromptActionPanel: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.boardPanelClose) private var panelClose
+    /// Closes the sheet, or the Arena board's panel on the table.
+    private func close() { if let panelClose { panelClose() } else { dismiss() } }
     let snapshot: GameSnapshot
     let selectedCardActions: [LegalAction]
     @Binding var selectedCard: ZoneCard?
@@ -65,6 +68,7 @@ struct UniversalPromptActionPanel: View {
     }
 
     @Environment(\.tavernBoard) private var tavern
+    @Environment(\.arenaBoard) private var arena
 
     /// The tavern's leather title bar: the prompt in engraved gold, whose turn it is on a tag
     /// and a wax seal to close.
@@ -75,7 +79,7 @@ struct UniversalPromptActionPanel: View {
             TavernTag(text: priorityLabel, leather: true)
             Button {
                 GameHaptics.selection()
-                dismiss()
+                close()
             } label: {
                 TavernSealLabel()
             }
@@ -103,7 +107,7 @@ struct UniversalPromptActionPanel: View {
             Group {
                 Button {
                     GameHaptics.selection()
-                    dismiss()
+                    close()
                 } label: {
                     Image(systemName: "xmark")
                 }
@@ -249,7 +253,7 @@ struct UniversalPromptActionPanel: View {
                 }
                 if choices.count > 20 {
                     TextField("Search choices", text: $choiceSearch,
-                              prompt: tavern ? Text("Search choices").foregroundStyle(TavernPalette.ink.opacity(0.5)) : nil)
+                              prompt: tavern ? Text("Search choices").foregroundStyle(arena ? ArenaGlass.text.opacity(0.5) : TavernPalette.ink.opacity(0.5)) : nil)
                         .modifier(TavernFieldChrome(tavern: tavern))
                         .accessibilityIdentifier("prompt.choices.search")
                         .onAppear { choiceSearch = "" }
@@ -1810,6 +1814,8 @@ struct PromptButtonLabel: View {
     /// Full-width option rows: larger type and the whole text, never truncated.
     var large = false
     @Environment(\.tavernBoard) private var tavern
+    /// On an Arena plaque the label is centred serif, sized to its words.
+    @Environment(\.arenaPlaques) private var plaques
 
     var body: some View {
         HStack(spacing: large ? 10 : 6) {
@@ -1832,7 +1838,7 @@ struct PromptButtonLabel: View {
                         Text(text)
                     }
                 }
-                .font(.system(size: large ? 15 : 12, weight: large ? .semibold : .bold))
+                .font(plaques ? .system(size: 15, weight: .bold, design: .serif) : .system(size: large ? 15 : 12, weight: large ? .semibold : .bold))
                 .lineLimit(large ? 8 : 3)
                 .minimumScaleFactor(large ? 0.9 : 0.7)
                 .multilineTextAlignment(.leading)
@@ -1845,7 +1851,7 @@ struct PromptButtonLabel: View {
                         .minimumScaleFactor(0.7)
                 }
             }
-            Spacer(minLength: 0)
+            if !plaques { Spacer(minLength: 0) }
         }
         .padding(.vertical, large ? 6 : 0)
     }
@@ -1856,15 +1862,40 @@ struct PanelActionButtonStyle: ButtonStyle {
     var isPrimary = false
     var compact = false
     @Environment(\.tavernBoard) private var tavern
+    @Environment(\.arenaBoard) private var arena
+    @Environment(\.arenaPlaques) private var plaques
     @Environment(\.isEnabled) private var isEnabled
 
     @ViewBuilder
     func makeBody(configuration: Configuration) -> some View {
-        if tavern && TavernUIKit.available {
+        if arena && plaques {
+            // The answers of an Arena question screen, as in the reference (optional-trigger-prompt-1.jpg): the orange
+            // pill goes ahead ("Do it"), Arena's blue pill declines.
+            ArenaButtonFace(label: configuration.label, kind: isDanger ? .danger : isPrimary ? .primary : .cool,
+                            font: ArenaMenuStyle.title(17, .bold), pressed: configuration.isPressed, inset: 1, glow: 0.7)
+                .frame(minWidth: 140)
+                .frame(height: 48)
+        } else if arena {
+            arenaBody(configuration)
+        } else if tavern && TavernUIKit.available {
             tavernBody(configuration)
         } else {
             classicBody(configuration)
         }
+    }
+
+    /// Arena rows: light text on a glass pane in the gold hairline, a dangerous one in oxblood.
+    private func arenaBody(_ configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(ArenaGlass.text)
+            .shadow(color: .black.opacity(0.6), radius: 1, y: 1)
+            .padding(.horizontal, compact ? 9 : 11)
+            .padding(.vertical, compact ? 4 : 5)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .modifier(ArenaGlassRow(primary: isPrimary, danger: isDanger))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .opacity(isEnabled ? 1 : 0.45)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
     }
 
     /// Tavern rows: a primary choice is parchment in brass trim with dark ink (choice lists mark
@@ -1960,5 +1991,15 @@ struct SurfaceChip: View {
         .frame(maxWidth: .infinity, minHeight: 32)
         .background(MagicPalette.iron.opacity(0.54), in: RoundedRectangle(cornerRadius: 7))
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(MagicPalette.borderBronze.opacity(0.34), lineWidth: 1))
+    }
+}
+
+/// The Arena question screen's answers draw as plaques (`PanelActionButtonStyle`), not glass rows.
+private struct ArenaPlaquesKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    var arenaPlaques: Bool {
+        get { self[ArenaPlaquesKey.self] }
+        set { self[ArenaPlaquesKey.self] = newValue }
     }
 }

@@ -1,0 +1,460 @@
+{
+  "about": "Small Arena board helpers (ArenaBoardModel.swift): the drop rule on the landscape table (design points), the keyword glossary, the commander-taken notice, cards playable from the graveyard or exile, the hand's posture, loyalty costs, amount ranges, split rows and choice lists. Shared cases: ParityGoldenTests.swift (iOS) and apps/web test/arenaBoard.test.ts.",
+  "drops": [
+    {
+      "name": "your land row, from a popped card",
+      "point": [
+        240,
+        320
+      ],
+      "start": [
+        330,
+        300
+      ],
+      "drops": true
+    },
+    {
+      "name": "the table's right side",
+      "point": [
+        820,
+        150
+      ],
+      "start": [
+        500,
+        330
+      ],
+      "drops": true
+    },
+    {
+      "name": "the controls corner",
+      "point": [
+        780,
+        330
+      ],
+      "start": [
+        500,
+        330
+      ],
+      "drops": false
+    },
+    {
+      "name": "back in the hand",
+      "point": [
+        500,
+        400
+      ],
+      "start": [
+        500,
+        300
+      ],
+      "drops": false
+    },
+    {
+      "name": "a wiggle",
+      "point": [
+        330,
+        280
+      ],
+      "start": [
+        330,
+        300
+      ],
+      "drops": false
+    },
+    {
+      "name": "a short slide sideways",
+      "point": [
+        380,
+        300
+      ],
+      "start": [
+        330,
+        300
+      ],
+      "drops": false
+    },
+    {
+      "name": "carried up 24 points",
+      "point": [
+        330,
+        276
+      ],
+      "start": [
+        330,
+        300
+      ],
+      "drops": true
+    },
+    {
+      "name": "the opponent's side",
+      "point": [
+        400,
+        60
+      ],
+      "start": [
+        420,
+        400
+      ],
+      "drops": true
+    },
+    {
+      "name": "just above the corner",
+      "point": [
+        700,
+        298
+      ],
+      "start": [
+        500,
+        400
+      ],
+      "drops": true
+    }
+  ],
+  "glossary": [
+    {
+      "rules": "Flying, vigilance\nFlashback {1}{G}",
+      "keywords": [
+        "Flying",
+        "Vigilance",
+        "Flashback"
+      ]
+    },
+    {
+      "rules": "Flashback {2}",
+      "keywords": [
+        "Flashback"
+      ]
+    },
+    {
+      "rules": "Equipped creature gets +1/+1.",
+      "keywords": []
+    },
+    {
+      "rules": "Deathtouch\nWhenever this creature deals combat damage to a player, create a Treasure token.\nTrample, haste, lifelink",
+      "keywords": [
+        "Deathtouch",
+        "Treasure",
+        "Trample",
+        "Haste"
+      ]
+    },
+    {
+      "rules": "First strike\nProtection from red",
+      "keywords": [
+        "First strike",
+        "Protection"
+      ]
+    }
+  ],
+  "commanderTaken": [
+    {
+      "name": "nothing taken",
+      "theirs": [],
+      "taken": []
+    },
+    {
+      "name": "Chatterfang on the AI's side",
+      "theirs": [
+        "Chatterfang, Squirrel General"
+      ],
+      "taken": [
+        "Chatterfang, Squirrel General|b"
+      ],
+      "noticeStarts": "AI 1 took Chatterfang, Squirrel General."
+    }
+  ],
+  "extraHand": [
+    {
+      "name": "flashback and an impulse draw, not the hand",
+      "casts": [
+        "g1",
+        "e1",
+        "h1"
+      ],
+      "cards": [
+        "g1",
+        "e1"
+      ]
+    },
+    {
+      "name": "nothing playable elsewhere",
+      "casts": [],
+      "cards": []
+    }
+  ],
+  "handPosture": [
+    {
+      "situation": {},
+      "posture": "resting"
+    },
+    {
+      "situation": {
+        "opened": true
+      },
+      "posture": "raised"
+    },
+    {
+      "situation": {
+        "opened": true,
+        "boardDecision": true
+      },
+      "posture": "resting"
+    },
+    {
+      "situation": {
+        "opened": true,
+        "dragging": true
+      },
+      "posture": "resting"
+    },
+    {
+      "situation": {
+        "spread": true
+      },
+      "posture": "spread"
+    },
+    {
+      "situation": {
+        "spread": true,
+        "dragging": true
+      },
+      "posture": "spread"
+    },
+    {
+      "situation": {
+        "spread": true,
+        "boardDecision": true
+      },
+      "posture": "resting"
+    },
+    {
+      "situation": {
+        "spread": true,
+        "spectating": true
+      },
+      "posture": "resting"
+    }
+  ],
+  "loyalty": [
+    {
+      "text": "+1: Create a 2/2 black Zombie.",
+      "cost": "+1",
+      "rest": "Create a 2/2 black Zombie."
+    },
+    {
+      "text": "-4: Each player sacrifices two creatures.",
+      "cost": "−4",
+      "rest": "Each player sacrifices two creatures."
+    },
+    {
+      "text": "−9: Each opponent chooses…",
+      "cost": "−9",
+      "rest": "Each opponent chooses…"
+    },
+    {
+      "text": "0: Draw a card.",
+      "cost": "0",
+      "rest": "Draw a card."
+    },
+    {
+      "text": "Whenever a creature dies, draw a card.",
+      "cost": null
+    }
+  ],
+  "amounts": [
+    {
+      "amounts": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "steps": [
+        [
+          3,
+          5,
+          7
+        ],
+        [
+          3,
+          -5,
+          0
+        ],
+        [
+          3,
+          1,
+          4
+        ]
+      ]
+    },
+    {
+      "minimum": 1,
+      "maximum": null,
+      "max": 100
+    },
+    {
+      "minimum": -3,
+      "maximum": -1,
+      "values": [
+        -3,
+        -2,
+        -1
+      ]
+    },
+    {
+      "amounts": [
+        0,
+        2,
+        4
+      ],
+      "clamp": [
+        [
+          3,
+          2
+        ]
+      ]
+    }
+  ],
+  "affordableX": [
+    {
+      "cost": "{X}{R}",
+      "sources": 11,
+      "x": 10
+    },
+    {
+      "cost": "{X}{X}{G}{U}",
+      "sources": 8,
+      "x": 3
+    },
+    {
+      "cost": "{X}{2}{R}",
+      "sources": 2,
+      "x": 0
+    },
+    {
+      "cost": "{2}{R}",
+      "sources": 9,
+      "x": null
+    }
+  ],
+  "split": [
+    {
+      "label": "Grizzly Bears, P/T: 2/2",
+      "name": "Grizzly Bears"
+    },
+    {
+      "label": "Serra Angel [4cb]",
+      "name": "Serra Angel"
+    }
+  ],
+  "lethal": [
+    {
+      "toughness": 4,
+      "damage": 1,
+      "deathtouch": false,
+      "lethal": 3
+    },
+    {
+      "toughness": 4,
+      "damage": 0,
+      "deathtouch": true,
+      "lethal": 1
+    },
+    {
+      "toughness": 2,
+      "damage": 5,
+      "deathtouch": false,
+      "lethal": 1
+    }
+  ],
+  "choices": [
+    {
+      "options": [
+        [
+          "a",
+          "Doubling Season: If an effect would create one or more tokens, it creates twice that many instead."
+        ],
+        [
+          "b",
+          "Chatterfang, Squirrel General: If one or more tokens would be created, those plus that many Squirrels are created."
+        ],
+        [
+          "c",
+          "Remember answer: Doubling Season: If an effect would create one or more tokens, it creates twice that many instead."
+        ],
+        [
+          "d",
+          "Remember answer: Chatterfang, Squirrel General: If one or more tokens would be created, those plus that many Squirrels are created."
+        ]
+      ],
+      "ids": [
+        "a",
+        "b"
+      ],
+      "remember": [
+        "c",
+        "d"
+      ],
+      "names": [
+        "Doubling Season",
+        "Chatterfang, Squirrel General"
+      ]
+    },
+    {
+      "options": [
+        [
+          "x",
+          "Elf"
+        ]
+      ],
+      "ids": [
+        "x"
+      ],
+      "remember": [
+        null
+      ],
+      "names": [
+        null
+      ]
+    },
+    {
+      "options": [
+        [
+          "y",
+          "Doubling Season [8f2]: If an effect would create tokens…"
+        ]
+      ],
+      "ids": [
+        "y"
+      ],
+      "remember": [
+        null
+      ],
+      "names": [
+        "Doubling Season"
+      ]
+    }
+  ],
+  "colors": [
+    [
+      "Red",
+      "R"
+    ],
+    [
+      "Green mana",
+      "G"
+    ],
+    [
+      "Goblin",
+      null
+    ],
+    [
+      "Colorless",
+      "C"
+    ]
+  ]
+}

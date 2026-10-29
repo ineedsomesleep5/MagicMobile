@@ -33,6 +33,27 @@ class RankedStandingTest {
         assertEquals("counted", value.settlement)
     }
 
+    @Test fun theServersAnswerReplacesThePhonesGuessOnThatGame() {
+        val played = fresh().copy(rankedTicket = "t1").play(RankOutcome.WIN)
+        assertEquals("t1", played.matches.first().rankedTicket)
+        val answer = { body: String -> RankedStanding.parse(Json.parseToJsonElement(body) as JsonObject) }
+        // Counted: the server's own move on the ladder.
+        val counted = answer("""{"season": "2026-10", "points": 6, "settlement": "counted",
+            "change": {"pointsBefore": 4, "pointsAfter": 6, "bonuses": ["underdog"]}, "check": null}""")
+        val settled = played.settlingRanked("t1", counted.settlement, counted.check, counted.change).matches.first()
+        assertEquals(RankPosition.ofPoints(6), settled.rankChange?.after)
+        assertEquals(listOf(RankBonus.UNDERDOG), settled.rankChange?.bonuses)
+        assertNull(settled.rankNote)
+        // Held back: no move, and why.
+        val short = answer("""{"season": "2026-10", "points": 4, "settlement": "unverified", "change": null, "check": "too_short"}""")
+        val held = played.settlingRanked("t1", short.settlement, short.check, short.change).matches.first()
+        assertEquals(0, held.rankChange?.pipDelta)
+        assertEquals("Not ranked: wins before turn 5 don't count", held.rankNote)
+        assertEquals("Not ranked: wins before turn 3 don't count", RankSettlement.note("unverified", "too_short", 5))
+        assertEquals("Not ranked: 12 ranked wins a day", RankSettlement.note("capped", null, 2))
+        assertSame(played, played.settlingRanked("other", "counted", null, null))
+    }
+
     @Test fun adoptsTheServerStanding() {
         val file = fresh().play(RankOutcome.WIN).adopting(standing(points = 9, peak = 12, wins = 5, losses = 2))
         assertEquals(RankPosition.make(RankTier.BRONZE, 2, 1), file.rank.position)
@@ -115,6 +136,9 @@ class RankedStandingTest {
         val id = "3f1c2a9e-7b1d-4c55-9a0e-1d2c3b4a5f60"
         assertEquals(RankedAITicket(id, -4_123_456_789_012_345_678L),
             RankedAITicket.parse("""{"id":"$id","seed":"-4123456789012345678","aiSkill":1}"""))
+        assertEquals(RankedAITicket(id, 7L, RankedAITuning(3, 8, 5.63)),
+            RankedAITicket.parse("""{"id":"$id","seed":"7","aiSkill":3,"aiMistakePercent":8,"aiPower":5.63}"""))
+        assertEquals(RankedAITicket(id, 7L), RankedAITicket.parse("""{"id":"$id","seed":"7","aiSkill":3,"aiMistakePercent":101,"aiPower":5.63}"""))
         assertNull(RankedAITicket.parse("""{"id":"$id","seed":4.5}"""))
         assertNull(RankedAITicket.parse("\"$id\""))
     }

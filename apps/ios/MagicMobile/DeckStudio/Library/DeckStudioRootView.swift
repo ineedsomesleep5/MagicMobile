@@ -16,7 +16,6 @@ struct DeckStudioRootView: View {
     @Environment(\.dynamicTypeSize) private var dynamicType
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var query = DeckStudioLibraryQuery()
-    @AppStorage("deckStudio.library.grid.v1") private var grid = true
     @State private var tags: [String: [String]] = [:]
     @State private var tagLoadToken = UUID()
     @State private var favorites: Set<String> = []
@@ -66,105 +65,49 @@ struct DeckStudioRootView: View {
         return query.apply(to: items, favorites: favorites).compactMap { item in indices[item.id].map { all[$0] } }
     }
 
-    /// Sideways the book lies open as a spread: two pages, each with its own content.
-    @State private var wide = UIScreen.main.bounds.width > UIScreen.main.bounds.height
-    private var spread: Bool { wide && !dynamicType.isAccessibilitySize }   // Grimoire.isSpread
+    /// The deck whose details show beside the boxes (the playing deck until another is chosen).
+    @State private var focused: String?
+    private var focusedEntry: Entry? { records.first { $0.id == (focused ?? selectedDeckID) } ?? visible.first }
 
-    /// What opens the library: its heading, the ways to add a deck, anything to tell the player, and
-    /// the search and filters. Upright it heads the shelf; in a spread it is the left page.
-    @ViewBuilder private var libraryIntro: some View {
-        header
-        DeckStudioArtworkInvitation()
+    /// Anything to tell the player: the library's notices and the artwork invitation.
+    @ViewBuilder private var notices: some View {
         if let error = error ?? library.notice {
             DeckStudioNotice(title: "Your library is preserved", message: error, icon: "exclamationmark.triangle")
         }
         if let loadError {
             DeckStudioNotice(title: "Card catalogue unavailable", message: loadError)
             Button("Retry local catalogue", action: { Task { await loadCatalogue() } })
+                .buttonStyle(ArenaPillButtonStyle())
         }
-        libraryFilters
-        HStack {
-            Text("\(visible.count) decks").font(.subheadline).foregroundStyle(DeckStudioPalette.secondaryInk)
-            Spacer()
-            BinderMenu { BinderMenuPick("Sort decks", selection: $query.sort, options: DeckStudioLibraryQuery.Sort.allCases.map { ($0, $0.rawValue) }) }
-                label: { BinderPlaque { Label(query.sort.rawValue, systemImage: "arrow.up.arrow.down").font(.system(size: 14, weight: .heavy, design: .serif)) } }
-            Button { grid.toggle() } label: { Image(systemName: grid ? "list.bullet" : "square.grid.2x2") }
-                .buttonStyle(BinderPlaqueButtonStyle(square: true))
-                .accessibilityLabel(grid ? "Show deck list" : "Show deck grid")
-        }
-    }
-
-    /// The decks themselves. In a spread they are the right page.
-    @ViewBuilder private var libraryShelf: some View {
-        if visible.isEmpty {
-            BinderEmptyLeaf(title: query.text.isEmpty ? "Your next deck starts here" : "No matching decks",
-                            icon: "rectangle.stack", message: "Create a deck, import a list, or change your filters.")
-        }
-        LazyVGrid(columns: grid && !dynamicType.isAccessibilitySize
-                  ? [GridItem(.adaptive(minimum: 160, maximum: 320), spacing: 16)] : [GridItem(.flexible())], spacing: 16) {
-            ForEach(visible) { value in tile(value.record, included: value.included) }
-        }
-    }
-
-    @ViewBuilder private var nowPlaying: some View {
-        if let playing = records.first(where: { $0.id == selectedDeckID }) {
-            DeckStudioNowPlayingStrip(name: playing.record.name, status: status(playing.id)) { open(playing.id) }
-        }
-    }
-
-    /// The binder's head: Done closes the book; the plaque opens artwork and privacy.
-    private var libraryHead: some View {
-        BinderHead(strap: "Done", strapIdentifier: "deckStudio.library.close", title: "Deck Studio", action: { if let close { close() } else { dismiss() } }) {
-            Button { showPreferences = true } label: { Image(systemName: "slider.horizontal.3") }
-                .buttonStyle(BinderPlaqueButtonStyle(square: true))
-                .accessibilityLabel("Deck artwork and privacy")
-        }
+        DeckStudioArtworkInvitation()
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if spread {
-                    // Each page scrolls by itself, and nothing runs across the fold (Caleb, 2026-10-05).
-                    // The head is written on the left page, so both pages are the same height (Caleb, 2026-10-06).
-                    HStack(alignment: .top, spacing: 6) {
-                        BinderPage(gutter: .trailing) {
-                            VStack(spacing: 0) {
-                                libraryHead
-                                nowPlaying
-                                ScrollView { VStack(alignment: .leading, spacing: 20) { libraryIntro }.padding(16) }
-                            }
-                        }
-                        BinderPage(gutter: .leading) {
-                            ScrollView { VStack(alignment: .leading, spacing: 20) { libraryShelf }.padding(16) }
-                        }
-                    }
-                } else {
-                    BinderPage(gutter: .leading) {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 20) {
-                                libraryIntro
-                                libraryShelf
-                            }.padding(16).frame(maxWidth: 1000).frame(maxWidth: .infinity)
-                        }
-                        .safeAreaInset(edge: .top, spacing: 0) { VStack(spacing: 0) { libraryHead; nowPlaying }.background(GrimoirePaper()) }
-                    }
+        // No NavigationStack: it painted an opaque page over the room (the judge, 2026-10-22), and nothing here pushes.
+        Group {
+            GeometryReader { proxy in
+                let wide = proxy.size.width > proxy.size.height && !dynamicType.isAccessibilitySize
+                // Arena's Decks page: the filters along the top, the boxes across the whole page, and the chosen deck on
+                // a bar along the foot with Edit Deck and Play.
+                VStack(alignment: .leading, spacing: 6) {
+                    libraryBar(wide: wide)
+                    shelf
+                    detail(wide: wide)
                 }
+                .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 6)
             }
-            .padding(.horizontal, 4).padding(.top, 4).padding(.bottom, 2)
             .binderScreen()
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showPreferences) {
                 NavigationStack { GrimoireForm { NativeArtworkPreferenceView() }
                     .binderLeaf("Artwork & privacy", trailing: BinderLeafAction(title: "Done") { showPreferences = false }) }
-                    .preferredColorScheme(.light).grimoirePage(.loose)
+                    .preferredColorScheme(.dark).grimoirePage(.loose)
             }
             .fullScreenCover(item: $route, onDismiss: {
                 Task { await reloadTags() }
                 // A reviewed import opens in its workspace, where Play is one tap away.
                 if let saved = openAfterImport { openAfterImport = nil; turn(to: .deck(saved, false)) }
             }) { route in
-                // Each of these is the next page of the book: leaving turns back to this one.
                 Group {
                     switch route {
                     case .deck(let record, let included):
@@ -175,6 +118,8 @@ struct DeckStudioRootView: View {
                     }
                 }
                 .environment(\.grimoireClose, { turn(to: nil) })
+                // A full-screen cover is outside the menu shell: it draws its own dimmed room (the judge, 2026-10-22).
+                .environment(\.arenaMenuBackdrop, false)
             }
             .binderConfirm("Delete this local deck?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
                            message: pendingDelete.map { record in "local:\(record.id)" == selectedDeckID
@@ -188,15 +133,206 @@ struct DeckStudioRootView: View {
                 guard let deckID else { return }
                 play.requestFix(deckID: deckID, cards: cards); open(deckID)
             }
-            // The library's confirmation sits outside binderScreen(), so it gets a host of its own.
             .binderOverlayHost()
         }
-        .tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light)
-        .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { wide = $0 }
+        .tint(DeckStudioPalette.accent).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.dark)
         .task { connectPlay(); loadFavorites(); await loadCatalogue(); refreshCheckKeys(); openFocus(); await reloadTags() }
         .onChange(of: library.decks.map(\.id)) { _, _ in Task { await reloadTags() } }
         .onChange(of: library.decks) { _, _ in refreshCheckKeys() }
         .onChange(of: selectedDeckID) { _, value in play.selectedDeckID = value }
+    }
+
+    /// The bar over the boxes: search, which decks, their order, Import and the artwork settings.
+    private func libraryBar(wide: Bool) -> some View {
+        let artwork = Button { showPreferences = true } label: { Image(systemName: "photo.on.rectangle.angled") }
+            .buttonStyle(BinderPlaqueButtonStyle(square: true))
+            .accessibilityLabel("Deck artwork and privacy")
+        let pills = HStack(spacing: 8) {
+            BinderMenu { BinderMenuPick("Show decks", selection: $query.filter, options: DeckStudioLibraryQuery.Filter.allCases.map { ($0, $0.rawValue) }) }
+                label: { BinderPlaque { HStack(spacing: 5) { Text(query.filter == .all ? "All decks" : query.filter.rawValue); Image(systemName: "chevron.down").font(.system(size: 9, weight: .heavy)) } } }
+                .accessibilityIdentifier("deckStudio.library.filter")
+            BinderMenu { BinderMenuPick("Sort decks", selection: $query.sort, options: DeckStudioLibraryQuery.Sort.allCases.map { ($0, $0.rawValue) }) }
+                label: { BinderPlaque { HStack(spacing: 5) { Text(query.sort.rawValue); Image(systemName: "chevron.down").font(.system(size: 9, weight: .heavy)) } } }
+            Button { turn(to: .importer) } label: { Label("Import", systemImage: "square.and.arrow.down") }
+                .buttonStyle(BinderPlaqueButtonStyle()).accessibilityIdentifier("deckStudio.import")
+                .disabled(resolver == nil)
+        }
+        return VStack(alignment: .leading, spacing: 4) {
+            if wide {
+                HStack(spacing: 8) {
+                    BinderSearchField(placeholder: "Search decks", text: $query.text,
+                                      identifier: "deckStudio.library.search", focus: $searchFocused)
+                        .frame(minWidth: 210, maxWidth: 300)
+                    pills.fixedSize()
+                    Spacer(minLength: 0)
+                    artwork
+                }
+            } else {
+                HStack(spacing: 8) {
+                    BinderSearchField(placeholder: "Search decks, commanders or tags", text: $query.text,
+                                      identifier: "deckStudio.library.search", focus: $searchFocused)
+                    artwork
+                }
+                pills.fixedSize()
+            }
+            notices
+        }
+    }
+
+    /// Every deck as a deck box (the first box makes a new deck); the chosen one stands open.
+    private var shelf: some View {
+        GeometryReader { proxy in
+            let gap: CGFloat = 12
+            let usable = proxy.size.width - 8
+            let columns = max(2, Int((usable + gap) / (112 + gap)))
+            let width = floor((usable - gap * CGFloat(columns - 1)) / CGFloat(columns))
+            let rise = ArenaBoxGeometry(width: width).rise * 1.5
+            // Only a box open in the first row needs room above it.
+            let firstRowOpen = (visible.firstIndex { $0.id == (focused ?? selectedDeckID) } ?? .max) < columns - 1
+            ScrollViewReader { reader in
+            ScrollView {
+                HStack(alignment: .firstTextBaseline) {
+                    ArenaSectionHeader(title: "My Decks", count: visible.count)
+                    Spacer()
+                }
+                if visible.isEmpty {
+                    BinderEmptyLeaf(title: query.text.isEmpty ? "Your next deck starts here" : "No matching decks",
+                                    icon: "rectangle.stack", message: "Create a deck, import a list, or change your filters.")
+                }
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(width), spacing: gap, alignment: .top), count: columns),
+                          alignment: .leading, spacing: rise + 10) {
+                    Button { turn(to: .deck(nil, false)) } label: { ArenaNewDeckBox(width: width) }
+                        .buttonStyle(BrandPressStyle())
+                        .accessibilityLabel("Create deck")
+                        .accessibilityIdentifier("deckStudio.create")
+                    ForEach(visible) { entry in deckBox(entry, width: width) }
+                }
+                .padding(.top, firstRowOpen ? rise + 10 : 8)
+                .padding(.horizontal, 4)
+                .padding(.bottom, 16)
+            }
+            .scrollIndicators(.hidden)
+            // The chosen box comes fully into view, lid and all, as Arena scrolls to it.
+            .onChange(of: focused) { _, id in
+                guard let id else { return }
+                withAnimation(.easeOut(duration: 0.3)) { reader.scrollTo(id, anchor: UnitPoint(x: 0.5, y: 0.62)) }
+            }
+            .task {
+                // The playing deck's box stands open on arrival: past the first row (the "+" tile takes its first place),
+                // scroll so the whole box rests just above the strip; in the first row the page opens at its top.
+                let index = visible.firstIndex { $0.id == (focused ?? selectedDeckID) } ?? 0
+                guard index + 1 >= columns else { return }
+                try? await Task.sleep(for: .milliseconds(300))
+                reader.scrollTo(focused ?? selectedDeckID, anchor: UnitPoint(x: 0.5, y: 0.94))
+            }
+            .mask(ArenaScrollFade(depth: 28, top: 14))
+            .accessibilityIdentifier("deckStudio.library.grid")
+            }
+        }
+    }
+
+    private func deckBox(_ entry: Entry, width: CGFloat) -> some View {
+        let id = entry.id
+        let draft = NativeDeckDraft(deck: entry.record.deckList)
+        let chosen = id == (focused ?? selectedDeckID)
+        let bracket = entry.included ? CommanderBracket.core : DeckBracketPreference.effective(
+            minimum: BracketRules.bundled.evaluate(entry.record.deckList).minimum,
+            declared: DeckBracketPreference.declared(id, in: MagicMobilePreferences.current))
+        let tag: String? = resolver != nil && status(id) == .needsFixes ? "FIX" : id == selectedDeckID ? "PLAYING" : nil
+        let model = ArenaDeckBoxModel(id: id, name: entry.record.name, commander: entry.record.commander?.cardName,
+                                      colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata) ?? [],
+                                      subtitle: bracket.name, tag: tag)
+        return BinderGuardedButton {
+            // Arena's way: the first tap opens the box and shows the deck; a second opens it for editing.
+            if chosen { turn(to: .deck(entry.record, entry.included)) } else { focused = id }
+        } label: {
+            // The pencil only on the chosen box, so the others' names have the whole plate.
+            ArenaDeckBox(deck: model, selected: chosen, width: width, edit: chosen ? { turn(to: .deck(entry.record, entry.included)) } : nil)
+        }
+        .buttonStyle(BrandPressStyle())
+        .id(id)
+        .accessibilityAddTraits(chosen ? [.isSelected] : [])
+        .accessibilityIdentifier("deckStudio.deck.\(id)")
+        .binderContextMenu { deckActions(entry.record, included: entry.included) }
+    }
+
+    /// The chosen deck: its art, name, commander and colours, its bracket and check, and Edit Deck and Play.
+    @ViewBuilder private func detail(wide: Bool) -> some View {
+        if let entry = focusedEntry {
+            let record = entry.record, id = entry.id
+            let draft = NativeDeckDraft(deck: record.deckList)
+            let bracket = entry.included ? CommanderBracket.core : DeckBracketPreference.effective(
+                minimum: BracketRules.bundled.evaluate(record.deckList).minimum,
+                declared: DeckBracketPreference.declared(id, in: MagicMobilePreferences.current))
+            let facts = VStack(alignment: .leading, spacing: 3) {
+                Text(record.name).font(ArenaMenuStyle.font(16, .bold)).foregroundStyle(ArenaMenuStyle.text)
+                    .lineLimit(1).minimumScaleFactor(0.75)
+                Text(DeckStudioDraftPresentation.commanders(draft).joined(separator: " • "))
+                    .font(ArenaMenuStyle.font(11.5, .medium)).italic().foregroundStyle(ArenaMenuStyle.dim).lineLimit(1)
+                HStack(spacing: 8) {
+                    ArenaPips(colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata) ?? [], size: 14)
+                    BracketTag(bracket: bracket, short: true)
+                        .accessibilityIdentifier("deckStudio.bracket.\(id)")
+                    Text("\(CardCountText.label(DeckStudioDraftPresentation.gameCount(draft))) · \(entry.included ? "Included" : "Your deck")")
+                        .font(ArenaMenuStyle.font(11, .medium)).foregroundStyle(ArenaMenuStyle.dim).lineLimit(1)
+                    if resolver != nil && status(id) == .needsFixes { DeckStudioPlayStatusChip(status: .needsFixes) }
+                }
+            }
+            let tools = HStack(spacing: 0) {
+                Button { toggleFavorite(id) } label: { Image(systemName: favorites.contains(id) ? "star.fill" : "star") }
+                    .buttonStyle(BinderCoinButtonStyle(lit: favorites.contains(id)))
+                    .accessibilityLabel(favorites.contains(id) ? "Unfavorite \(record.name)" : "Favorite \(record.name)")
+                BinderMenu { deckActions(record, included: entry.included) } label: { BinderCoin { Image(systemName: "ellipsis") } }
+                    .accessibilityLabel("Options for \(record.name)")
+            }
+            let edit = Button { turn(to: .deck(record, entry.included)) } label: {
+                Text("Edit Deck").lineLimit(1).fixedSize().frame(maxWidth: .infinity)
+            }
+                .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
+                .accessibilityIdentifier("deckStudio.edit")
+            let playButton = Button { playFromLibrary(entry) } label: { Text("Play").frame(maxWidth: .infinity) }
+                .buttonStyle(ArenaPlayButtonStyle(fontSize: 18))
+                .frame(height: 44)
+                .disabled(resolver == nil || play.isChecking)
+                .accessibilityIdentifier("deckStudio.library.play")
+            let art = ArenaArt(name: record.commander?.cardName ?? "", colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata) ?? [])
+                .frame(width: wide ? 40 : 52, height: wide ? 40 : 64)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 0.9))
+            Group {
+                if wide {
+                    // Arena's strip along the foot of the Decks page: one row, Edit Deck and Play at the right (the judge,
+                    // 2026-10-22, decks-1.png), so the boxes keep the page.
+                    HStack(spacing: 10) {
+                        art
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(record.name).font(ArenaMenuStyle.font(15, .bold)).foregroundStyle(ArenaMenuStyle.text)
+                                .lineLimit(1).minimumScaleFactor(0.75)
+                            HStack(spacing: 6) {
+                                ArenaPips(colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata) ?? [], size: 13)
+                                BracketTag(bracket: bracket, short: true)
+                                    .accessibilityIdentifier("deckStudio.bracket.\(id)")
+                                if resolver != nil && status(id) == .needsFixes { DeckStudioPlayStatusChip(status: .needsFixes) }
+                            }
+                        }
+                        Spacer(minLength: 6)
+                        tools
+                        edit.frame(width: 120)
+                        playButton.frame(width: 150)
+                    }
+                } else {
+                    VStack(spacing: 8) {
+                        HStack(spacing: 10) { art; facts; Spacer(minLength: 0); tools }
+                        HStack(spacing: 10) { edit; playButton }
+                    }
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, wide ? 4 : 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .modifier(ArenaGlassPanel(cornerRadius: 14, opacity: 0.92))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("deckStudio.detail")
+        }
     }
 
     // MARK: Playing deck
@@ -238,6 +374,10 @@ struct DeckStudioRootView: View {
         GrimoireStage.shared.turnPage(forward: next != nil) { route = next }
     }
     private func openFocus() {
+        #if DEBUG
+        // Development fixture (MAGICMOBILE_UI_TEST_OPEN=deck): the playing deck's workspace.
+        if !focusHandled, SocialFixtures.openScreen == "deck" { focusHandled = true; open(selectedDeckID); return }
+        #endif
         guard !focusHandled, let focus else { return }
         focusHandled = true
         play.requestFix(deckID: focus.deckID, cards: focus.cards); open(focus.deckID)
@@ -246,107 +386,6 @@ struct DeckStudioRootView: View {
         play.play(name: entry.record.name) { .init(deckID: entry.id, deck: entry.record.deckList) }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            GrimoireHeading(kicker: "Your collection", title: "My Decks", subtitle: "Find your next move.")
-            ViewThatFits(in: .horizontal) {
-                HStack { createButton; importButton }
-                VStack { createButton; importButton }
-            }.padding(.top, 8)
-        }
-    }
-    private var createButton: some View {
-        Button { turn(to: .deck(nil, false)) } label: { Label("Create deck", systemImage: "plus").frame(maxWidth: .infinity) }
-            .buttonStyle(DeckStudioPlayButtonStyle()).accessibilityIdentifier("deckStudio.create")
-    }
-    private var importButton: some View {
-        Button { turn(to: .importer) } label: { Label("Import", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity) }
-            .buttonStyle(BinderPlaqueButtonStyle()).accessibilityIdentifier("deckStudio.import")
-            .disabled(resolver == nil)
-    }
-    private var libraryFilters: some View {
-        // The binder's brass rail, as on a deck's Cards page: the search, and the shelves as chips.
-        BinderRail {
-            VStack(spacing: 8) {
-                BinderSearchField(placeholder: "Search decks, commanders or tags", text: $query.text,
-                                  identifier: "deckStudio.library.search", focus: $searchFocused)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(DeckStudioLibraryQuery.Filter.allCases) { filterChip($0) }
-                    }
-                }
-            }
-        }
-    }
-    /// One shelf of the library as a chip on the rail: ember glass when chosen.
-    private func filterChip(_ filter: DeckStudioLibraryQuery.Filter) -> some View {
-        let chosen = query.filter == filter
-        return Button { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { query.filter = filter } } label: {
-            Text(filter.rawValue).font(.system(size: 14, weight: .bold, design: .serif))
-                .foregroundStyle(chosen ? Color(red: 1, green: 0.92, blue: 0.7) : TavernPalette.parchment.opacity(0.75))
-                .shadow(color: .black.opacity(0.7), radius: 0.5, y: 1)
-                .padding(.horizontal, 14).frame(minHeight: 36)
-                .background {
-                    if chosen { TavernFill(material: .ember).clipShape(Capsule()) }
-                    else { Capsule().fill(.black.opacity(0.4)) }
-                }
-                .overlay(Capsule().strokeBorder(chosen ? Binder.brassLight.opacity(0.7) : TavernPalette.brass.opacity(0.5), lineWidth: 1))
-                .frame(minHeight: 44).contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityAddTraits(chosen ? [.isSelected] : [])
-    }
-    private func tile(_ record: DeckLibraryRecord, included: Bool) -> some View {
-        let id = selectionID(record, included: included)
-        let draft = NativeDeckDraft(deck: record.deckList)
-        return VStack(alignment: .leading, spacing: 0) {
-            BinderGuardedButton { turn(to: .deck(record, included)) } label: {
-                VStack(alignment: .leading, spacing: 10) {
-                    DeckStudioTileCover(height: grid ? 164 : 130) {
-                        DeckStudioArtwork(name: record.commander?.cardName ?? "", hero: true,
-                                          colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata),
-                                          art: .exact(record.commander?.printing))
-                    }
-                        .overlay(alignment: .topTrailing) {
-                            // The deck's Commander bracket (Ranked/CommanderBrackets.swift).
-                            BracketTag(bracket: included ? .core : DeckBracketPreference.effective(
-                                minimum: BracketRules.bundled.evaluate(record.deckList).minimum,
-                                declared: DeckBracketPreference.declared(id, in: MagicMobilePreferences.current)), short: true)
-                                .padding(10)
-                                .accessibilityIdentifier("deckStudio.bracket.\(id)")
-                        }
-                        .overlay(alignment: .topLeading) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                if id == selectedDeckID { DeckStudioPlayingBadge() }
-                                // Only a deck that needs fixes says so on its tile (Caleb, 2026-10-03).
-                                if resolver != nil && status(id) == .needsFixes { DeckStudioPlayStatusChip(status: .needsFixes) }
-                            }.padding(10)
-                        }
-                    DeckStudioTileDetails(name: record.name,
-                        commanders: DeckStudioDraftPresentation.commanders(draft).joined(separator: " • "),
-                        colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata),
-                        tags: tags[record.id] ?? [], showTags: tags.values.contains(where: { !$0.isEmpty }),
-                        summary: "\(CardCountText.label(DeckStudioDraftPresentation.gameCount(draft))) · \(included ? "Included" : "Local draft")")
-                        .padding(.horizontal, 14).padding(.bottom, 10)
-                }.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-            }.buttonStyle(DeckStudioArtworkButtonStyle()).accessibilityIdentifier("deckStudio.deck.\(id)")
-            HStack(spacing: 0) {
-                Group {
-                    if !included { Text(record.updatedAt, style: .date) }
-                    else { Text("Make it your own") }
-                }.font(.system(size: 12, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
-                    .lineLimit(2, reservesSpace: true).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                // Brass coins: the favourite star (lit with ember once chosen) and the deck's options.
-                Button { toggleFavorite(id) } label: { Image(systemName: favorites.contains(id) ? "star.fill" : "star") }
-                    .buttonStyle(BinderCoinButtonStyle(lit: favorites.contains(id)))
-                    .accessibilityLabel(favorites.contains(id) ? "Unfavorite \(record.name)" : "Favorite \(record.name)")
-                BinderMenu { deckActions(record, included: included) } label: { BinderCoin { Image(systemName: "ellipsis") } }
-                    .accessibilityLabel("Options for \(record.name)")
-            }.padding(.horizontal, 14)
-        }
-        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-        // Each deck is a little book on the page: a plate in a brass edge with book-corner protectors.
-        .binderPlate(corners: .book)
-        .binderContextMenu { deckActions(record, included: included) }
-    }
     @ViewBuilder private func deckActions(_ record: DeckLibraryRecord, included: Bool) -> some View {
             BinderMenuHeading(record.name)
             BinderMenuButton(DeckStudioPlayText.play, systemImage: "play.fill") { playFromLibrary(Entry(record: record, included: included)) }
@@ -547,7 +586,7 @@ struct DeckStudioArtworkInvitation: View {
             DisclosureGroup(isExpanded: $expanded) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Turn on artwork across the app to send displayed card names and your IP address to Scryfall. Saved images remain available offline. Change this anytime in Artwork & privacy.")
-                        .font(.system(size: 13, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
+                        .font(ArenaMenuStyle.font(13, .regular)).foregroundStyle(DeckStudioPalette.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                     Button("Turn on") { remoteArtwork = true }
                         .buttonStyle(BinderPlaqueButtonStyle())
@@ -557,7 +596,7 @@ struct DeckStudioArtworkInvitation: View {
             } label: {
                 HStack(spacing: 10) {
                     BinderStamp(icon: "photo.on.rectangle.angled", size: 28)
-                    Text("Online card images are off").font(.system(size: 15, weight: .bold, design: .serif))
+                    Text("Online card images are off").font(ArenaMenuStyle.font(15, .bold))
                 }
                 .frame(minHeight: 32)
             }

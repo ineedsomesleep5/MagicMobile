@@ -18,6 +18,44 @@ import kotlinx.serialization.json.JsonPrimitive
 
 /** Resolves only reverse faces attested by the bundled, selected-printing aliases. */
 object NativeDeckCanonicalNames {
+    /**
+     * The names a deck's card is looked up by, in order (iOS NativeDeckCanonicalNames.candidates, parity/card-name-cases.json;
+     * Caleb, 2026-10-26: Archidekt links dropped cards that search then found). The exact name first, then plain letters for
+     * accents ("Troll of Khazad-dûm": XMage spells names without them), then the front of a two-part name ("Brazen Borrower //
+     * Petty Theft": adventure, omen and prepare cards, whose full name only Archidekt sends). An exact split-card name wins.
+     */
+    fun candidates(raw: String): List<String> {
+        val name = raw.trim()
+        val found = LinkedHashSet<String>()
+        fun add(value: String) { if (value.isNotEmpty()) found += value }
+        add(name)
+        add(plainLetters(name))
+        val split = name.indexOf(" // ")
+        if (split > 0) {
+            val front = name.substring(0, split).trim()
+            add(front)
+            add(plainLetters(front))
+        }
+        return found.toList()
+    }
+
+    /**
+     * Whether [candidate] is the front of the two-part [name] (as written or in plain letters). A double-faced card's front
+     * never stands in for a different back: its aliases name the real one ("Front // Wrong" stays unknown).
+     */
+    fun isFront(candidate: String, name: String): Boolean {
+        val trimmed = name.trim()
+        val split = trimmed.indexOf(" // ")
+        if (split <= 0) return false
+        val front = trimmed.substring(0, split).trim()
+        return candidate == front || candidate == plainLetters(front)
+    }
+
+    /** Accents off, Æ as Ae, a curly apostrophe straight. */
+    fun plainLetters(name: String): String =
+        java.text.Normalizer.normalize(name.replace("\u2019", "'").replace("Æ", "Ae").replace("æ", "ae"), java.text.Normalizer.Form.NFKD)
+            .replace(Regex("\\p{Mn}+"), "")
+
     fun reverseFaces(aliases: Map<String, String>, exactNames: Set<String>): Map<String, String> {
         val candidates = HashMap<String, MutableSet<String>>()
         for ((combined, front) in aliases) {
@@ -79,7 +117,15 @@ class NativeDeckMetadataCatalogue(private val catalogue: Catalogue) {
         reverseFaces = NativeDeckCanonicalNames.reverseFaces(aliases, names)
     }
 
-    fun card(name: String): CardInfo? = catalogue.find(name) ?: aliases[name]?.let(catalogue::find) ?: reverseFaces[name]?.let(catalogue::find)
+    fun card(name: String): CardInfo? = NativeDeckCanonicalNames.candidates(name).firstNotNullOfOrNull { candidate ->
+        (catalogue.find(candidate) ?: aliases[candidate]?.let(catalogue::find) ?: reverseFaces[candidate]?.let(catalogue::find))
+            ?.takeUnless { NativeDeckCanonicalNames.isFront(candidate, name) && it.name in aliasedFronts }
+    } ?: NativeDeckCanonicalNames.candidates(name).firstNotNullOfOrNull { candidate ->
+        // A fix the server sent for a name a deck site spells its own way (AppConfig).
+        io.magicmobile.android.game.AppConfigState.current.nameFixes[candidate]?.let(catalogue::find)
+    }
+    /** Front faces with an attested back (double-faced cards). */
+    private val aliasedFronts: Set<String> by lazy { aliases.values.toSet() }
 
     /** All names this installed engine catalogue supports, without the search limit. */
     val artworkCardNames: List<String> get() = catalogue.cards.map { it.name }
@@ -215,7 +261,16 @@ class OnDeviceDeckResolver(private val index: PrintingIndex) {
     private val nameAliases: Map<String, String> = index.nameAliases.filterKeys { it !in index.names }
     private val reverseFaces: Map<String, String> = NativeDeckCanonicalNames.reverseFaces(nameAliases, index.names)
 
-    fun canonicalCardName(name: String): String? = if (name in index.names) name else nameAliases[name] ?: reverseFaces[name]
+    /** The catalogue's name for a card, tried by [NativeDeckCanonicalNames.candidates] (exact, plain letters, front face). */
+    fun canonicalCardName(name: String): String? = NativeDeckCanonicalNames.candidates(name).firstNotNullOfOrNull { candidate ->
+        // A double-faced card's front never stands in for a different back (NativeDeckCanonicalNames.isFront).
+        (if (candidate in index.names) candidate else nameAliases[candidate] ?: reverseFaces[candidate])
+            ?.takeUnless { NativeDeckCanonicalNames.isFront(candidate, name) && it in aliasedFronts }
+    } ?: NativeDeckCanonicalNames.candidates(name).firstNotNullOfOrNull { candidate ->
+        // A fix the server sent for a name a deck site spells its own way (AppConfig), when that card is here.
+        io.magicmobile.android.game.AppConfigState.current.nameFixes[candidate]?.takeIf { it in index.names }
+    }
+    private val aliasedFronts: Set<String> = nameAliases.values.toSet()
     fun containsCard(name: String): Boolean = canonicalCardName(name) != null
     /** Every reverse face and the front face it belongs to. */
     val reverseFaceFronts: Map<String, String> get() = reverseFaces
@@ -483,12 +538,14 @@ class OnDeviceDeckLinkImporter(val resolver: OnDeviceDeckResolver) {
             return DeckList(deck.name, DeckEntry(name, 1, "commanders", printing), entries)
         }
 
+        /** A share link's query and fragment are ignored: the request goes to a fixed endpoint built from the deck ID alone
+         *  (an Archidekt share link failed on its tracking query). A link pasted without its scheme is read as HTTPS. */
         fun source(text: String): Source {
-            val value = text.trim()
+            val value = text.trim().let { if ("://" in it) it else "https://$it" }
             val uri = runCatching { java.net.URI(value) }.getOrNull()
             if (value.utf8Size > 2048 || uri == null || uri.scheme != "https" || uri.rawUserInfo != null || uri.port != -1 ||
-                uri.rawQuery != null || uri.rawPath?.contains('%') != false) {
-                throw ImportError("Use an HTTPS public Moxfield or Archidekt deck URL without credentials or query parameters.")
+                uri.rawPath?.contains('%') != false) {
+                throw ImportError("Use an HTTPS public Moxfield or Archidekt deck URL without credentials.")
             }
             val path = uri.path.split('/')
             if (path.size < 3 || path[0].isNotEmpty() || path[1] != "decks") throw ImportError("This is not a supported deck link.")

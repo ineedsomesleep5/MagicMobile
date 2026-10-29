@@ -37,7 +37,7 @@ struct DeckStudioCardSearch: View {
             }
         }
         .sheet(item: $inspection) { card in DeckStudioCardInspector(name: card.name, metadata: card) }
-        .tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        .tint(DeckStudioPalette.accent).preferredColorScheme(.dark).grimoirePage(.loose)
     }
     private var searchContent: some View {
         VStack(spacing: 8) {
@@ -283,7 +283,7 @@ struct DeckStudioCardInspector: View {
                 }.padding(24)
             }
                 .binderLeaf("Card details", trailing: BinderLeafAction(title: "Done", identifier: "deckStudio.inspector.close") { dismiss() })
-        }.foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        }.foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.dark).grimoirePage(.loose)
         .task(id: name) { otherFace = await DoubleFacedCards.shared.loadedOtherFace(of: name) }
     }
     private func artwork(_ name: String, art: CardArtSelection) -> some View {

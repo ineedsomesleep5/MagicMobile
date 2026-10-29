@@ -261,7 +261,7 @@ private struct DeckStudioComboDetail: View {
                 }.padding(24).textSelection(.enabled)
             }.background(GrimoirePaper())
                 .binderLeaf("Combo details", trailing: BinderLeafAction(title: "Done") { dismiss() })
-        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.accent).preferredColorScheme(.dark).grimoirePage(.loose)
     }
     @ViewBuilder private func section(_ title: String, _ value: String) -> some View {
         if !value.isEmpty { VStack(alignment: .leading, spacing: 6) { Text(title).font(.headline); GameRulesText(source: value).font(.subheadline) } }

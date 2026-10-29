@@ -1,5 +1,7 @@
 package io.magicmobile.android.social
 
+import io.magicmobile.android.ui.safeDrawingPaddingEverywhere
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,18 +11,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -65,6 +63,16 @@ import io.magicmobile.android.ranked.SocialRowCard
 import io.magicmobile.android.ranked.SocialWaiting
 import io.magicmobile.android.ranked.TavernScreenHeader
 import io.magicmobile.android.ranked.leatherCard
+import io.magicmobile.android.ranked.ArenaConfirmation
+import io.magicmobile.android.menus.ArenaButton
+import io.magicmobile.android.menus.ArenaButtonKind
+import io.magicmobile.android.menus.ArenaButtonText
+import io.magicmobile.android.menus.ArenaCaps
+import io.magicmobile.android.menus.ArenaGlass
+import io.magicmobile.android.menus.ArenaMenuStyle
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.draw.drawBehind
 import io.magicmobile.android.ranked.socialButton
 import io.magicmobile.android.ui.BrandBackdrop
 import io.magicmobile.android.ui.GameAudio
@@ -154,7 +162,7 @@ fun FriendConversationScreen(account: PlayerAccount, username: String, close: ()
 
     Box(Modifier.fillMaxSize()) {
         BrandBackdrop(Modifier.fillMaxSize(), cards = false)
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
+        Column(Modifier.fillMaxSize().safeDrawingPaddingEverywhere()) {
             Row(Modifier.padding(horizontal = 16.dp).padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) { TavernScreenHeader(username, close, "Messages") }
                 TavernMenu(Modifier.testTag("conversation.more"), TavernMenuEdge.BELOW, contentDescription = "More about $username", label = {
@@ -169,29 +177,37 @@ fun FriendConversationScreen(account: PlayerAccount, username: String, close: ()
                 }
             }
             if (online != null) Text(if (online) "Online now" else "Offline", Modifier.fillMaxWidth().padding(top = 4.dp).testTag("conversation.presence"),
-                color = if (online) rgb(0.45, 0.92, 0.45) else TavernPalette.parchment.copy(alpha = 0.6f), style = sf(12f, SfWeight.semibold, SfDesign.SERIF),
+                color = if (online) rgb(0.45, 0.92, 0.45) else TavernPalette.parchment.copy(alpha = 0.6f), style = ArenaMenuStyle.font(12f, SfWeight.semibold),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("conversation.transcript"), state = listState, horizontalAlignment = Alignment.CenterHorizontally,
                 contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (hasMore) item(key = "earlier") {
-                    Text("Earlier messages", Modifier.padding(bottom = 6.dp).socialButton("Earlier messages", "conversation.earlier") {
-                        val first = messages.firstOrNull() ?: return@socialButton
-                        scope.launch { runCatching { account.thread(username, first.id) }.getOrNull()?.let { messages = FriendMessageRules.merged(messages, it.messages); hasMore = it.hasMore } }
-                    }.padding(10.dp), color = TavernPalette.brass, style = sf(13f, SfWeight.heavy, SfDesign.SERIF))
+                    var loadingEarlier by remember { mutableStateOf(false) }
+                    ArenaButton({
+                        val first = messages.firstOrNull() ?: return@ArenaButton
+                        loadingEarlier = true
+                        scope.launch {
+                            runCatching { account.thread(username, first.id) }.getOrNull()?.let { messages = FriendMessageRules.merged(messages, it.messages); hasMore = it.hasMore }
+                            loadingEarlier = false
+                        }
+                    }, Modifier.padding(bottom = 6.dp), kind = ArenaButtonKind.SECONDARY, compact = true, enabled = !loadingEarlier, identifier = "conversation.earlier") {
+                        SfImage("arrow.up.circle", androidx.compose.material3.LocalContentColor.current, 12.dp)
+                        ArenaButtonText("Earlier messages")
+                    }
                 }
                 when {
                     !loaded -> item(key = "loading") { Box(Modifier.padding(top = 40.dp)) { SocialWaiting("Opening your messages…") } }
                     failure != null && messages.isEmpty() -> item(key = "error") {
                         Row(Modifier.widthIn(max = 640.dp).leatherCard().testTag("conversation.error"), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             SfImage("wifi.exclamationmark", TavernPalette.brass, 16.dp)
-                            Text(failure ?: "", color = TavernPalette.parchment, style = sf(14f, SfWeight.semibold, SfDesign.SERIF))
+                            Text(failure ?: "", color = TavernPalette.parchment, style = ArenaMenuStyle.font(14f, SfWeight.semibold))
                         }
                     }
                     messages.isEmpty() -> item(key = "empty") {
                         Column(Modifier.padding(top = 40.dp).testTag("conversation.empty"), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             SfImage("bubble.left.and.bubble.right.fill", TavernPalette.brass, 30.dp)
                             Text("Say hello to $username. Messages stay between you two.", Modifier.alpha(0.8f), color = TavernPalette.parchment,
-                                style = sf(14f, SfWeight.regular, SfDesign.SERIF), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                style = ArenaMenuStyle.font(14f, SfWeight.regular), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         }
                     }
                 }
@@ -200,27 +216,34 @@ fun FriendConversationScreen(account: PlayerAccount, username: String, close: ()
                     Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().animateItem()) {
                         if (index == 0 || !sameDay(message.sentAt, messages[index - 1].sentAt)) Text(dayLabel(message.sentAt),
                             Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp).alpha(0.55f), color = TavernPalette.parchment,
-                            style = sf(11f, SfWeight.heavy, SfDesign.SERIF, tracking = 0.8f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            style = sf(11f, SfWeight.heavy, tracking = 0.8f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         Bubble(message, username, message.fromMe && message.id == lastMine)
                     }
                 }
             }
-            // Composer: quick replies, then the field and send.
-            Column(Modifier.fillMaxWidth().tavernFill(TavernMaterial.LEATHER, overlayBrush = Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.25f), Color.Transparent)))
+            // Composer: quick replies, then the field and send, on Arena's glass.
+            Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(ArenaGlass.top, ArenaGlass.bottom)))
+                .drawBehind { drawRect(ArenaGlass.hairline, size = androidx.compose.ui.geometry.Size(size.width, 1.dp.toPx()), alpha = 0.6f) }
                 .padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (reply in quickReplies) Text(reply, Modifier.defaultMinSize(minHeight = 32.dp).tavernFill(TavernMaterial.LEATHER, CircleShape).tavernCapsuleRim(thin = true)
-                        .socialButton(reply, "conversation.quick.$reply") { send(reply) }.padding(horizontal = 12.dp, vertical = 8.dp),
-                        color = TavernPalette.parchment, style = sf(12f, SfWeight.heavy, SfDesign.SERIF))
+                    for (reply in quickReplies) Text(reply, Modifier.defaultMinSize(minHeight = 36.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        .border(0.9.dp, ArenaGlass.hairline, CircleShape)
+                        .socialButton(reply, "conversation.quick.$reply") { send(reply) }.padding(horizontal = 12.dp, vertical = 9.dp),
+                        color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(12f, SfWeight.heavy))
                 }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) {
-                        TavernTextField(draft, { draft = it.take(FriendMessageRules.MAX_CODE_POINTS + 20) }, "Message $username", Modifier.testTag("conversation.field"), singleLine = false)
+                    Box(Modifier.weight(1f).defaultMinSize(minHeight = 40.dp).background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(20.dp))
+                        .border(1.dp, ArenaGlass.hairline, RoundedCornerShape(20.dp)).padding(horizontal = 14.dp, vertical = 10.dp), contentAlignment = Alignment.CenterStart) {
+                        if (draft.isEmpty()) Text("Message $username", color = ArenaMenuStyle.dim, style = ArenaMenuStyle.font(15f, SfWeight.regular), maxLines = 1)
+                        BasicTextField(draft, { draft = it.take(FriendMessageRules.MAX_CODE_POINTS + 20) }, Modifier.fillMaxWidth().heightIn(max = 96.dp)
+                            .testTag("conversation.field").semantics { contentDescription = "Message $username" }, maxLines = 4,
+                            textStyle = ArenaMenuStyle.font(15f, SfWeight.regular).copy(color = ArenaMenuStyle.text), cursorBrush = SolidColor(ArenaMenuStyle.gold))
                     }
                     val enabled = !sending && FriendMessageRules.sanitize(draft) != null
-                    Box(Modifier.size(46.dp).alpha(if (enabled) 1f else 0.5f).tavernFill(TavernMaterial.EMBER, CircleShape).border(2.dp, TavernPalette.brass, CircleShape)
+                    Box(Modifier.size(46.dp).alpha(if (enabled) 1f else 0.5f).padding(2.dp).background(ArenaMenuStyle.orange, CircleShape)
+                        .border(1.5.dp, ArenaMenuStyle.orangeRim, CircleShape)
                         .clickable(enabled = enabled) { send(draft) }.semantics { contentDescription = "Send"; role = Role.Button }.testTag("conversation.send"),
-                        contentAlignment = Alignment.Center) { SfImage("paperplane.fill", rgb(1.0, 0.91, 0.66), 17.dp) }
+                        contentAlignment = Alignment.Center) { SfImage("paperplane.fill", Color.White, 17.dp) }
                 }
             }
         }
@@ -228,10 +251,11 @@ fun FriendConversationScreen(account: PlayerAccount, username: String, close: ()
     }
     if (showProfile) androidx.compose.ui.window.Dialog({ showProfile = false },
         androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+        io.magicmobile.android.ui.EdgeToEdgeDialogWindow()
         PublicProfileScreen(account, username) { showProfile = false }
     }
-    if (confirmBlock) TavernConfirmationDialog("Block $username?", "They're removed from your friends and this conversation closes. You can unblock them in Friends later.",
-        listOf(TavernDialogAction("Block", destructive = true) { scope.launch { account.block(username); close() } })) { confirmBlock = false }
+    if (confirmBlock) ArenaConfirmation("Block $username?", "They're removed from your friends and this conversation closes. You can unblock them in Friends later.",
+        "Block", destructive = true, { scope.launch { account.block(username); close() } }) { confirmBlock = false }
 }
 
 @Composable
@@ -244,12 +268,13 @@ private fun Bubble(message: FriendMessage, friend: String, lastMine: Boolean) {
         horizontalAlignment = if (message.fromMe) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         SelectionContainer {
             Text(text, Modifier.glow(Color.Black.copy(alpha = 0.4f), 3.dp, 14.dp)
-                .then(if (message.fromMe) Modifier.background(brassFill, shape) else Modifier.tavernFill(TavernMaterial.PARCHMENT, shape))
-                .border(1.dp, Color.Black.copy(alpha = 0.35f), shape).padding(horizontal = 12.dp, vertical = 8.dp),
-                color = if (message.fromMe) darkBrassInk else TavernPalette.ink, style = sf(15f, SfWeight.regular, SfDesign.SERIF))
+                .then(if (message.fromMe) Modifier.background(brassFill, shape)
+                    else Modifier.background(Color.White.copy(alpha = 0.1f), shape).border(0.8.dp, ArenaGlass.hairline, shape))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+                color = if (message.fromMe) rgb(0.16, 0.08, 0.03) else ArenaMenuStyle.text, style = ArenaMenuStyle.font(15f, SfWeight.regular))
         }
         Text(timeLabel(message.sentAt) + if (lastMine && message.read) " · Read" else "", Modifier.alpha(0.55f), color = TavernPalette.parchment,
-            style = sf(10f, SfWeight.regular, SfDesign.SERIF))
+            style = ArenaMenuStyle.font(10f, SfWeight.regular))
     }
 }
 
@@ -279,8 +304,11 @@ fun FriendMessagesList(account: PlayerAccount, open: (String) -> Unit) {
     }
     val friends = account.friends.filter { it.isFriend }
     val rows = FriendMessageRules.ordered(friends.map { it.username }, conversations)
-    Column(Modifier.leatherCard().testTag("messages.list"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        ProfileSectionTitle("Messages", if (account.unreadMessages > 0) "${account.unreadMessages} unread" else null)
+    Column(Modifier.fillMaxWidth().testTag("messages.list"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            ArenaCaps("Messages", modifier = Modifier.weight(1f))
+            if (account.unreadMessages > 0) Text("${account.unreadMessages} unread", color = ArenaMenuStyle.dim, style = ArenaMenuStyle.font(11f, SfWeight.semibold))
+        }
         when {
             !account.messagesAvailable -> ProfileEmptyNote("Messages arrive with the next server update.", "hourglass")
             friends.isEmpty() -> ProfileEmptyNote("Add a friend to start a conversation. Messages stay between the two of you.", "bubble.left.and.bubble.right.fill")
@@ -292,9 +320,9 @@ fun FriendMessagesList(account: PlayerAccount, open: (String) -> Unit) {
                 Box(Modifier.socialButton("$name${if (unread > 0) ", $unread unread" else ""}, ${if (conversation == null) "no messages yet" else line}", "messages.row.$name") {
                     GameAudio.play(GameSound.UI_OPEN); open(name)
                 }) {
-                    SocialRowCard { SocialPlayerHeading(name, null, line, friend?.online, account.friendRanks[name]) }
+                    SocialRowCard { SocialPlayerHeading(name, null, line, friend?.online, account.friendRanks[name], compact = true) }
                     if (unread > 0) Text("$unread", Modifier.align(Alignment.TopEnd).offset(4.dp, (-6).dp).defaultMinSize(minWidth = 22.dp, minHeight = 22.dp)
-                        .background(TavernPalette.ember, CircleShape).border(1.dp, Color.Black.copy(alpha = 0.4f), CircleShape).padding(horizontal = 7.dp, vertical = 3.dp),
+                        .background(ArenaMenuStyle.ember, CircleShape).border(1.dp, Color.Black.copy(alpha = 0.4f), CircleShape).padding(horizontal = 7.dp, vertical = 3.dp),
                         color = Color.White, style = sf(11f, SfWeight.black), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
             }
@@ -313,7 +341,7 @@ fun FriendMessagesHub(account: PlayerAccount, initial: String? = null, done: () 
     }
     Box(Modifier.fillMaxSize()) {
         BrandBackdrop(Modifier.fillMaxSize(), cards = false)
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+        Column(Modifier.fillMaxSize().safeDrawingPaddingEverywhere()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 8.dp).tavernTitleBar(), verticalAlignment = Alignment.CenterVertically) {
                 TavernPanelTitle("Messages", Modifier.weight(1f).semantics { heading() })
                 TavernSealButton(done, Modifier.testTag("messages.done"), contentDescription = "Done")
@@ -333,14 +361,14 @@ val LocalFriendMessages = androidx.compose.runtime.compositionLocalOf<FriendMess
 /** A friend's new message during a game: a small banner at the top; a tap opens the conversation. */
 @Composable
 fun FriendMessageBanner(name: String, text: String, open: () -> Unit, dismiss: () -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier.widthIn(max = 420.dp).fillMaxWidth().glow(Color.Black.copy(alpha = 0.6f), 8.dp, 22.dp).tavernFill(TavernMaterial.LEATHER, CircleShape)
-        .tavernCapsuleRim(thin = true).clickable(onClick = open)
+    Row(modifier.widthIn(max = 420.dp).fillMaxWidth().glow(Color.Black.copy(alpha = 0.6f), 8.dp, 22.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)
+        .border(1.dp, ArenaGlass.hairline, CircleShape).clickable(onClick = open)
         .semantics(mergeDescendants = true) { contentDescription = "New message from $name: $text"; role = Role.Button }.testTag("messages.banner")
         .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         SfImage("bubble.left.fill", TavernPalette.brass, 15.dp)
         Column(Modifier.weight(1f)) {
-            Text(name, color = TavernPalette.parchment, style = sf(13f, SfWeight.black, SfDesign.SERIF))
-            Text(text, Modifier.alpha(0.85f), color = TavernPalette.parchment, style = sf(12f, SfWeight.regular, SfDesign.SERIF), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(name, color = TavernPalette.parchment, style = ArenaMenuStyle.font(13f, SfWeight.black))
+            Text(text, Modifier.alpha(0.85f), color = TavernPalette.parchment, style = ArenaMenuStyle.font(12f, SfWeight.regular), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Box(Modifier.size(32.dp).clickable(onClick = dismiss).semantics { contentDescription = "Dismiss"; role = Role.Button }, contentAlignment = Alignment.Center) {
             SfImage("xmark", TavernPalette.parchment, 11.dp)

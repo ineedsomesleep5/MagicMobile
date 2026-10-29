@@ -45,10 +45,13 @@ struct OnDeviceYieldPolicy {
         var selfAuthority: Bool
         var resyncRequired: Bool
         var prompt: Prompt?
+        /// An opponent's spell or ability on the stack threatens what you control, and you asked to stop for those
+        /// (OnDeviceSmartPass.threatensViewer, Settings.stopForThreats): even a skip that passes responses stops.
+        var threatToMe = false
     }
 
     enum StopReason: Equatable {
-        case unavailable, turnChanged, controlChanged, stack, decision, interrupted, limit
+        case unavailable, turnChanged, controlChanged, stack, decision, interrupted, limit, threat
         var message: String {
             switch self {
             case .unavailable: return String(localized: "Auto-pass stopped. Pass priority manually.")
@@ -58,6 +61,7 @@ struct OnDeviceYieldPolicy {
             case .decision: return String(localized: "Auto-pass stopped. A choice needs your attention.")
             case .interrupted: return String(localized: "Auto-pass stopped. Review the current game state.")
             case .limit: return String(localized: "Auto-pass stopped after its safety limit.")
+            case .threat: return String(localized: "Auto-pass stopped. An opponent's spell threatens your permanents.")
             }
         }
     }
@@ -103,6 +107,7 @@ struct OnDeviceYieldPolicy {
         else if value.turn < anchor.turn || value.activePlayerID == nil || value.activePlayerID == "" { reason = .interrupted }
         else if turnBoundary { reason = .turnChanged }
         else if mode == .safeEndTurn && !value.emptyStack { reason = .stack }
+        else if value.threatToMe && !value.emptyStack { reason = .threat }
         else if now >= expiresAt || attempted.count >= mode.passLimit { reason = .limit }
         else if let prompt = value.prompt, prompt.manaPlayerID != value.viewerID && prompt.kind == "SELECT" && prompt.selectMode == "priority" { reason = .controlChanged }
         else if let prompt = value.prompt, !Self.ordinaryPriority(prompt, viewer: value.viewerID) { reason = .decision }
@@ -184,6 +189,9 @@ enum OnDeviceSmartPass {
     static let enabledKey = "magicmobile.smartAutoPass"
     /// Off by default: smart pass lets your own spells and triggers resolve (Arena's default; engine release A).
     static let stopForOwnSpellsKey = "magicmobile.stopForOwnSpells"
+    /// On by default (Caleb, 2026-10-21: a board wipe that took his commander went by unread): stop when an opponent's
+    /// spell or ability would destroy, exile, bounce or take what you control, even with nothing to answer it.
+    static let stopForThreatsKey = "magicmobile.stopForThreats"
     static let stopsKey = "magicmobile.phaseStops"
     /// Your main phases, and your opponents' attacks and end step: where instants usually matter.
     static let defaultStops: Set<String> = [stopKey(.main1, myTurn: true), stopKey(.main2, myTurn: true),
@@ -194,6 +202,8 @@ enum OnDeviceSmartPass {
         var stops = OnDeviceSmartPass.defaultStops
         /// Stop for your own spells and triggers on the stack when you could respond to them.
         var stopForOwnSpells = false
+        /// Stop for an opponent's spell or ability that threatens your permanents, response or not.
+        var stopForThreats = true
 
         static func encode(_ stops: Set<String>) -> String { stops.sorted().joined(separator: ",") }
         static func decode(_ raw: String?) -> Set<String> {
@@ -203,7 +213,8 @@ enum OnDeviceSmartPass {
         static func load(_ defaults: UserDefaults = .standard) -> Settings {
             Settings(enabled: defaults.object(forKey: OnDeviceSmartPass.enabledKey) as? Bool ?? true,
                      stops: decode(defaults.string(forKey: OnDeviceSmartPass.stopsKey)),
-                     stopForOwnSpells: defaults.bool(forKey: OnDeviceSmartPass.stopForOwnSpellsKey))
+                     stopForOwnSpells: defaults.bool(forKey: OnDeviceSmartPass.stopForOwnSpellsKey),
+                     stopForThreats: defaults.object(forKey: OnDeviceSmartPass.stopForThreatsKey) as? Bool ?? true)
         }
     }
 
@@ -221,6 +232,10 @@ enum OnDeviceSmartPass {
         /// Some non-mana play could answer the stack or a pending attack (engine `respondsToStack`; a row without
         /// the field counts as a response, so older engines keep today's stops).
         var hasResponse = true
+        /// The top of the stack is an opponent's and threatens what you control (`threatensViewer`).
+        var threatensMe = false
+        /// An activated ability (not a spell, not mana) could answer the stack: Gogo copying your own trigger.
+        var hasAbilityResponse = false
     }
 
     /// The prompt to pass, or nil when the player should decide.
@@ -231,17 +246,40 @@ enum OnDeviceSmartPass {
               let active = context.activePlayerID, !active.isEmpty,
               let prompt = context.prompt, !prompt.submitted,
               OnDeviceYieldPolicy.ordinaryPriority(prompt, viewer: context.viewerID), !value.manaFloating else { return nil }
+        // An opponent's removal or sweeper waits for you to read it and let it resolve, answer or not.
+        if !context.emptyStack && value.threatensMe && settings.stopForThreats && value.topStackIsMine != true { return nil }
         if !value.hasPlay { return prompt }
         // Something on the stack: your own spell or trigger resolves (unless you asked to stop for those);
         // otherwise stop only when you hold a play that actually answers it.
         if !context.emptyStack {
-            if value.topStackIsMine == true && !settings.stopForOwnSpells { return prompt }
+            // Your own trigger still stops when an ability of yours could use it (Caleb, 2026-10-27: Gogo copying Zur's
+            // attack trigger never got the chance); a counterspell in hand doesn't stop it.
+            if value.topStackIsMine == true && !settings.stopForOwnSpells { return value.hasAbilityResponse ? nil : prompt }
             return value.hasResponse ? nil : prompt
         }
         guard let step = Step(engine: value.step) else { return nil }
         // During an attack, a stop is worth making only with a play that answers it (a trick, a flash blocker).
         if [.declareAttackers, .declareBlockers, .combatDamage].contains(step) && !value.hasResponse { return prompt }
         return settings.stops.contains(stopKey(step, myTurn: active == context.viewerID)) ? nil : prompt
+    }
+
+    /// Whether the top of the stack is an opponent's spell or ability that would destroy, exile, bounce, damage or take
+    /// what you control: it targets one of your permanents (or you, when it is a spell), or it is an untargeted
+    /// sweeper, edict or steal by its rules text. A hint for when to stop and let you read, never a rules decision.
+    static func threatensViewer(_ snapshot: GameSnapshot) -> Bool {
+        guard let top = snapshot.stackTopFirst.first, let controller = top.controllerId, !snapshot.isViewer(controller),
+              let viewer = snapshot.players.first(where: { snapshot.isViewer($0.playerId) }) else { return false }
+        let mine = Set(viewer.zones.battlefield.flatMap { [$0.instanceId, $0.id] })
+        let targets = Set(top.targetIds ?? [])
+        if !targets.isDisjoint(with: mine) { return true }
+        let isSpell = (top.objectType ?? "").uppercased() == "SPELL"
+        if isSpell && (targets.contains(viewer.playerId) || targets.contains(snapshot.viewerID)) { return true }
+        guard targets.isEmpty, !mine.isEmpty else { return false }
+        let text = (top.rulesText ?? "").lowercased()
+        let sweeps = ["destroy all", "exile all", "destroy each", "exile each", "return all", "all creatures",
+                      "each creature", "all nonland permanents", "each nonland permanent", "all other creatures",
+                      "sacrifices", "gain control of all", "gains control of all"]
+        return sweeps.contains { text.contains($0) }
     }
 
     /// Whether some non-mana play could answer what is pending (engine `respondsToStack`, missing means yes).
@@ -251,6 +289,20 @@ enum OnDeviceSmartPass {
             for (category, rows) in stats.object ?? [:] {
                 for row in rows.array ?? [] where !(row["manaAbility"]?.bool ?? (category == "basicManaAbilities")) {
                     if row["respondsToStack"]?.bool != false { return true }
+                }
+            }
+        }
+        return false
+    }
+
+    /// Whether an activated ability (engine `spellAbility` false, not a mana ability) could answer the stack. Only an
+    /// explicit `respondsToStack` counts, so older engines keep passing on your own triggers.
+    static func hasAbilityResponse(_ gameView: MagicMobileOnDevice.JSONValue?) -> Bool {
+        let objects = gameView?["canPlayObjects"]?["objects"]?.object ?? [:]
+        for stats in objects.values {
+            for (category, rows) in stats.object ?? [:] {
+                for row in rows.array ?? [] where !(row["manaAbility"]?.bool ?? (category == "basicManaAbilities")) {
+                    if row["spellAbility"]?.bool == false && row["respondsToStack"]?.bool == true { return true }
                 }
             }
         }

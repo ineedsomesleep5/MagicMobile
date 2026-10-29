@@ -1,0 +1,978 @@
+/* The horizontal Arena board (docs/ARENA_STYLE.md), ported from the Duel Board Prototype's landscape layout:
+   the Walnut Tavern plate, Arena positions and timing, glass for everything that isn't a table object. */
+/* clip, not hidden: a hidden box can still be scrolled by scrollIntoView (a focused or clicked control), which shifted the board */
+.arena { position: relative; width: 100%; height: 100%; overflow: hidden; overflow: clip; background: var(--canvas); user-select: none; -webkit-user-select: none;
+  /* Arena's type (ArenaMenuStyle.font): the serif for titles, names on plates, buttons and big numbers; a clean sans below 17 pt */
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --agold: #fad685; --atext: #f2ebdb; --ahair: rgba(245,204,117,.75);
+  --aorange: linear-gradient(transparent 50%, rgba(110,20,0,.35)), linear-gradient(#ffb24a 0%, #f47a1c 48%, #c9420d 100%);
+  --aglass: linear-gradient(rgba(41,43,51,.92), rgba(20,22,26,.94)); }
+/* overflow stays visible: on a tall window the hand shows whole below the plate instead of running off its edge */
+.arena-stage { position: absolute; left: 0; top: 0; width: 956px; height: 440px; transform-origin: 0 0; border-radius: 14px;
+  background: #2a1a10 url(/arena/table.jpg) center/100% 100% no-repeat; }
+.arena-stage button { font-family: var(--sans); border: 0; cursor: pointer; color: inherit; }
+/* Arena buttons are serif (ArenaMenuStyle.title); the rule above would hand them the system sans (Segoe UI on Windows). */
+.arena-stage button.aplaque { font-family: var(--serif); }
+
+/* ambient lamplight over the active player's half */
+.arena .pool-light { position: absolute; left: 172px; width: 610px; height: 220px; z-index: 1; pointer-events: none; opacity: 0; transition: opacity .4s ease, top .4s ease;
+  background: radial-gradient(ellipse 55% 70% at 50% 50%, rgba(255,190,110,.2), rgba(255,150,70,.07) 55%, transparent 75%); mix-blend-mode: screen; }
+.arena .pool-light[data-side=me] { top: 205px; opacity: 1; } .arena .pool-light[data-side=opp] { top: 15px; opacity: 1; }
+.arena .lamp { position: absolute; inset: 0; z-index: 1; pointer-events: none; mix-blend-mode: screen;
+  background: radial-gradient(ellipse 46% 40% at 50% 46%, rgba(255,196,120,.14), rgba(255,160,80,.05) 55%, transparent 75%); }
+
+/* ---------- cards ---------- */
+.acard { position: absolute; left: 0; top: 0; border-radius: .7em; cursor: pointer; will-change: transform;
+  transition: transform .34s cubic-bezier(.2,.75,.25,1), width .34s cubic-bezier(.2,.75,.25,1), height .34s cubic-bezier(.2,.75,.25,1), font-size .34s cubic-bezier(.2,.75,.25,1), filter .3s, opacity .3s; }
+.acard > .lean, .acard .spin { position: absolute; inset: 0; transition: transform .34s cubic-bezier(.2,.75,.25,1), transform-origin .34s cubic-bezier(.2,.75,.25,1); }
+.acard .spin { border-radius: .7em; }
+.acard .spin > .face, .acard .spin > .tile, .acard .spin > .back { position: absolute; inset: 0; pointer-events: none; }
+.acard .face { border-radius: .72em; overflow: hidden; background: #0d0a08; box-shadow: 0 .5em 1.2em rgba(0,0,0,.55); }
+.acard .face img { display: block; width: 100%; height: 100%; object-fit: cover; -webkit-user-drag: none; }
+.acard .face .fallback { position: absolute; inset: .4em; display: grid; place-items: center; text-align: center; padding: .6em; border-radius: .45em;
+  font: 700 1.1em/1.15 var(--serif); color: var(--parchment-ink); background: url(/tavern/parchment.webp) center/12em; }
+/* until the Magic back loads: a dark gradient in a black edge (ArenaCardBack.leatherBack since the Arena look pass) */
+.acard .back { border-radius: .9em; background: linear-gradient(rgba(255,255,255,.08), transparent 50%, rgba(0,0,0,.28)), linear-gradient(#292629, #121012);
+  box-shadow: inset 0 0 0 .9em rgba(0,0,0,.85), 0 .4em .9em rgba(0,0,0,.6); }
+/* the hand's mana cost: a black capsule of flat symbols above the card's top-right corner (HandManaCost) */
+.acard .mcost { position: absolute; right: .35em; top: -2.75em; display: flex; gap: .12em; align-items: center; padding: .28em .38em; border-radius: 2em;
+  background: rgba(0,0,0,.88); pointer-events: none; z-index: 2; }
+.acard.nocost .mcost { display: none; }
+.acard .mcost .msym { width: 2.15em; height: 2.15em; }
+.acard .mcost i { font: 700 1.2em/1 var(--serif); color: #fff; font-style: normal; }
+/* flat mana symbols (Scryfall's, as iOS ManaSymbolView) and their stand-in disc */
+.msym { display: block; flex: none; width: 20px; height: 20px; -webkit-user-drag: none; }
+.msym.inline { display: inline-block; width: 1.05em; height: 1.05em; margin: 0 .04em; vertical-align: -.16em; }
+.msym.disc { display: inline-grid; place-items: center; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.45); font: 900 .62em/1 system-ui, sans-serif; }
+/* the real Magic card back (ArenaCardBack); the dark back above is its stand-in until it loads */
+.acard .spin > .mback { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: .9em; pointer-events: none; -webkit-user-drag: none;
+  box-shadow: 0 .4em .9em rgba(0,0,0,.6); }
+
+/* battlefield tile: the tavern frame with its art, painted once per look (tileArt.paintTile) */
+.acard[data-view=tile] { border-radius: 0; }
+.acard .tile canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; filter: var(--dim,) var(--glow,) var(--hover,); transition: filter .3s; }
+.acard .tile .tshadow { position: absolute; left: 6%; right: 6%; top: 18%; bottom: -10%; border-radius: 1.2em; background: rgba(0,0,0,.5); filter: blur(.7em); transform: translateY(.9em); }
+/* the tile's thickness: a walnut edge under the frame, so it reads as an object lying on the table (the prototype's .tedge) */
+.acard .tile .tedge { position: absolute; left: 3.7%; right: 3.7%; top: 92%; height: 10.8%; border-radius: 0 0 .9em .9em;
+  background: linear-gradient(#7a5426, #3a2410 60%, #20140a); box-shadow: 0 .15em .25em rgba(0,0,0,.5); }
+.acard .tile .tapmark { position: absolute; left: 50%; top: 22%; width: 49%; transform: translateX(-50%); opacity: .72; filter: drop-shadow(0 0 .25em rgba(0,0,0,.7)); }
+/* your own face-down card: its real face dimmed, a closed eye at the top (FaceDownMark); the card is 15em wide */
+.acard .fdown, .ainspector .fdown { position: absolute; inset: 0; z-index: 1; border-radius: inherit; background: rgba(0,0,0,.38); pointer-events: none;
+  display: flex; justify-content: center; align-items: flex-start; }
+.acard .tile .fdown { inset: 3% 4% 6%; border-radius: 1.4em; }
+.acard .fdown svg, .ainspector .fdown svg { width: 1.95em; min-width: 8px; height: auto; box-sizing: content-box; margin-top: .75em; padding: .6em; border-radius: 999px;
+  fill: #f2e6c8; background: rgba(43,42,46,.85); box-shadow: 0 0 0 .1em rgba(219,163,76,.5); }
+.acard .tile .sick, .acard .plain .sick { position: absolute; right: 4%; top: 4%; width: 22%; min-width: 13px; z-index: 2; filter: drop-shadow(0 0 .15em rgba(0,0,0,.6)); }
+/* Card Frames off (the default): the reference game's battlefield card (CardTile.plainFace on iOS). The card is 15em wide. */
+.acard .plain { position: absolute; inset: 0; filter: var(--dim,) var(--glow,) var(--hover,); transition: filter .3s; }
+/* Hover only lifts a card on the table and, when nothing else lights it, outlines it softly; reading it is a right-click or a
+   held press (Caleb, 2026-10-23). */
+.acard .spin { transition: transform .34s cubic-bezier(.2,.75,.25,1), transform-origin .34s cubic-bezier(.2,.75,.25,1), translate .16s ease-out; }
+.acard[data-view=tile]:hover .spin, .acard[data-view=face]:not([data-hand]):hover .spin { translate: 0 -.35em; }
+.acard[data-view=tile]:hover:not(.playable):not(.ability):not(.targetable):not(.can-act):not(.payable):not(.atk):not(.blk) {
+  --hover: drop-shadow(0 0 .12em rgba(255,236,190,.75)) drop-shadow(0 0 .4em rgba(255,214,140,.35)); }
+.apile:not(:disabled):hover .ptop, .atoplib:hover { translate: 0 -2px; }
+.acard .plain .pface { position: absolute; inset: 0; border-radius: 1.05em; overflow: hidden; background: #121214;
+  box-shadow: inset 0 0 0 .47em var(--edge), inset 0 0 0 .55em rgba(0,0,0,.4), 0 0 0 1px rgba(0,0,0,.85), .15em .45em .5em rgba(0,0,0,.55);
+  padding: .74em; display: flex; flex-direction: column; }
+.acard .plain.token .pface { border-radius: 50% 50% 1.05em 1.05em / 34% 34% 1.05em 1.05em; }
+/* sizes: the card is 15em wide; each rule below is in its own font size, so its em is noted against the card's */
+.acard .plain .pname { flex: none; font: 600 1.3em/1 var(--serif); height: 1.7em; padding: 0 .58em; display: flex; align-items: center; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis; color: #141210; border-bottom: .06em solid rgba(0,0,0,.5);
+  background: linear-gradient(color-mix(in srgb, var(--edge) 32%, transparent), color-mix(in srgb, var(--edge) 32%, transparent)), #ededed; }
+.acard .plain .part { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #2a2018; }
+.acard .plain.token .part { border-radius: 50% 50% 0 0 / 34% 34% 0 0; }
+.acard .plain .part img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; }
+.acard .plain .pfallback { position: absolute; inset: 0; display: grid; place-items: center; padding: .5em; text-align: center; font: 700 1.2em/1.1 var(--serif); color: #e8dcc4; }
+.acard .plain .tapmark { position: absolute; left: 50%; top: 50%; width: 42%; transform: translate(-50%, -50%); opacity: .6; filter: drop-shadow(0 0 .2em rgba(0,0,0,.7)); }
+/* the stats box hangs off the bottom-right corner: 42% of the card wide, 21% of it tall, text 16% of its width */
+.acard .plain .pstats { position: absolute; font: 800 2.3em/1 var(--serif); right: -.2em; bottom: -.54em; min-width: 2.75em; min-height: 1.15em; padding: 0 .45em;
+  display: flex; align-items: center; justify-content: center; border-radius: .33em; white-space: nowrap; color: #000; font-variant-numeric: tabular-nums lining-nums;
+  background: linear-gradient(#fafafa, #c2c2c2); box-shadow: inset 0 0 0 1px #333, 0 .07em .13em rgba(0,0,0,.6); }
+.acard .plain .pstats.legend { background: linear-gradient(#ffedad, #dbb35c); }
+.acard .plain .pstats i { font-style: normal; color: rgba(0,0,0,.75); }
+.acard .plain .pstats b.hurt { color: #bf1a14; }
+.acard .plain .pshield { position: absolute; font: 800 2.55em/1 var(--serif); right: -.18em; bottom: -.6em; width: 1.8em; height: 2em; padding-bottom: .27em;
+  display: grid; place-items: center; color: #fff; clip-path: polygon(14% 0, 86% 0, 100% 14%, 100% 55%, 50% 100%, 0 55%, 0 14%);
+  background: linear-gradient(#424242, #0d0d0d); }
+.acard .plain .pshield.battle { background: linear-gradient(#c7381f, #6b140d); }
+.acard .plain .pchips { position: absolute; right: .4em; top: 2.3em; display: flex; flex-direction: column; gap: .2em; }
+.acard .plain .pchips span { font: 900 1.45em/1 var(--serif); min-width: 1.5em; height: 1.5em; padding: 0 .2em; border-radius: .75em; display: grid; place-items: center;
+  color: #fff; background: radial-gradient(circle at 35% 30%, #7af08b, #127a2a); box-shadow: 0 0 0 .07em #dba34c, 0 .07em .14em rgba(0,0,0,.6); }
+.acard.landish.playable { --glow: drop-shadow(0 0 .14em rgba(159,244,255,.75)) drop-shadow(0 0 .45em rgba(80,220,255,.6)); }
+.acard.tapped:not(.atk) .plain { --dim: saturate(.25) brightness(.64); }
+/* glows follow the tavern frame's own outline: drop-shadow traces the painted frame's alpha, never a box (frame-outline glow) */
+.acard.tapped:not(.atk) { --dim: grayscale(.75) brightness(.62); }
+.acard.playable { --glow: drop-shadow(0 0 .16em #9ff4ff) drop-shadow(0 0 .55em rgba(80,220,255,.9)); }
+/* a permanent with a non-mana ability you can use now: yellow #ffe03a at 0.95 (ArenaOutlineGlow.Tone.ability, Caleb
+   2026-10-26); lands softer */
+.acard.ability { --glow: drop-shadow(0 0 .16em #ffe03a) drop-shadow(0 0 .55em rgba(255,224,58,.95)); }
+.acard.landish.ability { --glow: drop-shadow(0 0 .14em rgba(255,224,58,.75)) drop-shadow(0 0 .45em rgba(255,224,58,.6)); }
+.acard.mana { --glow: drop-shadow(0 0 .12em rgba(159,244,255,.7)) drop-shadow(0 0 .4em rgba(80,220,255,.45)); }
+.acard.targetable { --glow: drop-shadow(0 0 .2em #c6f8ff) drop-shadow(0 0 .7em rgba(90,225,255,.95)); }
+.acard.can-act { --glow: drop-shadow(0 0 .18em #fff4dc) drop-shadow(0 0 .6em rgba(255,215,150,.85)); }
+.acard.payable { --glow: drop-shadow(0 0 .2em #ffd39a) drop-shadow(0 0 .7em rgba(255,140,50,.95)); }
+.acard.atk { --glow: drop-shadow(0 0 .2em #ff8a5a) drop-shadow(0 0 .75em rgba(255,70,30,.9)); }
+.acard.blk { --glow: drop-shadow(0 0 .2em #ffe0a0) drop-shadow(0 0 .7em rgba(255,200,110,.85)); }
+.acard.pending { opacity: .6; }
+.acard[data-view=tile].atk::before { content: ""; position: absolute; left: 50%; top: -1.7em; width: 6em; height: 2.4em; transform: translateX(-50%); pointer-events: none; z-index: 2;
+  background: linear-gradient(90deg, #9a1c0c, #e2532a 50%, #9a1c0c); clip-path: polygon(0 0,100% 0,100% 72%,50% 100%,0 72%); box-shadow: inset 0 .4em 0 #dba34c; }
+.acard[data-view=tile][data-o=opp].atk::before { top: auto; bottom: -1.7em; transform: translateX(-50%) rotate(180deg); }
+.acard[data-view=tile].blk::after { content: ""; position: absolute; left: 50%; top: -2.4em; width: 3.6em; height: 3.6em; transform: translateX(-50%); pointer-events: none; border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #ffe08f, #a8752c 60%, #5c3814); box-shadow: 0 0 0 .3em #5c3814, inset 0 0 0 .9em rgba(0,0,0,.18); }
+.acard[data-view=tile][data-o=opp].blk::after { top: auto; bottom: -2.4em; }
+/* faces (hand, stack, command zone) glow as a box: the printed card is its own outline */
+.acard[data-view=face].playable .spin { box-shadow: 0 0 0 .2em #7ff0ff, 0 0 1.1em .35em rgba(80,220,255,.7); animation: abreathe 2.2s ease-in-out infinite; }
+@keyframes abreathe { 50% { box-shadow: 0 0 0 .24em #b8f8ff, 0 0 1.6em .5em rgba(90,230,255,.9); } }
+.acard[data-view=face].targetable .spin { box-shadow: 0 0 0 .35em var(--arcane), 0 0 1.4em .4em rgba(120,230,255,.75); }
+.acard[data-view=face].picked .spin { box-shadow: 0 0 0 .35em #ffe08f, 0 0 1.5em .5em rgba(255,200,90,.9); }
+
+/* ---------- table furniture ---------- */
+.amed { position: absolute; --d: 54px; width: var(--d); height: var(--d); margin: calc(var(--d) / -2) 0 0 calc(var(--d) / -2); z-index: 465; border-radius: 50%; padding: 0; background: none;
+  filter: drop-shadow(0 3px 5px rgba(0,0,0,.65)); }
+/* ArenaHeroMedallion (Arena judge round 1): the portrait 0.9 of the diameter in a thin gold ring, the life on a dark
+   six-sided plaque edged in gold over the ring's foot; no brass ring. `.bmed` is the browsers' and the result's. */
+.amed .av, .bmed .av { position: absolute; inset: 5%; border-radius: 50%; overflow: hidden; background: #2a1408; }
+.amed .av svg, .bmed .av svg { display: block; width: 100%; height: 100%; }
+/* The commander's art as the portrait (PlayerPortrait), the stand-in under it until it loads; grey once out. */
+.portraitart { position: relative; display: block; width: 100%; height: 100%; }
+.portraitart > svg { display: block; width: 100%; height: 100%; }
+.portraitart > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity .3s; }
+.portraitart.gone { filter: grayscale(1); opacity: .5; }
+.amed .av::after, .bmed .av::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle, transparent 55%, rgba(0,0,0,.3)); }
+.amed::after, .bmed::after { content: ""; position: absolute; inset: 2%; border-radius: 50%; pointer-events: none; padding: max(1.5px, calc(var(--d) * .045));
+  background: linear-gradient(#ffe69e, #fad685, #9e702e); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; }
+.amed .hp, .bmed .hp { position: absolute; left: 22%; width: 56%; height: 34%; bottom: -7%; z-index: 2; display: grid; place-items: center;
+  clip-path: polygon(14% 0, 86% 0, 100% 50%, 86% 100%, 14% 100%, 0 50%); background: rgba(250,214,133,.85);
+  font: 700 calc(var(--d) * .26)/1 var(--serif); color: #fff; font-variant-numeric: tabular-nums lining-nums; }
+.amed .hp::before, .bmed .hp::before { content: ""; position: absolute; inset: max(1px, calc(var(--d) * .02)); z-index: -1;
+  clip-path: polygon(14% 0, 86% 0, 100% 50%, 86% 100%, 14% 100%, 0 50%); background: linear-gradient(#29292f, #0d0d12); }
+.amed .hp, .bmed .hp { isolation: isolate; }
+.amed .hp.out, .bmed .hp.out { font: 700 calc(var(--d) * .17)/1 var(--sans); color: #8e8e93; }
+.amed.targetable { cursor: pointer; box-shadow: 0 0 0 2px var(--arcane), 0 0 16px 6px rgba(120,230,255,.75); }
+.amed.out { filter: grayscale(1) brightness(.55); }
+.amed .rope { position: absolute; inset: -22%; width: 144%; height: 144%; z-index: 3; pointer-events: none; overflow: visible; }
+.aname { position: absolute; z-index: 466; transform: translateY(-50%); white-space: nowrap; pointer-events: none;
+  font: 700 11px/1.15 var(--sans); color: var(--parchment); text-shadow: 0 1px 3px #000, 0 0 6px rgba(0,0,0,.9); }
+.aname.under { transform: translateX(-50%); text-align: center; }
+.aname.under .badges { justify-content: center; }
+.aname small { display: block; font: 600 9px/1.2 var(--serif); color: #e8d6b0; opacity: .85; }
+.aname .badges { display: flex; gap: 3px; margin-top: 2px; }
+.aname .badges span { font: 800 8px/1 var(--serif); letter-spacing: .08em; text-transform: uppercase; color: #fad17a; padding: 2px 5px; border-radius: 6px;
+  background: rgba(0,0,0,.55); box-shadow: inset 0 0 0 1px rgba(219,163,76,.6); }
+/* piles (ArenaPileStack): slivers under the top card, a contact shadow, leaning with the table, a count lozenge */
+.apile { position: absolute; z-index: 6; padding: 0; background: none; border: 0; }
+.apile:disabled { cursor: default; }
+.apile .plean { position: absolute; inset: 0; }
+.apile .pshadow { position: absolute; left: -5%; width: 110%; top: 57%; height: 50%; border-radius: 50%; background: rgba(0,0,0,.55); filter: blur(4px); }
+.apile .sliver { position: absolute; inset: 0; border-radius: .6em; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.35); }
+.apile .ptop { position: absolute; inset: 0; border-radius: .6em; overflow: hidden; box-shadow: 0 0 0 .5px rgba(0,0,0,.6); }
+.apile .ptop img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.apile .ptop .back { position: absolute; inset: 0; background: linear-gradient(rgba(255,255,255,.08), transparent 50%, rgba(0,0,0,.28)), linear-gradient(#292629, #121012);
+  box-shadow: inset 0 0 0 2.5px rgba(0,0,0,.85); }
+.apile .ptop .veil { position: absolute; inset: 0; display: flex; align-items: flex-start; padding: .5em; font: 900 3.4em/1 var(--serif); color: rgba(255,255,255,.9);
+  text-shadow: 0 0 .1em #000; background: linear-gradient(rgba(140,178,255,.42), rgba(77,64,153,.5)); }
+.apile.empty .plean { border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(219,163,76,.35); background-image: none; outline: 1px dashed rgba(219,163,76,.35); outline-offset: -1px; }
+.apile .pcount { position: absolute; right: -8px; bottom: 2px; z-index: 2; }
+/* ArenaCountBadge: a white number on a dark oval in a thin gold line (piles, the stack's size, the order of cards); --s is its height */
+.acount { --s: 17px; display: inline-grid; place-items: center; box-sizing: border-box; min-width: calc(var(--s) + 3px); height: var(--s);
+  padding: 0 max(5px, calc(var(--s) * .18)); border-radius: 999px; font: 700 max(11px, calc(var(--s) * .5))/1 var(--sans); color: #fff;
+  font-variant-numeric: tabular-nums; background: rgba(18,18,20,.94); box-shadow: inset 0 0 0 1px rgba(250,214,133,.7), 0 1px 2px rgba(0,0,0,.6); }
+/* TavernCommanderReadyGlow: while you can cast from your command zone (or graveyard, exile, library) a green-gold ring
+   breathes round your medallion under a gold crown; 1.42 of the portrait (0.9 of the medallion), 0.9 s each way */
+.amed .aready { position: absolute; left: 50%; top: 50%; z-index: -1; width: calc(var(--d) * 1.28); height: calc(var(--d) * 1.28); translate: -50% -50%; pointer-events: none; }
+.amed .aready::before { content: ""; position: absolute; inset: 0; border-radius: 50%; padding: calc(var(--d) * .081);
+  background: conic-gradient(#73ff8c, #ffdb73, #4de680, #ffdb73, #73ff8c);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  filter: blur(calc(var(--d) * .063)); animation: areadybreathe .9s ease-in-out infinite alternate; }
+.amed .aready b { position: absolute; left: 50%; top: 50%; translate: -50% calc(-50% - var(--d) * .76); font: 400 calc(var(--d) * .3)/1 var(--serif);
+  background: linear-gradient(#fff2b3, #f2b340); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 calc(var(--d) * .09) rgba(128,255,140,.9)); }
+@keyframes areadybreathe { from { opacity: .45; transform: scale(.96); } to { opacity: 1; transform: scale(1.02); } }
+@media (prefers-reduced-motion: reduce) { .amed .aready::before { animation: none; opacity: .9; } }
+/* floating mana the reference's way (ArenaFloatingMana): plain symbols in a dark capsule by your portrait, a count on
+   each colour past one; a colour you can spend while paying wears an ember ring and takes a click */
+.afloat { position: absolute; z-index: 412; height: 28px; transform: translateY(-50%); display: flex; align-items: center; gap: 2px; padding: 0 5px;
+  border-radius: 14px; background: rgba(0,0,0,.45); box-shadow: inset 0 0 0 1px rgba(219,163,76,.55); }
+.afloat .fm { position: relative; display: grid; place-items: center; height: 24px; padding: 0 2px; border-radius: 12px; background: none; }
+.afloat .fm .msym { filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.75)); }
+.afloat .fm b { position: absolute; right: -3px; bottom: -3px; padding: 0 3px; border-radius: 6px; background: rgba(0,0,0,.85); color: #fff;
+  font: 900 10px/12px var(--sans); font-variant-numeric: tabular-nums; }
+.afloat button.fm { padding: 0 4px; cursor: pointer; box-shadow: inset 0 0 0 1.2px rgba(255,138,61,.8), 0 0 10px rgba(255,140,50,.6); }
+.afloat button.fm:disabled { cursor: default; box-shadow: none; }
+
+/* ---------- corner controls ---------- */
+.acontrols { position: absolute; inset: 0; z-index: 430; pointer-events: none; }
+.acontrols > * { pointer-events: auto; }
+.aphases { position: absolute; left: 708px; width: 176px; height: 20px; padding: 0; background: none; pointer-events: auto; cursor: pointer; color: var(--rim);
+  --rim: #e88a3b; --hot1: #fff7e8; --hot2: #ffd08a; --hot3: #e88a3b; --glow: rgba(255,150,60,.95); }
+.aphases[data-side=opp] { --rim: #4f8cff; --hot1: #f2f8ff; --hot2: #9cc8ff; --hot3: #3f7bff; --glow: rgba(80,140,255,.95); }
+.aphases .track { position: absolute; left: 0; right: 0; top: 50%; height: 1.4px; margin-top: -.7px; background: linear-gradient(90deg, transparent, rgba(219,163,76,.75) 12%, rgba(219,163,76,.75) 88%, transparent); }
+.aphases .lit { position: absolute; top: 50%; height: 2px; margin-top: -1px; border-radius: 1px; background: linear-gradient(90deg, color-mix(in srgb, var(--rim) 20%, transparent), var(--rim)); transition: width .3s ease-in-out; }
+.aph { position: absolute; top: 50%; z-index: 1; width: 15px; height: 15px; transform: translate(-50%, -50%); display: grid; place-items: center; color: var(--rim); }
+.aph svg { width: 100%; height: 100%; overflow: visible; }
+.aph.small { width: 11px; height: 11px; }
+.aph svg * { fill: #160c07; stroke: #c7964c; stroke-width: 1.5; stroke-linejoin: round; transition: fill .25s; }
+.aph.on { width: 18px; height: 18px; }
+.aph.on.small { width: 13px; height: 13px; }
+.aph.on svg * { fill: var(--hot2); stroke: var(--hot1); }
+.aph.on { filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 4px var(--glow)) drop-shadow(0 0 10px var(--glow)); }
+.aph.on.ignite { animation: aignite .43s cubic-bezier(.2,1.4,.4,1); }
+.aphases .spark { position: absolute; top: 50%; z-index: 2; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, #fff, var(--rim) 45%, transparent 70%); animation: aspark ease-in-out forwards; }
+@keyframes aspark { to { transform: translateX(var(--to)); } }
+@keyframes aignite { 0% { transform: translate(-50%, -50%) scale(1.45); } 100% { transform: translate(-50%, -50%) scale(1); } }
+/* Arena's one button face (ArenaButtonFace, Caleb's option A, 2026-10-22; ArenaMenuKit.swift): the call to action an
+   orange pill with a thin warm rim, a lit top edge and a soft glow; the other choice a dark glass pill edged in a pale line;
+   danger a deep red pill; `cool` Arena's blue (Mulligan beside Keep); `quiet` a word on the table. No brass, leather,
+   rivets or stitching on the Arena board. */
+.aplaque { position: absolute; border-radius: 999px; display: grid; place-items: center; align-content: center; font: 700 15px/1 var(--serif);
+  color: #fff; text-shadow: 0 1px 1.5px rgba(0,0,0,.6); transition: transform .12s ease-out, filter .12s; padding: 0 16px; isolation: isolate; white-space: nowrap; }
+.aplaque::before { content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1; }
+.aplaque::after { content: ""; position: absolute; inset: 1.5px; border-radius: inherit; pointer-events: none; }
+.aplaque:not(:disabled):hover { filter: brightness(1.06); }
+.aplaque:not(:disabled):active { transform: scale(.97); filter: brightness(1.08); }
+.aplaque.primary { text-shadow: 0 1px 1.5px rgba(89,26,0,.75); }
+.aplaque.primary::before { background: var(--aorange); box-shadow: inset 0 0 0 1.5px rgba(255,214,150,.9), 0 0 10px 1px rgba(255,120,31,.45); }
+.aplaque.primary::after, .aplaque.danger::after, .aplaque.cool::after { box-shadow: inset 0 1px 0 rgba(255,255,255,.55); }
+.aplaque.secondary { color: #f2e8d9; font-weight: 600; }
+.aplaque.secondary::before { background: var(--aglass); box-shadow: inset 0 0 0 1px rgba(255,230,191,.5); }
+.aplaque.secondary::after { box-shadow: inset 0 1px 0 rgba(255,255,255,.14); }
+.aplaque.danger::before { background: linear-gradient(#c7382e, #7d1712); box-shadow: inset 0 0 0 1.5px rgba(255,168,148,.7); }
+.aplaque.cool::before { background: linear-gradient(#8c99ff 0%, #4f45db 50%, #301f94 100%); box-shadow: inset 0 0 0 1.5px rgba(194,204,255,.85); }
+.aplaque.quiet { color: #f2e8d9; font-weight: 600; font-size: 14px; cursor: default; text-shadow: 0 1px 3px #000; }
+.aplaque:disabled { filter: saturate(.15) brightness(.85); cursor: default; }
+.aplaque.quiet:disabled { filter: none; }
+.aplaque small { display: block; margin-top: 2px; font: 800 8px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; opacity: .85; }
+.abtn { left: 708px; top: 388px; width: 176px; height: 36px; font-size: 18px; }
+.abtn2 { left: 708px; top: 335px; width: 176px; height: 37px; font-size: 16px; }
+/* the pass-ahead pill (ArenaPillStyle): dark glass, orange while lit */
+.aff { position: absolute; left: 656px; top: 392px; width: 42px; height: 26px; border-radius: 13px; display: grid; place-items: center;
+  background: var(--aglass); box-shadow: inset 0 0 0 1px rgba(255,230,191,.5), inset 0 2px 0 -1px rgba(255,255,255,.14), 0 2px 4px rgba(0,0,0,.5); }
+.aff svg { width: 20px; height: 13px; fill: #f2e8d9; }
+.aff.on { background: var(--aorange); box-shadow: inset 0 0 0 1.5px rgba(255,214,150,.9), 0 0 10px 1px rgba(255,120,31,.5); }
+.aff.on svg { fill: #fff; }
+.ahourglass { position: absolute; left: 708px; top: 388px; width: 176px; height: 36px; display: grid; place-items: center; pointer-events: none; }
+.ahourglass svg { width: 16px; height: 16px; fill: rgba(242,224,189,.45); animation: aturn 2.4s ease-in-out infinite; }
+@keyframes aturn { 50% { transform: rotate(180deg); } }
+/* the gear and the log: a light symbol on a dark glass disc in a hairline, no brass coin (arenaGameMenu) */
+.acoin { position: absolute; width: 30px; height: 30px; border-radius: 50%; z-index: 431; padding: 0; display: grid; place-items: center;
+  background: linear-gradient(#1a1c24, #0a0b0f); box-shadow: inset 0 0 0 1px var(--ahair), 0 1px 2px rgba(0,0,0,.5); }
+.acoin svg { width: 14px; height: 14px; fill: var(--atext); }
+.acoin.on { box-shadow: inset 0 0 0 1.5px rgba(255,214,150,.9), 0 0 10px 1px rgba(255,120,31,.5); }
+.aprompt { position: absolute; left: 478px; transform: translate(-50%,-50%); z-index: 520; pointer-events: none; white-space: nowrap; max-width: 560px; overflow: hidden; text-overflow: ellipsis;
+  font: 600 13px/1.1 var(--sans); color: #fff; text-shadow: 0 1px 3px #000, 0 0 8px rgba(0,0,0,.9); display: flex; gap: 5px; align-items: center; }
+.aprompt .sym { width: 15px; height: 15px; display: inline-grid; place-items: center; background: center/100% no-repeat; border-radius: 50%; font: 900 9px/1 var(--serif); color: #111; }
+.atoast { position: absolute; left: 478px; top: 70px; transform: translate(-50%,-50%); z-index: 860; pointer-events: none; padding: 6px 14px; border-radius: 12px; max-width: 520px;
+  background: rgba(20,14,10,.92); box-shadow: inset 0 0 0 1px rgba(219,163,76,.8); font: 600 12px/1.25 var(--serif); color: var(--parchment); text-align: center; }
+.abubble { position: absolute; transform: translate(-50%,-100%); padding: 5px 10px; border-radius: 10px; white-space: nowrap; pointer-events: none; z-index: 470;
+  background: rgba(20,14,10,.92); box-shadow: inset 0 0 0 1px rgba(219,163,76,.8); color: var(--parchment); font: 700 12px/1 var(--serif); animation: bubble 3.2s ease forwards; }
+
+/* ---------- glass: browsers, panels, menus (ArenaGlass) ---------- */
+/* ArenaGlassPanel: dark smoked glass (ArenaGlass.top/bottom) with a sheen, in a gold hairline. Scoped to the board so the
+   menus' own .glass (menus.css, whose colours live on .mroot) never blanks it: the game is drawn outside .mroot. */
+.arena .glass { background: linear-gradient(rgba(255,255,255,.06), transparent 50%), linear-gradient(rgba(26,28,36,.94), rgba(10,11,15,.95)); border: 0;
+  box-shadow: inset 0 0 0 1px rgba(232,190,110,.75), 0 6px 14px rgba(0,0,0,.55); border-radius: 12px; color: #f3ead8; }
+.aoverlay { position: absolute; inset: 0; z-index: 800; }
+.aoverlay.dim { background: rgba(0,0,0,.7); }
+.aoverlay.question { background: rgba(0,0,0,.72); }
+.aquestion .aplaque { position: relative; min-width: 150px; height: 36px; font-size: 15px; padding: 0 22px; }
+.arow { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 10px; text-align: left; color: #f3ead8; font: 600 14px/1.25 var(--serif);
+  background: linear-gradient(rgba(44,34,26,.9), rgba(20,15,11,.92)); box-shadow: inset 0 0 0 1px rgba(232,190,110,.5); }
+.arow:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px #ffe08f, 0 0 12px rgba(255,200,110,.35); }
+.arow:disabled { opacity: .42; cursor: default; }
+.arow img { width: 54px; height: 40px; object-fit: cover; border-radius: 5px; flex: none; }
+.arow .sub { display: block; font: 500 12px/1.3 var(--serif); color: rgba(243,234,216,.7); }
+.arow.oxblood { background: linear-gradient(rgba(110,30,24,.9), rgba(60,14,10,.92)); }
+.aquestion { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 440px; padding: 20px 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.aquestion h2 { margin: 0; font: 700 22px/1.15 var(--serif); color: #fbf3e2; text-shadow: 0 2px 4px #000; }
+.aquestion p { margin: 0; font: 500 13.5px/1.35 var(--serif); color: rgba(243,234,216,.85); }
+.amenu { position: absolute; right: 12px; top: 44px; z-index: 880; width: 250px; padding: 10px; display: flex; flex-direction: column; gap: 7px; }
+.apanel { position: absolute; left: 14px; top: 14px; bottom: 60px; width: 330px; z-index: 870; display: flex; flex-direction: column; padding: 12px 14px; }
+.apanel header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.apanel h3 { margin: 0; font: 700 18px/1 var(--display); letter-spacing: .06em; background: linear-gradient(var(--gold-hi), var(--gold-lo)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.apanel .close { width: 26px; height: 26px; border-radius: 50%; background: rgba(0,0,0,.45); box-shadow: inset 0 0 0 1px rgba(232,190,110,.6); color: #fad584; font: 800 13px/1 var(--serif); }
+.apanel .tabs button { color: rgba(243,234,216,.7); background: rgba(0,0,0,.35); }
+.apanel .tabs button[aria-pressed=true] { color: #221713; background: #fad584; }
+.alogwrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.alog { flex: 1; min-height: 0; overflow: auto; list-style: none; margin: 0; padding: 0 2px 0 0; display: flex; flex-direction: column; gap: 10px; font: 500 13px/1.35 var(--serif); color: #fff; }
+.alog li.empty { color: rgba(255,255,255,.6); }
+.alog li.turn { display: flex; align-items: center; gap: 10px; padding: 14px 0 2px; font: 800 11px/1 var(--serif); letter-spacing: 1.2px; text-transform: uppercase; white-space: nowrap; color: #fad584; }
+.alog li.turn i { flex: 1; height: 1px; background: rgba(232,190,110,.42); }
+.alog li.turn span { overflow: hidden; text-overflow: ellipsis; }
+.alog li.auto { display: flex; align-items: center; gap: 6px; font: italic 500 12px/1.3 var(--serif); color: rgba(255,255,255,.45); }
+.alog li.auto svg { width: 11px; height: 11px; flex: none; fill: currentColor; }
+.alog li.event { display: flex; align-items: flex-start; gap: 8px; }
+.alog li.event > svg { width: 12px; height: 12px; flex: none; margin: 3px 3px 0; fill: currentColor; }
+.alog li.event > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.alog .text { white-space: pre-line; overflow-wrap: anywhere; }
+/* Rules notes keep their lines (a live hint such as "Lands you control: 6" sits on its own line). */
+.ainspector .note.rules { white-space: pre-line; }
+.alog .text .player { color: #73dbd1; font-weight: 700; }
+.alog .text .card { color: #ffd675; font-style: italic; }
+.alog .text .bold { font-weight: 700; }
+.alog .text .italic { font-style: italic; }
+.alog .text button.link { all: unset; cursor: pointer; color: #ffd675; font-style: italic; }
+.alog .text button.link:hover, .alog .text button.link:focus-visible { text-decoration: underline; }
+.alog .reason { font: italic 500 11.5px/1.25 var(--serif); color: rgba(255,255,255,.62); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.alatest { position: absolute; right: 8px; bottom: 8px; padding: 6px 12px; border-radius: 14px; background: linear-gradient(#ffe2a0, #d9a84f); color: #221713; font: 800 12px/1 var(--serif); box-shadow: 0 2px 8px rgba(0,0,0,.6); }
+.alog.chat { gap: 4px; font-size: 12.5px; color: #efe4cf; }
+/* the chat line on glass with the orange Send (no parchment field or leather plaque on the Arena board) */
+.apanel .chat-input .bsearch { flex: 1; width: auto; }
+.apanel .chat-input .aplaque { position: relative; height: 34px; min-width: 0; font-size: 14px; }
+.alog li.local { color: var(--label); }
+.alog .who { font-weight: 800; }
+
+/* ---------- full-table overlays ---------- */
+/* the opening hand, Arena's mulligan screen (OpeningHandOverlay, Arena look): who goes first in a large serif over a thin
+   rule, XMage's question under it, the hand fanned, the blue Mulligan pill beside the orange Keep */
+.amull { position: absolute; inset: 0; z-index: 810; background: rgba(0,0,0,.78); }
+.amull .head { position: absolute; left: 0; right: 0; display: grid; gap: 6px; justify-items: center; text-align: center; pointer-events: none; }
+.amull .head h2 { margin: 0; padding: 0 24px; font: 700 30px/1.1 var(--serif); color: var(--atext); text-shadow: 0 0 4px rgba(0,0,0,.8); }
+.amull .head i { width: 320px; height: 1px; background: linear-gradient(90deg, transparent, rgba(242,235,219,.55), transparent); }
+.amull .head p { margin: 0; padding: 0 24px; font: 500 14px/1.3 var(--sans); color: rgba(242,235,219,.75); }
+.amull .choices { position: absolute; left: 50%; width: 420px; margin-left: -210px; display: flex; gap: 12px; }
+.amull .choices .aplaque { position: relative; flex: 1; height: 46px; min-width: 0; font-size: 19px; }
+@media (prefers-reduced-motion: reduce) { .acard, .acard > .lean, .acard .spin { transition-duration: .12s; } .acard[data-view=face].playable .spin, .ahourglass svg { animation: none; } }
+
+/* An ability as the reference shows it (ArenaAbilityCard): 15em wide, 0.72 of its height; the source's colour frames it. */
+.ability-card { position: relative; width: 15em; height: 20.83em; border-radius: .75em; box-shadow: inset 0 0 0 1px rgba(0,0,0,.85), 0 .6em 1.2em rgba(0,0,0,.6);
+  background: linear-gradient(var(--frame), color-mix(in srgb, var(--frame) 75%, transparent)); padding: .53em; text-align: left; }
+.ability-card .ab-inner { position: absolute; inset: .53em; border-radius: .5em; overflow: hidden; display: flex; flex-direction: column; background: #f7f2e6; }
+.ability-card .ab-name { flex: none; height: 1.6em; padding: 0 .55em; display: flex; align-items: center; font: 700 1.1em/1 var(--serif); color: #141210;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: linear-gradient(color-mix(in srgb, var(--frame) 28%, transparent), color-mix(in srgb, var(--frame) 28%, transparent)), #f0f0f0; }
+.ability-card .ab-art { flex: none; height: 8.33em; position: relative; overflow: hidden; display: grid; place-items: center;
+  background: linear-gradient(color-mix(in srgb, var(--frame) 60%, transparent), #1a1a1f); color: rgba(255,255,255,.5); font-size: 1em; }
+.ability-card .ab-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; }
+.ability-card .ab-art span { font-size: 3em; }
+.ability-card .ab-type { flex: none; height: 1.55em; padding: 0 .95em; display: flex; align-items: center; font: 600 .93em/1 var(--serif); color: #141210;
+  background: linear-gradient(color-mix(in srgb, var(--frame) 22%, transparent), color-mix(in srgb, var(--frame) 22%, transparent)), #e6e6e6; }
+.ability-card .ab-text { flex: 1; min-height: 0; overflow: hidden; padding: .9em; font: 400 .98em/1.3 var(--serif); color: #1a140f; white-space: pre-line; }
+/* the loyalty shield at the card's foot: in its own 1.5em font, 3.2em is the card's 32% */
+.ability-card .ab-loyalty { position: absolute; left: 50%; bottom: -1em; transform: translateX(-50%); font: 800 1.5em/1 var(--serif); width: 3.2em; height: 2.4em;
+  padding-bottom: .4em; display: grid; place-items: center; color: #fff;
+  clip-path: polygon(14% 0, 86% 0, 100% 14%, 100% 55%, 50% 100%, 0 55%, 0 14%); background: #141418; }
+
+/* the stack card's tab: opens the whole stack, with how many objects it holds */
+.astack-tab { position: absolute; z-index: 346; width: 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0;
+  border-radius: 9px 0 0 9px; background: linear-gradient(#1a1c24, #0a0b0f); box-shadow: inset 0 0 0 1px rgba(232,190,110,.75), -1px 2px 3px rgba(0,0,0,.5);
+  color: #f2ebdb; font: 800 15px/1 var(--sans); }
+.astack-tab b { color: #fad584; font-variant-numeric: tabular-nums; }
+.astack-tab i { font-style: normal; font-size: 11px; }
+/* the eye under the stack tab tucks the card aside; tucked, a slim tab at the table's edge brings it back (ArenaStackTuck) */
+.astack-tuck { color: #fad584; }
+.astack-tuck svg, .astack-show svg { width: 14px; height: 14px; fill: currentColor; }
+.astack-show { position: absolute; z-index: 346; right: 0; width: 30px; height: 84px; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 5px; padding: 0; border-radius: 12px 4px 4px 12px; background: linear-gradient(#1a1c24, #0a0b0f);
+  box-shadow: inset 0 0 0 1px rgba(232,190,110,.65), -1px 2px 4px rgba(0,0,0,.5); color: #fad584; font: 800 13px/1 var(--sans); }
+.astack-show i { font-style: normal; font-size: 11px; display: grid; place-items: center; }
+.astack-show b { font-variant-numeric: tabular-nums; }
+/* a spell landing on the stack settles with a little overshoot in a bloom of its colour (ArenaStackCard) */
+.acard.landing .spin { animation: asettle .55s cubic-bezier(.3,1.5,.5,1); }
+.acard.landing .spin::before { content: ""; position: absolute; inset: -12%; border-radius: 1.4em; background: var(--bloom, #ffd27a); filter: blur(1.4em);
+  mix-blend-mode: screen; opacity: 0; animation: abloom .55s ease-out; pointer-events: none; z-index: -1; }
+@keyframes asettle { from { transform: scale(1.07); } }
+@keyframes abloom { 0% { opacity: 0; } 40% { opacity: .85; } 100% { opacity: 0; } }
+.acard.commander .spin { box-shadow: 0 0 0 .25em #f5c45c, 0 0 1.2em .3em rgba(255,204,90,.75); }
+.acard.commander .spin::after { content: "♛"; position: absolute; left: 50%; top: -1.1em; transform: translateX(-50%); width: 2.1em; height: 2.1em; border-radius: 50%;
+  display: grid; place-items: center; font-size: 1.3em; color: #4d2b08; background: linear-gradient(#ffe594, #dba34c); box-shadow: 0 .1em .2em rgba(0,0,0,.5); }
+
+/* ---------- browsers, the iOS Arena board's (ArenaBrowserFrame): no panel; the table dims under a title, the cards stand
+   in the middle, answers under them, the source card on the right, "View Battlefield" top right ---------- */
+/* browsers, the question stage and the ability, mode and stack browsers dim the table to 0.8 (Arena judge, 2026-10-22) */
+.abrowse { background: rgba(0,0,0,.8); transition: background .2s ease; }
+.abrowse > .bbody, .abrowse > .bsource, .abrowse > .bstage { transition: opacity .2s ease; }
+.abrowse.peek { background: transparent; pointer-events: none; }
+.abrowse.peek > .bbody, .abrowse.peek > .bsource, .abrowse.peek > .bstage { opacity: 0; }
+/* View Battlefield left of the gear (ArenaBrowserFrame: trailing 120 in landscape) */
+.abrowse .bview { position: absolute; right: 120px; top: 6px; z-index: 3; pointer-events: auto; height: 32px; padding: 0 14px; border-radius: 16px;
+  font: 700 12px/1 var(--sans); color: #f2ebdb; background: rgba(0,0,0,.55); box-shadow: inset 0 0 0 1px rgba(245,204,117,.8); }
+.abrowse .bview:hover { background: rgba(0,0,0,.75); }
+.abrowse h2 { margin: 0; font: 700 22px/1.15 var(--serif); color: #f2ebdb; text-align: center; text-shadow: 0 0 2px #000, 0 1px 4px #000; }
+.abrowse header { flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: 600px; padding: 0 12px; }
+.abrowse header p { margin: 0; text-align: center; font: 500 13px/1.3 var(--sans); color: rgba(242,235,219,.8); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+/* the title starts below the opponent's medallion and its life plaque (ArenaSafeArea.top(50) in landscape) */
+.abrowse .bbody { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: var(--atop, 50px) 24px 12px; }
+.abrowse .bcontent { flex: 1; min-height: 0; width: 100%; display: flex; align-items: safe center; justify-content: safe center; gap: 16px; overflow-x: auto; overflow-y: hidden; padding: 14px 24px; }
+.abrowse .bcontent.column { flex-direction: column; overflow: hidden auto; gap: 10px; }
+/* The sideways row (HScroller, iOS's ScrollView(.horizontal)): the body's full width, centred when it fits; past an edge
+   with more cards the row fades out under a glass arrow. A vertical wheel, a drag or a trackpad swipe moves it. */
+.hscroll { position: relative; flex: 1; min-height: 0; width: calc(100% + 48px); margin: 0 -24px; display: flex; }
+/* beside the source card the row stops short of it, so its fade and arrow never sit on the card */
+.bbody.sourced .hscroll { width: calc(100% + 24px); margin-right: 0; }
+.hstrack { flex: 1; min-width: 0; display: flex; align-items: safe center; overflow-x: auto; overflow-y: hidden; padding: 18px 28px; scrollbar-width: none;
+  --fl: 0px; --fr: 0px; -webkit-mask-image: linear-gradient(90deg, transparent, #000 var(--fl), #000 calc(100% - var(--fr)), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 var(--fl), #000 calc(100% - var(--fr)), transparent); }
+.hstrack::-webkit-scrollbar { display: none; }
+.hstrack.dragging { cursor: grabbing; }
+.hstrack.dragging * { cursor: grabbing; }
+.hscroll.before .hstrack { --fl: 64px; }
+.hscroll.after .hstrack { --fr: 64px; }
+.hsrow { flex: none; margin: 0 auto; display: flex; align-items: center; gap: 16px; }
+.hsarrow { position: absolute; top: 50%; z-index: 2; width: 40px; height: 40px; margin-top: -20px; border-radius: 50%; display: grid; place-items: center; padding: 0 0 3px;
+  font: 700 28px/1 var(--serif); color: #f2ebdb; background: rgba(12,12,16,.78); box-shadow: inset 0 0 0 1px rgba(245,204,117,.8), 0 3px 10px rgba(0,0,0,.6);
+  transition: background .15s ease, transform .15s ease; }
+.hsarrow.prev { left: 10px; } .hsarrow.next { right: 10px; }
+.hsarrow:hover { background: rgba(40,36,30,.9); transform: scale(1.06); }
+.bnomatch { margin: 0; font: 500 13px/1.3 var(--sans); color: rgba(242,235,219,.8); text-align: center; }
+.bnomatch button { background: none; padding: 0; font: inherit; color: var(--agold); text-decoration: underline; }
+.abrowse .bfoot { flex: none; display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.abrowse .bfoot .aplaque { position: relative; min-width: 140px; height: 40px; padding: 0 22px; font-size: 15px; }
+.abrowse .bfoot .aplaque.primary { min-width: 170px; height: 42px; font-size: 16px; }
+/* the question stage's answers (PanelActionButtonStyle, Arena plaques): the orange pill goes ahead, Arena's blue declines; words only */
+.bstage .answers .aplaque { position: relative; min-width: 140px; height: 46px; padding: 0 22px; font-size: 17px; }
+.abrowse .bsource { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); }
+/* the question stage (ArenaQuestionStage): headline, its card, answers, all in the middle */
+.bstage { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: var(--atop, 50px) 24px 0; }
+.bstage .answers { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; max-width: 560px; }
+.bsubject { display: block; flex: none; }
+.bsubject:not(img) { filter: drop-shadow(0 6px 10px rgba(0,0,0,.6)); }
+img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow: 0 6px 14px rgba(0,0,0,.6); -webkit-user-drag: none; }
+/* something to pick lifts and glows round its own outline (the frame-outline glow) */
+.bpick, .bsymbol, .bseat, .bcard { flex: none; position: relative; border: 0; padding: 0; background: none; color: inherit; transition: transform .16s ease-out, filter .16s ease-out; }
+.bpick { border-radius: .75em; filter: drop-shadow(0 5px 8px rgba(0,0,0,.6)); }
+.bpick:hover:not(:disabled), .bsymbol:hover:not(:disabled), .bseat:hover:not(:disabled), button.bcard:hover:not(:disabled) { transform: translateY(-6px);
+  filter: drop-shadow(0 0 3px #ffe8b0) drop-shadow(0 0 12px rgba(255,200,110,.7)); }
+.bpick:disabled, .bsymbol:disabled, .bseat:disabled, .bcard:disabled { cursor: default; }
+.bcard { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.bcard.target img.bprinted, .bcard.usable img.bprinted { box-shadow: 0 0 0 2px #9ff4ff, 0 0 16px 4px rgba(80,220,255,.75), 0 6px 14px rgba(0,0,0,.6); }
+.bcard.usable img.bprinted { animation: bbreathe 2.2s ease-in-out infinite; }
+@keyframes bbreathe { 50% { box-shadow: 0 0 0 2.5px #b8f8ff, 0 0 22px 6px rgba(90,230,255,.9), 0 6px 14px rgba(0,0,0,.6); } }
+.bcard:disabled img.bprinted { filter: saturate(.3) brightness(.6); box-shadow: 0 6px 14px rgba(0,0,0,.6); }
+.bcard .aplaque { position: relative; width: 100%; min-width: 0; height: 34px; font-size: 14px; padding: 0 8px; white-space: nowrap; overflow: hidden; }
+/* The commander browser: a commander away from the command zone dims, with where it is; casts and tax under each. */
+.bcommander.away img.bprinted { filter: saturate(.4) brightness(.55); }
+img.bprinted.facedown { filter: brightness(.62); }
+.bcommander .bwhere { font: 800 10px/1.2 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: #fad584; text-align: center; }
+.bcommander .btax { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 12px; font: 600 13px/1.3 var(--sans); color: rgba(243,234,216,.85); text-align: center; }
+.bcommander .btax .msym { width: 1.15em; height: 1.15em; vertical-align: -.2em; }
+.bzone { font: 800 9px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: #fad584; }
+.bsymbol { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 64px; font: 600 13px/1.2 var(--sans); color: #f2ebdb; }
+.bsymbol .msym { filter: drop-shadow(0 3px 6px rgba(0,0,0,.6)); }
+.bgrid { width: min(640px, 100%); display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.btile { min-height: 48px; padding: 8px 10px; border-radius: 10px; border: 0; text-align: center; font: 600 14px/1.25 var(--sans); color: #f2ebdb;
+  background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 .8px rgba(245,204,117,.75); }
+.btile:hover:not(:disabled) { background: rgba(255,255,255,.11); box-shadow: inset 0 0 0 1.2px #ffe08f, 0 0 12px rgba(255,200,110,.35); }
+.bsearch { width: min(360px, 100%); flex: none; height: 34px; padding: 0 14px; border-radius: 17px; border: 0; outline: 0; font: 500 14px/1 var(--sans); color: #f2ebdb;
+  background: rgba(0,0,0,.5); box-shadow: inset 0 0 0 1px rgba(245,204,117,.7); }
+/* "Don't ask again" (RememberChoiceToggle, Arena look): a gold diamond and light sans words, no brass or parchment */
+.bremember { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 4px; background: none; font: 500 13px/1.2 var(--sans); color: rgba(242,235,219,.9); }
+.bremember i { width: 9px; height: 9px; flex: none; margin: 0 2px; transform: rotate(45deg); box-sizing: border-box; border: 1.5px solid rgba(242,235,219,.7); }
+.bremember[aria-checked=true] i { background: var(--agold); border-color: var(--agold); }
+/* players as their medallions (ArenaPlayerChoice) */
+.bseat { display: flex; flex-direction: column; align-items: center; gap: 10px; font: 700 18px/1.1 var(--serif); color: #f2ebdb; text-shadow: 0 0 2px #000; }
+.bseat > span:last-child { margin-top: calc(var(--d) * .1); max-width: calc(var(--d) * 1.25); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bmed { position: relative; display: block; border-radius: 50%; width: var(--d); height: var(--d); }
+/* a split: each row its card with a big number on it, − and + under it (ArenaSplitBrowser) */
+.bsplit { flex: none; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.bface { position: relative; display: grid; place-items: center; filter: drop-shadow(0 5px 8px rgba(0,0,0,.6)); }
+.bbadge { position: absolute; left: 50%; top: 50%; width: 62px; height: 62px; margin: -31px 0 0 -31px; border-radius: 50%; display: grid; place-items: center;
+  font: 800 34px/1 var(--serif); color: #fff; font-variant-numeric: tabular-nums; text-shadow: 0 0 3px #000; background: rgba(0,0,0,.6);
+  box-shadow: inset 0 0 0 2px rgba(245,204,117,.85); transition: background .15s; }
+.bbadge.zero { opacity: .75; }
+.bbadge.lethal { background: rgba(140,15,13,.92); box-shadow: inset 0 0 0 2px #ff734d; }
+.bskull { position: absolute; right: -6px; top: -6px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; color: #fff; background: #8c0f0d; }
+.bname { max-width: 100%; font: 600 12px/1.1 var(--sans); color: #f2ebdb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bsteps { display: flex; gap: 10px; }
+.blens, .plens { height: 40px; width: 50px; border-radius: 20px; display: grid; place-items: center; font: 800 22px/1 var(--serif); color: #f2ebdb; touch-action: none;
+  background: linear-gradient(#1a1c24, #0a0b0f); box-shadow: inset 0 0 0 1px rgba(245,204,117,.8); }
+.blens:disabled, .plens:disabled { color: rgba(242,235,219,.35); cursor: default; }
+.blens:active:not(:disabled), .plens:active:not(:disabled) { transform: scale(.94); }
+/* piles in gold-rimmed wells (ArenaPileBrowser) */
+.bwell { flex: none; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px; border: 0; border-radius: 16px; color: inherit;
+  background: rgba(0,0,0,.35); box-shadow: inset 0 0 0 1px rgba(245,204,117,.6); transition: box-shadow .16s, background .16s; }
+.bwell:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px rgba(255,214,140,.9); }
+.bwell.on { background: rgba(0,0,0,.5); box-shadow: inset 0 0 0 3px #ffd166, 0 0 14px rgba(255,191,77,.7); }
+.blabel { font: 800 13px/1 var(--sans); letter-spacing: .09em; color: #fad584; }
+.bfanrow { display: flex; align-items: flex-end; padding: 14px; }
+.bfan { display: block; transform-origin: 50% 100%; }
+.bempty { display: grid; place-items: center; font: italic 14px/1 var(--sans); color: rgba(242,235,219,.6); }
+/* card choice wells (BoardCardChoiceView.arenaWell): a gold hairline, a gold capital label; an empty well keeps its size and says nothing */
+.bwells { display: flex; gap: 14px; align-items: stretch; }
+.bwellzone { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.bwellzone > b { font: 800 13px/1 var(--sans); letter-spacing: .09em; color: #fad584; }
+.bwellcards { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border-radius: 14px; background: rgba(0,0,0,.35); box-shadow: inset 0 0 0 1px rgba(245,204,117,.6); }
+.bwellcard { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.bmove { display: flex; gap: 6px; }
+.bmove button { width: 30px; height: 24px; border-radius: 12px; background: var(--aglass); box-shadow: inset 0 0 0 1px rgba(255,230,191,.5); color: var(--atext); font: 700 14px/1 var(--sans); }
+.bmove button:disabled { opacity: .35; cursor: default; }
+.bcard .acount { position: absolute; left: 50%; top: calc(var(--s) / -2); transform: translateX(-50%); }
+/* the stack browser's items */
+.bitem { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.bitem .who { font: 800 10px/1.2 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: #fad584; text-align: center; max-width: 180px; }
+.bitem .tgt { font: 500 11px/1.25 var(--sans); color: rgba(243,234,216,.8); text-align: center; max-width: 180px; }
+.bitem .who.next { color: #fab866; letter-spacing: .08em; }
+.bitem .owner { margin-top: -4px; font: italic 400 11px/1.2 var(--sans); color: rgba(243,234,216,.75); }
+.bitem .tgt { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: #f3ead8; }
+.bitem .tgt svg { width: 11px; height: 11px; flex: none; }
+.bstackcard { position: relative; }
+.bitem.next .bstackcard > :first-child { box-shadow: 0 0 0 3px #ffd166, 0 0 16px rgba(255,190,77,.8); border-radius: .75em; }
+/* A target question's choices on the stack (stackChoices): the choices glow like a target, the rest dim. */
+.bitem.choice .bstackcard { cursor: pointer; }
+.bitem.choice .bstackcard > :first-child { box-shadow: 0 0 0 3px rgb(140,230,255), 0 0 18px rgba(140,230,255,.8); border-radius: .75em; }
+.bitem.choice .bstackcard:hover > :first-child, .bitem.choice .bstackcard:focus-visible > :first-child { transform: translateY(-4px); transition: transform .15s; }
+.bitem.dim { opacity: .5; filter: saturate(.35); }
+.stackhead.choosing { font-size: 19px; max-width: 70vw; text-align: center; }
+.bstackcard > .acount { position: absolute; left: 50%; top: calc(var(--s) / -2); transform: translateX(-50%); }
+.stackhead { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.stacksub { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.btag { padding: 3px 8px; border-radius: 9px; font: 800 9.5px/1 var(--serif); letter-spacing: .08em; color: #f3ead8; background: rgba(74,46,30,.92); box-shadow: inset 0 0 0 1px rgba(201,164,92,.8); }
+.btag.ember { color: #ffb066; box-shadow: inset 0 0 0 1px rgba(255,140,60,.9); }
+/* the number pill in the button corner (ArenaAmountPill): [−5] [−] [ember answer] [+] [+5], Cancel under it */
+.apill { position: absolute; z-index: 610; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.apill .plenses { display: flex; align-items: center; }
+.apill .plenses > * + * { margin-left: -6px; }
+.apill .plens { width: 48px; height: 42px; }
+.apill .plens.five { width: 42px; font-size: 15px; }
+/* the go button in Arena's orange (ArenaMenuStyle.orange) */
+.apill .pgo { position: relative; z-index: 1; width: 112px; height: 50px; border-radius: 25px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  color: #ffeec0; text-shadow: 0 1px 1px rgba(0,0,0,.7); background: var(--aorange);
+  box-shadow: inset 0 0 0 1.2px rgba(255,217,128,.9), 0 0 16px rgba(255,120,60,.7); }
+.apill .pgo small { font: 700 12px/1 var(--sans); }
+.apill .pgo b { font: 800 18px/1.1 var(--serif); font-variant-numeric: tabular-nums; }
+.apill .pgo:disabled { filter: saturate(.15) brightness(.62); cursor: default; }
+.apill .aplaque { position: relative; width: 150px; height: 38px; font-size: 15px; }
+@media (prefers-reduced-motion: reduce) { .bcard.usable img.bprinted { animation: none; } .abrowse, .abrowse > * { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .acard.landing .spin, .acard.landing .spin::before { animation: none; } }
+
+/* ---------- board effects (BoardFXOverlay, Arena pace) ---------- */
+/* a flight stands in for its tile until it lands */
+.acard.fx-hidden { opacity: 0 !important; transition: none !important; pointer-events: none; }
+.afx { position: absolute; inset: 0; pointer-events: none; z-index: 700; }
+.acard.fxflight, .acard.fxflight > .lean, .acard.fxflight .spin { transition: none !important; }
+.acard.fxflight { cursor: default; filter: drop-shadow(0 calc(6px + 10px * var(--lift, 0)) calc(10px + 8px * var(--lift, 0)) rgba(0,0,0,.55)); }
+/* a card leaving for the graveyard burns away from the bottom with an ember edge; exile burns cold */
+.acard.fxflight.burn .spin { -webkit-mask-image: linear-gradient(to top, transparent calc(var(--burn) * 100% - 4%), #000 calc(var(--burn) * 100% + 10%));
+  mask-image: linear-gradient(to top, transparent calc(var(--burn) * 100% - 4%), #000 calc(var(--burn) * 100% + 10%)); }
+.acard.fxflight.burn { filter: drop-shadow(0 0 calc(4px + 10px * var(--burn)) rgba(255,133,31,calc(.9 - .6 * var(--burn)))) brightness(calc(1 + .5 * var(--burn))); }
+.acard.fxflight.burn.exile { filter: drop-shadow(0 0 calc(4px + 12px * var(--burn)) rgba(191,235,255,calc(.95 - .6 * var(--burn)))) brightness(calc(1 + .7 * var(--burn))) saturate(calc(1 - .6 * var(--burn))); }
+
+/* the Arena turn banner: a slim gold title on a brass hairline that draws out from the middle, a sweep of light (BoardTurnBanner.arenaBanner) */
+.abanner { position: absolute; left: 50%; width: 420px; height: 70px; margin-left: -210px; display: grid; place-items: center; pointer-events: none; z-index: 720;
+  --accent: #ffcc5c; animation: abannerIn .28s ease-out both; }
+.abanner.theirs { --accent: #9ebdff; }
+.abanner.out { animation: abannerOut .35s ease-in both; }
+.abanner .line { position: absolute; left: 30px; right: 30px; top: 50%; height: 2px; margin-top: 4px;
+  background: linear-gradient(90deg, transparent, var(--accent), #ffeeb3, var(--accent), transparent); box-shadow: 0 0 8px var(--accent);
+  transform-origin: 50% 50%; animation: abannerLine .28s ease-out both; }
+.abanner .glow { position: absolute; inset: 0 60px; background: radial-gradient(ellipse at center, color-mix(in srgb, var(--accent) 35%, transparent), transparent 70%); mix-blend-mode: screen; }
+.abanner b { position: relative; top: -12px; font: 700 26px/1 var(--serif); letter-spacing: 1.5px; color: transparent;
+  background: linear-gradient(180deg, #fff, var(--accent)); -webkit-background-clip: text; background-clip: text;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.85)) drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 70%, transparent)); }
+.abanner b::after { content: attr(data-text); position: absolute; inset: 0; color: transparent;
+  background: linear-gradient(90deg, transparent 0 40%, rgba(255,255,255,.95) 50%, transparent 60% 100%) no-repeat; background-size: 46px 100%;
+  -webkit-background-clip: text; background-clip: text; animation: abannerSweep .7s .12s ease-in-out both; }
+@keyframes abannerIn { from { opacity: 0; transform: scale(.86); } to { opacity: 1; transform: scale(1); } }
+@keyframes abannerOut { to { opacity: 0; transform: translateY(-30px) scale(.6); } }
+@keyframes abannerLine { from { transform: scaleX(.02); } to { transform: scaleX(1); } }
+@keyframes abannerSweep { from { background-position: -46px 0; } to { background-position: calc(100% + 46px) 0; } }
+@media (prefers-reduced-motion: reduce) { .abanner, .abanner .line, .abanner b::after { animation: none; } }
+/* undo the last mana while paying: a small glass pill beside the corner (ArenaBoardViews' undo pill) */
+.aundo { position: absolute; width: 52px; height: 26px; border-radius: 13px; display: grid; place-items: center; font: 800 12px/1 var(--sans); color: #f2e8d9;
+  background: var(--aglass); box-shadow: inset 0 0 0 1px rgba(255,230,191,.5), 0 2px 6px rgba(0,0,0,.5); z-index: 600; }
+.aundo:disabled { opacity: .45; }
+
+/* ---------- menus and panels on the table (ArenaMenuCard, ArenaPanelOverlay) ---------- */
+.ascrim { position: absolute; inset: -400px; z-index: 790; background: rgba(0,0,0,.25); }
+.amenucard { position: absolute; z-index: 795; width: 280px; padding: 10px; border-radius: 16px; display: grid; gap: 8px; animation: amenuIn .16s ease-out both; }
+@keyframes amenuIn { from { opacity: 0; transform: scale(.95); } }
+.amenucard .arow { min-height: 46px; padding: 6px 12px; gap: 12px; background: linear-gradient(rgba(255,240,210,.06), rgba(0,0,0,.18)); box-shadow: inset 0 0 0 1px rgba(232,190,110,.35); }
+.amenucard .arow:hover:not(:disabled) { background: linear-gradient(rgba(255,220,150,.14), rgba(0,0,0,.1)); }
+.amenucard .arow.lit { box-shadow: inset 0 0 0 1.5px #ffb36a, 0 0 10px rgba(255,140,60,.35); }
+.amenucard .arow:disabled { opacity: .45; cursor: default; }
+.amenucard .arow b { display: block; font: 600 16px/1.15 var(--sans); }
+.amenucard .arow small { display: block; font: 500 11px/1.2 var(--sans); opacity: .65; }
+.amenucard .glyph { width: 22px; height: 18px; flex: none; display: grid; place-items: center; color: #fad685; }
+.amenucard .glyph svg { width: 17px; height: 17px; fill: currentColor; }
+.amenucard .arow.lit .glyph { color: #ff9e4d; }
+.aoverlay.panelveil { background: rgba(0,0,0,.55); display: grid; place-items: center; z-index: 805; }
+.apanel2 { max-height: 92%; overflow: auto; border-radius: 22px; padding: 16px 20px 20px; animation: apanelIn .3s cubic-bezier(.3,1.2,.5,1) both; color: #f3ead8; }
+@keyframes apanelIn { from { opacity: 0; transform: scale(.94); } }
+.apanel2 header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.apanel2 h3 { margin: 0; font: 700 22px/1.1 var(--serif); color: #fad685; }
+.apanel2 .close { width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,.06); color: #f3ead8; }
+.acheck { width: 26px; height: 26px; display: grid; place-items: center; background: none; padding: 0; }
+.acheck svg { width: 18px; height: 18px; fill: none; stroke: rgba(250,214,133,.5); stroke-width: 1.6; }
+.acheck.on svg { stroke: #ff9e4d; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 4px rgba(255,140,60,.6)); }
+.phasestops .explain { margin: 0 0 12px; font: 13px/1.35 var(--serif); opacity: .75; }
+.phasestops .grid { display: grid; grid-template-columns: 1fr 76px 76px; align-items: center; row-gap: 2px; }
+.phasestops .grid > b { font: 800 10px/1 var(--serif); letter-spacing: .08em; text-align: center; color: #e2b867; padding-bottom: 4px; }
+.phasestops .row { display: contents; }
+.phasestops .row > span { font: 600 14px/30px var(--serif); }
+.phasestops .row > .acheck { justify-self: center; }
+.aplaque.inline { position: relative; min-width: 140px; height: 38px; margin: 14px auto 0; }
+.asettings { display: grid; gap: 6px; }
+.asettings label { display: flex; align-items: center; gap: 10px; font: 600 15px/1.2 var(--serif); }
+.asettings .seg { display: flex; align-items: center; gap: 6px; margin-top: 6px; font: 600 15px/1 var(--serif); }
+.asettings .seg span { margin-right: 6px; }
+.asettings .seg button { padding: 6px 12px; border-radius: 8px; background: rgba(255,255,255,.05); color: #f3ead8; font: 600 13px/1 var(--serif); }
+.asettings .seg button[aria-pressed=true] { box-shadow: inset 0 -2px 0 #ffb36a; color: #ffe08f; }
+.asettings .actions { display: flex; gap: 12px; justify-content: center; }
+.afullcontrol { position: absolute; transform: translate(-50%, -100%); z-index: 601; padding: 3px 8px; border-radius: 8px; pointer-events: none;
+  font: 800 9px/1 var(--serif); letter-spacing: .1em; text-transform: uppercase; color: #ffe08f; background: rgba(20,14,10,.9); box-shadow: inset 0 0 0 1px #ffb36a; }
+.aff:disabled { opacity: .45; cursor: default; }
+
+/* ---------- carrying a hand card to the table (ArenaHandFan's drag) ---------- */
+.acard.carried { opacity: 0 !important; }
+.acarry { position: absolute; z-index: 2000; pointer-events: none; border-radius: 6px; overflow: hidden; transform-origin: 50% 50%;
+  box-shadow: 0 8px 10px rgba(0,0,0,.7); transition: transform .12s ease-out, box-shadow .2s; }
+.acarry img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.acarry.hot { box-shadow: 0 8px 16px rgba(240,120,50,.75), 0 0 18px rgba(255,140,60,.6); }
+/* the table's edge lights warm while a card is over it: no box, light along the rim */
+.adropglow { position: absolute; inset: 0; z-index: 1990; pointer-events: none; border-radius: 14px; mix-blend-mode: screen;
+  box-shadow: inset 0 0 18px 16px rgba(255,120,50,.45), inset 0 0 0 1.5px rgba(255,214,140,.7); animation: aglowIn .2s ease-out both; }
+@keyframes aglowIn { from { opacity: 0; } }
+
+/* ---------- the inspector (CardInspector, Arena look) ---------- */
+.ainspector { position: absolute; inset: 0; z-index: 900; background: rgba(0,0,0,.45); display: grid; place-items: center; animation: aglowIn .15s ease-out both; }
+.ainspector .row { display: flex; gap: 16px; align-items: center; }
+.ainspector .big { border-radius: 4.5% / 3.2%; overflow: hidden; box-shadow: 0 18px 40px rgba(0,0,0,.7); background: #0d0a08; flex: none; }
+.ainspector .big img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ainspector .big .fallback { display: grid; place-items: center; height: 100%; padding: 20px; font: 700 22px/1.2 var(--serif); color: var(--parchment-ink); background: url(/tavern/parchment.webp) center/200px; }
+.ainspector .notes { width: 300px; max-height: 100%; overflow: auto; display: grid; gap: 10px; align-content: start; }
+.ainspector .note { padding: 12px 14px; display: grid; gap: 4px; font: 500 13px/1.35 var(--serif); }
+.ainspector .note .label { font: 900 10px/1 var(--serif); letter-spacing: .12em; color: #e2b867; margin-bottom: 2px; }
+.ainspector .note p { margin: 0; } .ainspector .note p b { color: #fad685; }
+/* the held card and what is fastened to it, as tabs over the notes (InspectorTabStrip); the one shown is outlined in gold */
+.ainspector .itabs { display: flex; gap: 8px; padding: 4px 2px; }
+.ainspector .itab { position: relative; flex: none; width: 34px; height: 47px; padding: 0; border: 0; border-radius: 6px; overflow: hidden; background: #0d0a08;
+  cursor: pointer; opacity: .75; transition: transform .15s ease-out, opacity .15s ease-out, box-shadow .15s ease-out; }
+.ainspector .itab::after { content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; border: 1px solid rgba(255,255,255,.25); pointer-events: none; }
+.ainspector .itab.on { opacity: 1; transform: scale(1.08); box-shadow: 0 0 6px rgba(219,163,76,.6); }
+.ainspector .itab.on::after { border: 2px solid #dba34c; }
+.ainspector .itab img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ainspector .itab .fdown { font-size: 2.27px; }
+/* trigger order: a gold rim and its number on each picked trigger (ArenaCountBadge, 34) */
+.bpick.numbered { transform: scale(1.04); filter: drop-shadow(0 0 8px rgba(255,190,77,.9)); }
+.bpick.numbered > :first-child { box-shadow: 0 0 0 3px #ffd166; border-radius: .75em; }
+.bpick > .acount { position: absolute; left: 50%; top: calc(var(--s) / -2); transform: translateX(-50%); animation: amenuIn .16s ease-out both; }
+/* combat arrows over the table, under the hand */
+.aarrows { position: absolute; left: 0; top: 0; width: 956px; z-index: 150; pointer-events: none; overflow: visible; }
+/* the stack card's arcs to its targets (drawn in over 0.45 s) and the reticles on them (after 0.35 s, from 1.6x) */
+.aarcs { position: absolute; left: 0; top: 0; width: 956px; z-index: 160; pointer-events: none; overflow: visible; }
+.aarcs .draw { stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: aarcDraw .45s ease-out forwards; }
+@keyframes aarcDraw { to { stroke-dashoffset: 0; } }
+.aarcs .reticle { opacity: 0; transform: scale(1.6); animation: areticle .3s cubic-bezier(.34,1.56,.64,1) .35s forwards; filter: drop-shadow(0 0 2px rgba(0,0,0,.6)); }
+@keyframes areticle { to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .aarcs .draw { animation: none; stroke-dashoffset: 0; } .aarcs .reticle { animation: none; opacity: 1; transform: none; } }
+.afxpaint { position: absolute; left: 0; top: 0; pointer-events: none; }
+
+/* BoardHitVignette: a red edge that flares when you take five or more. */
+.avignette { position: absolute; inset: 0; z-index: 900; pointer-events: none; opacity: 0; background: radial-gradient(ellipse farthest-corner at 50% 50%, transparent 0%, transparent 50%, rgba(217,13,5,.55) 100%); }
+
+/* ArenaExtraCardShimmer: a card you can play from your graveyard or exile, at the fan's end: a violet-cyan edge and its zone. */
+.acard .ashimmer { position: absolute; inset: 0; border-radius: .7em; pointer-events: none; box-shadow: 0 0 .9em .1em rgba(153,140,255,.85); }
+.acard .ashimmer::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: .38em; background: linear-gradient(135deg, #bf99ff, #73d9ff, #bf99ff);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+.acard .ashimmer i { position: absolute; left: -.9em; top: -.9em; width: 3.2em; height: 3.2em; border-radius: 50%; display: grid; place-items: center;
+  background: #523a8c; box-shadow: inset 0 0 0 .16em #c9a45c; }
+.acard .ashimmer i svg { width: 1.8em; height: 1.8em; fill: #fff; }
+
+/* A hand card pops with a quick spring (ArenaHandFan: response 0.22, damping 0.82). */
+.acard[data-hand], .acard[data-hand] > .lean, .acard[data-hand] .spin { transition-duration: .24s; transition-timing-function: cubic-bezier(.3,1.25,.55,1); }
+/* A drawn card: from the deck to the draw spot in 0.5 s, then into the fan in 0.22 s (ArenaHandFan's arrivals). */
+.acard.arrive-1, .acard.arrive-1 > .lean, .acard.arrive-1 .spin { transition-duration: .5s; transition-timing-function: ease-in-out; }
+.acard.arrive-2, .acard.arrive-2 > .lean, .acard.arrive-2 .spin { transition-duration: .22s; transition-timing-function: ease-in-out; }
+
+/* TavernTableHints: a small leather coin for day or night, a leather tag for storm. */
+.ahints { position: absolute; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; pointer-events: none; z-index: 2; }
+.ahints .daynight { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: rgba(74,46,30,.92); box-shadow: inset 0 0 0 1px rgba(201,164,92,.8); }
+.ahints .daynight svg { width: 10px; height: 10px; fill: currentColor; }
+.ahints .daynight.day { color: #ffd966; }
+.ahints .daynight.night { color: #b8ccff; }
+.ahints .storm { padding: 3px 8px; border-radius: 9px; font: 800 9.5px/1 var(--serif); letter-spacing: .08em; color: #99ccff; background: rgba(74,46,30,.92); box-shadow: inset 0 0 0 1px rgba(201,164,92,.8); }
+
+/* OnDeviceRootView.recoveryBanner: a tavern panel along the bottom with the message and the ways back. */
+.arecovery { position: absolute; left: 12px; right: 12px; bottom: 8px; z-index: 905; padding: 12px; border-radius: 12px; display: grid; gap: 10px;
+  background: linear-gradient(rgba(52,34,24,.97), rgba(34,22,16,.97)); box-shadow: inset 0 0 0 1.5px rgba(201,164,92,.85), 0 3px 12px rgba(0,0,0,.45);
+  font: 600 15px/1.3 var(--serif); color: var(--parchment); }
+.arecovery .line { display: flex; align-items: flex-start; gap: 8px; }
+.arecovery .line span { flex: 1; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.arecovery .seal { flex: none; width: 28px; height: 28px; border-radius: 50%; background: radial-gradient(#8a2a1c, #5a160d); color: #f5dfa8; box-shadow: inset 0 0 0 1.5px #c9a45c; font: 800 12px/1 var(--serif); }
+.arecovery .actions { display: flex; gap: 8px; }
+.arecovery .actions .aplaque { position: relative; height: 32px; min-width: 0; margin: 0; padding: 0 16px; font-size: 13px; }
+
+/* BattlefieldAbilityBadges: iron coins along the tile's bottom left with the engine's icons; a gold "+N" for the rest. */
+.plain .pbadges { position: absolute; left: .2em; bottom: .2em; display: flex; gap: .07em; pointer-events: none; z-index: 2; }
+.plain .pbadges > * { width: var(--badge); height: var(--badge); border-radius: 50%; background: rgba(34,31,30,.88); display: grid; place-items: center; }
+.plain .pbadges i::before { content: ""; width: 70%; height: 70%; background: #f3e6c8; -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+.plain .pbadges i.menace::before { display: none; }
+.plain .pbadges i.menace svg { width: 66%; height: 66%; fill: #f3e6c8; }
+.plain .pbadges b { background: #c9a45c; color: #221f1e; font: 900 calc(var(--badge) * .45)/1 var(--serif); }
+.plain .pcopy { position: absolute; left: 50%; top: 16%; transform: translateX(-50%); padding: .1em .45em; border-radius: 1em; pointer-events: none; z-index: 2;
+  font: 800 1.5em/1.1 var(--serif); letter-spacing: .08em; color: #c9a45c; background: rgba(0,0,0,.72); box-shadow: inset 0 0 0 .05em rgba(201,164,92,.55); }
+
+/* ArenaHeroMedallion: an ember glow behind it on its owner's turn. */
+.amed.active::before { content: ""; position: absolute; inset: -2.5%; border-radius: 50%; background: rgba(255,120,40,.7); filter: blur(calc(var(--d) * .1)); z-index: -1; }
+
+/* TavernStatusBadge: a leather coin in a brass ring, its symbol, its count on a brass coin at the corner. */
+.astatus { position: relative; display: inline-grid; place-items: center; flex: none; border-radius: 50%; color: var(--tint);
+  background: radial-gradient(circle at 40% 30%, #4d2b17, #4a2e1e 60%); box-shadow: inset 0 0 0 1.6px #c9a45c, 0 1px 2px rgba(0,0,0,.5); }
+.astatus.lethal { box-shadow: inset 0 0 0 2.4px #f2331f, 0 1px 2px rgba(0,0,0,.5); }
+.astatus > svg { width: 52%; height: 52%; fill: currentColor; filter: drop-shadow(0 0 2px var(--tint)); }
+.astatus .art { position: absolute; inset: 2px; border-radius: 50%; overflow: hidden; }
+.astatus .art img { width: 100%; height: 100%; object-fit: cover; }
+.astatus .shield { position: absolute; left: 4%; top: 4%; width: 30%; height: 30%; fill: #f3e6c8; filter: drop-shadow(0 0 1.5px #000); }
+.astatus .count { position: absolute; right: -12%; bottom: -10%; width: 50%; height: 50%; min-width: 12px; min-height: 12px; border-radius: 50%; display: grid; place-items: center;
+  background: url(/tavern/coin.webp) center/100%; color: #401f0a; font: 900 8px/1 var(--serif); }
+.aglance { position: absolute; z-index: 466; display: flex; gap: 6px; transform: translateY(-50%); pointer-events: none; }
+.aorbit { position: absolute; transform: translate(-50%, -50%); z-index: 466; pointer-events: none; }
+.aorbit.more { display: grid; place-items: center; border-radius: 50%; background: url(/tavern/coin.webp) center/100%; color: #401f0a; font: 900 9px/1 var(--serif); }
+
+/* ArenaPlayerCard: a glass card on the table. */
+.aplayercard { position: absolute; width: 300px; z-index: 880; border-radius: 18px; padding: 14px; display: grid; gap: 12px; max-height: 80%; overflow: auto; }
+.aplayercard header { display: flex; align-items: center; gap: 12px; }
+.aplayercard .portrait { width: 44px; height: 44px; flex: none; border-radius: 50%; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(232,190,110,.42); background: #2a1408; }
+.aplayercard .portrait svg { width: 100%; height: 100%; display: block; }
+.aplayercard header > div:nth-child(2) { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.aplayercard header b { font: 700 17px/1.1 var(--serif); color: #f3ead8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aplayercard header small { font: 800 13px/1 var(--sans); color: #fad685; }
+.aplayercard .close { width: 32px; height: 32px; flex: none; background: none; color: rgba(243,234,216,.8); font: 900 13px/1 var(--serif); }
+.aplayercard .statuses { display: grid; gap: 6px; }
+.aplayercard .statuses > div { display: flex; align-items: center; gap: 10px; font: 600 13px/1.25 var(--sans); color: #f3ead8; }
+.aplayercard .statuses > div.lethal { color: #ff9e85; }
+.aplayercard .zonegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 8px; }
+.aplayercard .zonegrid button { min-height: 64px; display: grid; justify-items: center; align-content: center; gap: 3px; border-radius: 10px; color: #f3ead8;
+  background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px rgba(232,190,110,.32); }
+.aplayercard .zonegrid button svg { width: 17px; height: 17px; fill: currentColor; }
+.aplayercard .zonegrid button b { font: 800 13px/1 var(--sans); font-variant-numeric: tabular-nums; }
+.aplayercard .zonegrid button small { font: 800 8px/1 var(--sans); letter-spacing: .1em; }
+.aplayercard .zonegrid button.lit { color: #ffe6b3; background: rgba(255,170,80,.16); box-shadow: inset 0 0 0 1px rgba(255,190,110,.8), 0 0 12px rgba(255,150,60,.6); animation: abreathe 2.2s ease-in-out infinite; }
+.aplayercard .named { display: grid; gap: 6px; }
+.aplayercard .named button { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 12px; border-radius: 10px; text-align: left;
+  color: #f3ead8; font: 600 13px/1.25 var(--sans); background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px rgba(232,190,110,.32); }
+.aplayercard .named button b { font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* More actions: every legal action as a glass row. */
+.amore { display: grid; gap: 6px; max-height: 60vh; overflow: auto; }
+.amore .arow span { display: grid; gap: 2px; text-align: left; }
+.amore .arow small { font: 500 11px/1.2 var(--serif); color: rgba(243,234,216,.65); }
+
+/* TopOfLibraryCard: a revealed top card face up on the deck, tilted, brass-edged (ember and glowing when you can play it). */
+.atoplib { position: absolute; transform: translate(-50%, -50%) rotate(8deg); z-index: 64; padding: 0; border-radius: 6%/4.3%; overflow: visible; background: #111;
+  box-shadow: inset 0 0 0 1.2px #c9a45c, 0 2px 3px rgba(0,0,0,.55); }
+.atoplib img { width: 100%; height: 100%; border-radius: inherit; display: block; }
+.atoplib.playable { box-shadow: inset 0 0 0 2px #ff8c3a, 0 0 9px rgba(255,140,58,.85); }
+.atoplib i { position: absolute; left: -14%; top: -10%; width: 34%; aspect-ratio: 1; min-width: 16px; border-radius: 50%; display: grid; place-items: center;
+  background: linear-gradient(#ffe194, #c9a45c); box-shadow: inset 0 0 0 .8px rgba(0,0,0,.5); color: #3d210d; }
+.atoplib i svg { width: 62%; height: 62%; fill: currentColor; }
+/* arenaZonePill: a glass capsule with an eye and a count. */
+.azonepills { position: absolute; transform: translateX(-50%); display: grid; gap: 0; z-index: 36; }
+.azonepill { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px; border-radius: 11px; color: #f3ead8;
+  background: linear-gradient(rgba(60,46,36,.92), rgba(28,20,15,.92)); box-shadow: inset 0 0 0 1px rgba(232,190,110,.42), 0 1px 3px rgba(0,0,0,.5); }
+.azonepill svg { width: 12px; height: 12px; fill: currentColor; }
+.azonepill b { font: 800 12px/1 var(--sans); font-variant-numeric: tabular-nums; }
+
+
+/* A phased-out permanent: the tile at 0.42 with "Phased out" over it, and no glow. */
+.acard.phased .spin > .plain, .acard.phased .spin > .tile { opacity: .42; transition: opacity .2s ease-out; }
+.acard.phased .spin { box-shadow: none !important; animation: none !important; }
+.acard .aphased { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: .5em; border-radius: 1em; white-space: nowrap; pointer-events: none;
+  background: rgba(0,0,0,.88); color: #fff; font: 700 1.6em/1 var(--serif); z-index: 3; }
+
+/* A defender you can attack glows red (ArenaPalette.attackGlow) where a target glows blue. */
+.amed.targetable.attack { box-shadow: 0 0 0 2px #ff381f, 0 0 16px 6px rgba(255,56,31,.75); }
+
+/* ComboLoopOverlay: the offer card, the running bar, the finishing curtain, the result line. */
+.acombo { position: absolute; left: 0; right: 0; top: 0; z-index: 890; display: flex; justify-content: center; pointer-events: none; padding: 0 16px; }
+.acombo > * { pointer-events: auto; }
+.acombo.running { bottom: 0; align-items: flex-start; padding-top: 56px; pointer-events: auto; }
+.acombo.curtain { bottom: 0; align-items: center; background: rgba(0,0,0,.72); pointer-events: auto; }
+.acombo.offer, .acombo.result { padding-top: 70px; }
+.acombo .card { width: 100%; max-width: 460px; border-radius: 14px; padding: 14px; display: grid; gap: 10px; color: #f3ead8; font: 500 13px/1.35 var(--serif); }
+.acombo header { display: flex; align-items: center; gap: 8px; }
+.acombo header i svg, .acombo .bar i svg { width: 16px; height: 16px; fill: #e2b867; }
+.acombo header b { flex: 1; font: 900 16px/1 var(--serif); }
+.acombo .close { width: 36px; height: 36px; background: none; color: rgba(243,234,216,.8); font: 900 12px/1 var(--serif); }
+.acombo .each { display: grid; gap: 3px; }
+.acombo .each small { font: 800 10px/1 var(--serif); letter-spacing: .12em; color: #e2b867; }
+.acombo .each span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acombo p { margin: 0; font-size: 11px; opacity: .7; }
+.acombo p.reason { opacity: .65; }
+.acombo .picker { display: flex; align-items: center; gap: 8px; }
+.acombo .picker .step { width: 40px; height: 40px; border-radius: 50%; color: #f3ead8; background: rgba(255,255,255,.1); box-shadow: inset 0 0 0 1px rgba(201,164,92,.7); font: 900 16px/1 var(--serif); }
+.acombo .picker > b { min-width: 44px; text-align: center; font: 900 22px/1 var(--serif); font-variant-numeric: tabular-nums; }
+.acombo .picker > span { flex: 1; }
+.acombo .aplaque { position: relative; height: 34px; padding: 0 14px; font-size: 14px; min-width: 0; margin: 0; }
+.acombo .go { display: flex; gap: 6px; flex-wrap: wrap; }
+.acombo .bar { width: 100%; max-width: 420px; border-radius: 18px; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; color: #f3ead8; }
+.acombo .bar > div { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.acombo .bar b { font: 700 14px/1.1 var(--serif); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acombo .bar small { font: 400 11px/1.2 var(--serif); opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acombo .bar .spin { transition: transform .3s ease-in-out; display: grid; }
+.acombo progress { width: 100%; height: 4px; accent-color: #ff8c3a; }
+.acombo .box { width: 100%; max-width: 320px; border-radius: 16px; padding: 24px; display: grid; justify-items: center; gap: 12px; color: #f3ead8; }
+.acombo .box .crown { font-size: 30px; color: #e2b867; font-style: normal; }
+.acombo .box b { font: 700 20px/1 var(--serif); }
+.acombo .box progress { width: 220px; }
+.acombo .line { width: 100%; max-width: 460px; border-radius: 14px; display: flex; align-items: center; gap: 10px; padding: 8px 6px 8px 14px; color: #f3ead8; font: 600 13px/1.3 var(--serif); }
+.acombo .line i { color: #e2b867; font-style: normal; font-weight: 900; }
+.acombo .line span { flex: 1; }
+@media (prefers-reduced-motion: reduce) { .acombo .bar .spin { transition: none; transform: none !important; } }
+
+/* ---------- the starting roll on the board (MultiplayerD20View with \.arenaBoard): the board dimmed to 0.8 under one large
+   serif line, the roll control, glass seat plates above the hand with "?" before a seat rolls ---------- */
+.aroll { position: absolute; inset: 0; z-index: 805; background: rgba(0,0,0,.8); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: var(--atop, 50px) 24px 0; }
+.aroll h2 { margin: 0; font: 700 26px/1.1 var(--serif); color: var(--atext); text-shadow: 0 0 6px rgba(0,0,0,.9); white-space: nowrap; }
+.aroll .rollcontrol { width: 340px; height: 48px; display: grid; place-items: center; }
+.aroll .rollcontrol .aplaque { position: relative; width: 100%; height: 44px; font-size: 17px; }
+.aroll .chip { min-height: 46px; padding: 0 26px; border-radius: 999px; display: grid; place-items: center; background: rgba(0,0,0,.62);
+  box-shadow: inset 0 0 0 1px var(--ahair), 0 3px 5px rgba(0,0,0,.5); font: 700 24px/1 var(--serif); color: var(--atext); font-variant-numeric: tabular-nums; }
+.aroll .chip.waiting { min-height: 36px; padding: 0 18px; font: 600 14px/1.2 var(--sans); box-shadow: inset 0 0 0 1px var(--ahair); }
+.aroll .plates { display: flex; gap: 10px; width: min(900px, 100%); }
+.aroll .plate { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; min-height: 50px; padding: 5px 12px; border-radius: 12px;
+  background: rgba(0,0,0,.62); box-shadow: inset 0 0 0 1px var(--ahair), 0 3px 5px rgba(0,0,0,.45); }
+.aroll .plate.won { box-shadow: inset 0 0 0 1.5px rgba(255,214,150,.9), 0 3px 10px rgba(255,120,31,.6); }
+.aroll .plate.out { opacity: .78; }
+/* ArenaRollValue: white on a dark disc in a thin gold line, orange for the winner */
+.aroll .plate .value { width: 38px; height: 38px; flex: none; border-radius: 50%; display: grid; place-items: center; font: normal 700 17.5px/1 var(--sans); color: #fff;
+  font-variant-numeric: tabular-nums; background: #121214; box-shadow: inset 0 0 0 1.2px rgba(250,214,133,.6); }
+.aroll .plate .value.none { color: rgba(255,255,255,.6); }
+.aroll .plate.won .value { background: var(--aorange); box-shadow: inset 0 0 0 1.2px rgba(255,214,150,.9); }
+.aroll .plate span { min-width: 0; display: grid; gap: 2px; }
+.aroll .plate b { font: 700 14px/1.2 var(--sans); color: var(--atext); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aroll .plate small { font: 500 12px/1.2 var(--sans); color: rgba(242,235,219,.7); }
+.aroll .plate.out b { color: rgba(242,235,219,.55); }
+.aroll .plate.out small { color: rgba(242,235,219,.45); }
+
+/* ---------- the result, Arena's (ArenaGameResultView): one word on a flare behind the mark, then it settles to the top over
+   your medallion, rank, numbers and the ways on; View Battlefield lifts it ---------- */
+.aresult { position: absolute; inset: 0; z-index: 900; overflow: hidden; background: rgba(0,0,0,.86); transition: background .2s ease-out; }
+.aresult.peek { background: transparent; pointer-events: none; }
+.aresult.peek .rview { pointer-events: auto; }
+.aresult .banner { position: absolute; left: 0; right: 0; top: calc(50% - 70px); height: 108px; display: grid; place-items: center;
+  transform: scale(1.5); opacity: 0; transition: top .6s cubic-bezier(.3,1.1,.5,1), height .6s cubic-bezier(.3,1.1,.5,1), transform .5s cubic-bezier(.3,1.35,.5,1), opacity .3s ease-out; }
+.aresult.landed .banner { transform: none; opacity: 1; }
+.aresult.settled .banner { top: var(--atop, 50px); height: 80px; }
+.aresult .banner > * { grid-area: 1 / 1; }
+.aresult .flare { width: 520px; height: 100%; border-radius: 50%; filter: blur(14px);
+  background: radial-gradient(closest-side, rgba(var(--flare), .85), rgba(var(--flare), .25) 60%, transparent); }
+.aresult .line { width: 440px; height: 2.5px; transform: translateY(6px); filter: blur(1.2px);
+  background: linear-gradient(90deg, transparent, rgb(var(--flare)), rgba(255,255,255,.9), rgb(var(--flare)), transparent); }
+.aresult .mark { display: grid; opacity: .32; mix-blend-mode: plus-lighter; filter: drop-shadow(0 0 18px rgb(var(--flare))); }
+.aresult .mark svg { transition: width .6s, height .6s; }
+.aresult h2 { margin: 0; font: 700 54px/1 var(--serif); letter-spacing: .06em; color: #fff; white-space: nowrap; transition: font-size .6s cubic-bezier(.3,1.1,.5,1);
+  text-shadow: 0 0 14px rgba(var(--flare), .9), 0 1px 2px rgba(0,0,0,.8); }
+.aresult[data-outcome=defeat] h2, .aresult[data-outcome=stopped] h2 { color: #dbdbdb; }
+.aresult.settled h2 { font-size: 40px; }
+.aresult .details { position: absolute; left: 0; right: 0; top: calc(var(--atop, 50px) + 90px); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 20px;
+  animation: arise .45s ease-out both; }
+@keyframes arise { from { opacity: 0; transform: translateY(24px); } }
+.aresult .resultmed { position: relative; display: block; }
+.aresult .resultmed.won::before { content: ""; position: absolute; inset: -7.5%; border-radius: 50%; background: rgba(255,120,40,.7); filter: blur(10px); }
+.aresult .resultmed.lost .bmed { filter: saturate(.15); }
+.aresult .details > p { margin: 0; max-width: 480px; text-align: center; font: 500 14px/1.3 var(--sans); color: rgba(242,235,219,.8); }
+.aresult .details > p.rnote { font: 600 13px/1.3 var(--sans); }
+.aresult .figures { display: flex; gap: 22px; }
+.aresult .figure { display: grid; justify-items: center; gap: 2px; }
+.aresult .figure b { font: 700 24px/1 var(--serif); color: var(--atext); font-variant-numeric: tabular-nums; }
+.aresult .figure small { font: 800 10px/1 var(--sans); letter-spacing: .12em; color: rgba(242,235,219,.65); }
+.aresult .ways { display: flex; gap: 12px; margin-top: 4px; }
+.aresult .ways .aplaque { position: relative; min-width: 96px; height: 44px; padding: 0 18px; font-size: 16px; }
+.aresult .rview { position: absolute; top: 6px; right: 120px; min-width: 64px; height: 36px; padding: 0 16px; font-size: 14px; }
+/* the rank strip (RankProgressPanel): the badge, the pips filling or emptying one at a time, the change, the bonuses */
+.rankstrip { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.rankstrip > div { display: grid; gap: 6px; justify-items: center; }
+.rankstrip .rbadge { position: relative; display: grid; place-items: center; animation: abadgeIn .35s cubic-bezier(.3,1.4,.5,1) both; }
+.rankstrip .rglow { position: absolute; width: 150px; height: 150px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(var(--tint),.55), rgba(var(--tint),.12) 55%, transparent 72%); animation: arglow 2.6s ease-in-out infinite alternate; }
+@keyframes arglow { from { transform: scale(.9); opacity: .7; } to { transform: scale(1.06); opacity: 1; } }
+.rankstrip .rbadge > :not(.rglow) { position: relative; }
+.rankstrip .rtitle { font-size: 22px !important; }
+@keyframes abadgeIn { from { transform: scale(.6); opacity: 0; } }
+.rankstrip .rtitle { font: 900 18px/1.1 var(--serif); color: transparent; background: linear-gradient(#ffe69e, rgb(var(--tint))); -webkit-background-clip: text; background-clip: text; }
+.rankstrip .rflame { display: inline-flex; align-items: center; gap: 4px; font: 800 14px/1 var(--sans); color: rgb(var(--tint)); }
+.rankstrip .rflame svg { width: 14px; height: 14px; fill: currentColor; }
+.rankstrip .rpips { display: flex; gap: 6px; padding: 2px 2px; }
+.rankstrip .rpips i { width: 9.2px; height: 9.2px; margin: 0 1.9px; box-sizing: border-box; border: 1.3px solid #c49a55; background: rgba(0,0,0,.55);
+  transform: scaleY(1.25) rotate(45deg); transition: transform .38s cubic-bezier(.3,1.5,.5,1), box-shadow .38s; }
+.rankstrip .rpips i.on { background: linear-gradient(135deg, #fff, rgb(var(--tint)) 50%, rgb(var(--shade))); box-shadow: 0 0 2.6px rgba(var(--tint), .55); }
+.rankstrip .rpips i.hot { transform: scaleY(1.25) rotate(45deg) scale(1.25); }
+.rankstrip .rpips i.on.hot { box-shadow: 0 0 8px rgb(var(--tint)); }
+.rankstrip .rdelta { font: 800 12px/1 var(--sans); color: rgba(242,235,219,.7); }
+.rankstrip .rdelta.up { color: rgb(153,242,140); }
+.rankstrip .rdelta.down { color: rgb(255,140,115); }
+.rankstrip .rbonus { display: flex; gap: 6px; }
+.rankstrip .rbonus em { padding: 3px 8px; border-radius: 9px; font: normal 800 9.5px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: #ffb066;
+  background: rgba(20,22,26,.9); box-shadow: inset 0 0 0 1px rgba(255,140,60,.9); }
+@media (prefers-reduced-motion: reduce) { .aresult .banner, .aresult h2, .aresult .mark svg { transition: none; } .aresult .details, .rankstrip .rbadge { animation: none; } }
+
+/* The opening hand shows the cards alone, no costs over them (Caleb, 2026-10-23). */
+.acard.opening .mcost { display: none; }
+
+/* The versus intro (VersusIntroOverlay): the room dimmed, your commander from the left and theirs from the right in gold
+   arches over black name plates, the VS medallion slamming down inside an expanding ring; over everything, never hit. */
+.aversus { position: absolute; inset: 0; z-index: 900; pointer-events: none; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12%; background: radial-gradient(ellipse at center, rgba(40,16,5,.86), rgba(0,0,0,.9) 70%); transition: opacity .45s ease-in; }
+.aversus.p3 { opacity: 0; }
+.aversus .vside { display: flex; flex-direction: column; align-items: center; gap: 14px; transition: transform .45s cubic-bezier(.3,1.25,.5,1); }
+.aversus .vside.you { transform: translateX(-120vw); }
+.aversus .vside.them { transform: translateX(120vw); }
+.aversus:not(.p0) .vside { transform: none; }
+.aversus .vseat { display: flex; flex-direction: column; align-items: center; }
+.aversus .arch { width: 220px; height: 306px; border-radius: 110px 110px 12px 12px; overflow: hidden; border: 3px solid var(--agold);
+  box-shadow: 0 0 36px rgba(255,120,31,.4), inset 0 0 0 1px rgba(0,0,0,.6); background: #140a05; }
+.aversus .vside.several .arch { width: 136px; height: 189px; border-radius: 68px 68px 10px 10px; }
+.aversus .arch { position: relative; }
+.aversus .archart { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; }
+/* A ranked seat (Caleb, 2026-10-26): the arch framed in the tier's metal, white over its tint, shade and tint again, thicker
+   the higher the tier (--rim); the glow in its tint, stronger for Mythic. No emblem on the arch. */
+.aversus .arch.tiered { overflow: visible; border: none; box-shadow: 0 0 36px rgba(var(--tint),.55), inset 0 0 0 1px rgba(0,0,0,.6); }
+.aversus .arch.tiered.mythic { box-shadow: 0 0 52px rgb(var(--tint)), inset 0 0 0 1px rgba(0,0,0,.6); }
+.aversus .arch.tiered::before { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; padding: var(--rim); pointer-events: none;
+  background: linear-gradient(rgba(255,255,255,.9), rgb(var(--tint)), rgb(var(--shade)), rgb(var(--tint)));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+.aversus .plate { margin-top: -10px; position: relative; max-width: 200px; padding: 7px 16px; border-radius: 6px; background: rgba(8,8,10,.94);
+  border: 1px solid var(--ahair); font: 700 17px/1.1 var(--serif); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aversus .vside.several .plate { max-width: 130px; font-size: 13px; }
+.aversus .ring { position: absolute; left: 50%; top: 50%; width: 90px; height: 90px; margin: -45px 0 0 -45px; border-radius: 50%;
+  border: 3px solid var(--agold); opacity: 0; transform: scale(.6); }
+.aversus.p1 .ring { opacity: .9; }
+.aversus.p2 .ring, .aversus.p3 .ring { opacity: 0; transform: scale(4.5); transition: transform .7s ease-out, opacity .7s ease-out; }
+.aversus .vs { position: absolute; left: 50%; top: 50%; width: 86px; height: 86px; margin: -43px 0 0 -43px; border-radius: 50%; display: grid; place-items: center;
+  font: 900 33px/1 var(--serif); color: var(--agold); text-shadow: 0 1px 1px #000; border: 3px solid var(--agold);
+  background: radial-gradient(circle, #29201a, #08080a 70%); box-shadow: 0 0 14px rgba(255,120,31,.75);
+  opacity: 0; transform: scale(3.2); transition: transform .28s cubic-bezier(.3,1.6,.5,1), opacity .2s; }
+.aversus.p2 .vs, .aversus.p3 .vs { opacity: 1; transform: scale(1); }
+/* Voice chat (docs/VOICE_CHAT.md): the mic by your medallion (off, joining, live, muted), a green halo round whoever is
+   talking, and a small mic on an opponent in voice (red when they or you muted them) */
+.amic { position: absolute; z-index: 466; width: 30px; height: 30px; margin: -15px 0 0 -15px; display: grid; place-items: center; padding: 0;
+  border-radius: 50%; background: linear-gradient(#1a1c24, #0a0b0f); color: #fad584;
+  box-shadow: inset 0 0 0 1px rgba(232,190,110,.65), 0 2px 4px rgba(0,0,0,.5); }
+.amic svg { width: 15px; height: 15px; fill: currentColor; }
+.amic.off { color: #b9a27a; }
+.amic.joining { animation: amicwait .8s ease-in-out infinite alternate; }
+.amic.live.muted { color: #ff8a7a; box-shadow: inset 0 0 0 1px rgba(200,80,70,.85), 0 2px 4px rgba(0,0,0,.5); }
+.amic.speaking { color: #b8ffc6; box-shadow: inset 0 0 0 1px #9dffb0, 0 0 10px 2px rgba(120,255,150,.6); }
+@keyframes amicwait { from { opacity: .45; } to { opacity: 1; } }
+.amed .aspeak { position: absolute; inset: -8%; z-index: -1; border-radius: 50%; pointer-events: none;
+  box-shadow: 0 0 0 2px rgba(150,255,170,.9), 0 0 calc(var(--d) * .25) calc(var(--d) * .06) rgba(110,255,150,.55);
+  animation: aspeak .45s ease-in-out infinite alternate; }
+@keyframes aspeak { from { opacity: .6; } to { opacity: 1; } }
+.amed .avoice { position: absolute; right: -6%; top: -6%; z-index: 4; width: calc(var(--d) * .34); height: calc(var(--d) * .34); display: grid;
+  place-items: center; border-radius: 50%; background: #0d0d12; color: #fad584; box-shadow: inset 0 0 0 1px rgba(232,190,110,.7); }
+.amed .avoice svg { width: 62%; height: 62%; fill: currentColor; }
+.amed .avoice.muted { color: #ff8a7a; }
+.aplayercard .avoicemute { display: block; margin: 0 auto 10px; }
+@media (prefers-reduced-motion: reduce) { .amic.joining, .amed .aspeak { animation: none; } }
+
+/* Lessons (LessonViews.tsx): Maren's note at the top of the table and the rings round what to touch next. */
+.alessoncoach { position: absolute; left: 16px; top: 150px; width: min(340px, calc(100% - 32px)); z-index: 960;
+  padding: 14px; border-radius: 12px; background: linear-gradient(#1f1a14, #120f0b); border: 1px solid rgba(214, 170, 96, 0.55);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55); color: #ead9b8; }
+.alessoncoach header { display: flex; align-items: center; gap: 8px; }
+.alessoncoach .tag { font: 700 11px/1 "Cormorant SC", serif; letter-spacing: 0.12em; padding: 4px 9px; border-radius: 999px;
+  border: 1px solid rgba(214, 170, 96, 0.5); color: #f0d49a; }
+.alessoncoach .tag::before { content: "●"; color: #e8673a; margin-right: 5px; font-size: 9px; }
+.alessoncoach h3 { margin: 0; font: 600 17px/1.1 "Cormorant SC", serif; letter-spacing: 0.08em; color: #f0d49a; text-transform: uppercase; }
+.alessoncoach p { margin: 8px 0 0; font: 500 15px/1.35 "Source Serif 4 Variable", Georgia, serif; }
+.alessoncoach footer { display: flex; justify-content: space-between; margin-top: 10px; }
+.alessoncoach.shake { animation: alesson-shake 0.32s ease-out; }
+@keyframes alesson-shake { 0%, 100% { translate: 0; } 25% { translate: 10px; } 60% { translate: -6px; } }
+.alessonrings { position: absolute; inset: 0; pointer-events: none; z-index: 940; }
+.alessonrings i { position: absolute; border: 3px solid #fad685; border-radius: 10px; box-shadow: 0 0 12px rgba(250, 214, 133, 0.85);
+  animation: alesson-breathe 1.6s ease-in-out infinite; }
+.alessonrings i.round { border-radius: 50%; }
+@keyframes alesson-breathe { 50% { box-shadow: 0 0 22px rgba(250, 214, 133, 1); scale: 1.04; } }
+@media (prefers-reduced-motion: reduce) { .alessonrings i, .alessoncoach.shake { animation: none; } }

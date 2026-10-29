@@ -22,21 +22,23 @@ struct BinderLeafHead: View {
     var trailing: BinderLeafAction? = nil
 
     var body: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 8) {
-                plaque(leading).frame(minWidth: 90, alignment: .leading)
-                Text(title)
-                    .font(.system(size: 19, weight: .bold, design: .serif))
-                    .foregroundStyle(DeckStudioPalette.ink)
-                    .lineLimit(1).minimumScaleFactor(0.7)
-                    .frame(maxWidth: .infinity)
-                    .accessibilityAddTraits(.isHeader)
-                plaque(trailing).frame(minWidth: 90, alignment: .trailing)
-            }
-            GrimoireRule()
+        // Arena's panel head: the title in large type with its actions as pills, over a gold hairline.
+        HStack(spacing: 8) {
+            plaque(leading).frame(minWidth: 90, alignment: .leading)
+            Text(title)
+                .font(ArenaMenuStyle.font(20, .bold))
+                .foregroundStyle(ArenaMenuStyle.text)
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .frame(maxWidth: .infinity)
+                .accessibilityAddTraits(.isHeader)
+            plaque(trailing).frame(minWidth: 90, alignment: .trailing)
         }
-        .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 4)
-        .background(GrimoirePaper().ignoresSafeArea(edges: .top))
+        .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 8)
+        .background {
+            ArenaGlass.top.opacity(0.97)
+                .overlay(alignment: .bottom) { Rectangle().fill(ArenaGlass.hairline).frame(height: 1).opacity(0.6) }
+                .ignoresSafeArea(edges: .top)
+        }
     }
 
     @ViewBuilder private func plaque(_ item: BinderLeafAction?) -> some View {
@@ -83,13 +85,12 @@ struct BinderToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button { configuration.isOn.toggle() } label: {
             HStack(spacing: 12) {
+                // Arena's Options use checkboxes.
+                ArenaCheckFace(isOn: configuration.isOn)
                 configuration.label
-                    .foregroundStyle(DeckStudioPalette.ink)
+                    .foregroundStyle(ArenaMenuStyle.text)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .multilineTextAlignment(.leading)
-                TavernSwitchFace(isOn: configuration.isOn)
-                    .frame(width: 51, height: 31)
-                    .animation(.easeOut(duration: 0.15), value: configuration.isOn)
             }
             .frame(minHeight: 44)
             .contentShape(Rectangle())
@@ -110,11 +111,10 @@ struct BinderDisclosureStyle: DisclosureGroupStyle {
                 withAnimation(.easeInOut(duration: 0.2)) { configuration.isExpanded.toggle() }
             } label: {
                 HStack(spacing: 8) {
-                    configuration.label.foregroundStyle(DeckStudioPalette.ink).multilineTextAlignment(.leading)
+                    configuration.label.foregroundStyle(ArenaMenuStyle.text).multilineTextAlignment(.leading)
                     Spacer(minLength: 8)
-                    Image(systemName: "chevron.down").font(.system(size: 10, weight: .heavy)).foregroundStyle(Binder.engraved)
+                    Image(systemName: "chevron.down").font(.system(size: 11, weight: .heavy)).foregroundStyle(ArenaMenuStyle.gold)
                         .frame(width: 22, height: 22)
-                        .background(Circle().fill(Binder.brass)).overlay(Circle().stroke(Binder.brassDeep, lineWidth: 0.8))
                         .rotationEffect(.degrees(configuration.isExpanded ? 180 : 0))
                         .accessibilityHidden(true)
                 }
@@ -141,7 +141,7 @@ struct BinderStepper: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(title).foregroundStyle(DeckStudioPalette.ink).frame(maxWidth: .infinity, alignment: .leading)
+            Text(title).foregroundStyle(ArenaMenuStyle.text).frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityHidden(true)
             HStack(spacing: 0) {
                 coin("minus", active: value > range.lowerBound) { value = max(range.lowerBound, value - 1) }
@@ -157,12 +157,11 @@ struct BinderStepper: View {
 
     private func coin(_ symbol: String, active: Bool, step: @escaping () -> Void) -> some View {
         Button(action: step) {
-            Image(systemName: symbol).font(.system(size: 12, weight: .black)).foregroundStyle(Binder.engraved)
+            Image(systemName: symbol).font(.system(size: 11, weight: .heavy)).foregroundStyle(ArenaMenuStyle.text)
                 .frame(width: 30, height: 30)
-                .background(Circle().fill(Binder.brass))
-                .overlay(Circle().stroke(Binder.brassDeep, lineWidth: 0.8))
-                .shadow(color: .black.opacity(0.35), radius: 1.5, y: 1)
-                .opacity(active ? 1 : 0.45)
+                .background(Circle().fill(Color.white.opacity(0.07)))
+                .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+                .opacity(active ? 1 : 0.4)
                 .frame(width: 47, height: 32)
                 .contentShape(Rectangle())
         }
@@ -187,7 +186,7 @@ struct BinderMenuPicker<Value: Hashable>: View {
         } label: {
             BinderPlaque {
                 HStack(spacing: 6) {
-                    Text(current).font(.system(size: 14, weight: .heavy, design: .serif))
+                    Text(current).font(ArenaMenuStyle.font(14, .heavy))
                     Image(systemName: "chevron.up.chevron.down").font(.system(size: 10, weight: .bold))
                 }
             }
@@ -209,13 +208,10 @@ struct BinderTag: View {
     var jewel = false
     /// A little coloured jewel that keeps a status's colour cue.
     var accent: Color? = nil
-    private static let jewelArt = UIImage(named: "tavern-binder-jewel")
 
     var body: some View {
         HStack(spacing: 4) {
-            if jewel, let art = Self.jewelArt {
-                Image(uiImage: art).resizable().interpolation(.high).frame(width: 14, height: 14)
-            } else if jewel {
+            if jewel {
                 Image(systemName: "flame.fill").font(.system(size: 8, weight: .heavy))
             }
             if let accent {
@@ -226,23 +222,23 @@ struct BinderTag: View {
                     .shadow(color: accent.opacity(0.9), radius: 3)
             }
             Text(text)
-                .font(.system(size: 10, weight: .heavy, design: .serif)).tracking(0.8)
+                .font(ArenaMenuStyle.font(10, .heavy)).tracking(0.8)
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
-        .foregroundStyle(ink)
-        .padding(.leading, jewel ? 5 : 12).padding(.trailing, 12)
+        .foregroundStyle(material == .ember ? Color(red: 1, green: 0.95, blue: 0.82) : ArenaMenuStyle.gold)
+        .padding(.leading, jewel ? 6 : 10).padding(.trailing, 10)
         .frame(minHeight: 22)
-        .background { TavernFill(material: material).clipShape(Capsule()).padding(1.5) }
-        .overlay { TavernCapsuleRim(thin: true) }
-        .fixedSize()
-    }
-
-    private var ink: Color {
-        switch material {
-        case .ember: return Color(red: 1, green: 0.94, blue: 0.80)
-        case .leather: return Color(red: 0.98, green: 0.82, blue: 0.48)
-        case .parchment: return Color(red: 0.24, green: 0.12, blue: 0.05)
+        // Arena's tags: gold capitals on dark glass, ember for the deck you play.
+        .background {
+            if material == .ember {
+                Capsule().fill(LinearGradient(colors: [Color(red: 0.95, green: 0.45, blue: 0.18), Color(red: 0.62, green: 0.18, blue: 0.06)],
+                                              startPoint: .top, endPoint: .bottom))
+            } else {
+                Capsule().fill(Color.black.opacity(0.7))
+            }
         }
+        .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 0.8))
+        .fixedSize()
     }
 }
 
@@ -254,15 +250,14 @@ struct BinderCoin<Label: View>: View {
     @ViewBuilder var label: Label
 
     var body: some View {
+        // A glass circle with a gold symbol; lit is an ember symbol (a favourite).
         label
             .font(.system(size: 13, weight: .black))
-            .foregroundStyle(lit ? Color(red: 0.72, green: 0.20, blue: 0.06) : Binder.engraved)
-            .shadow(color: lit ? TavernPalette.ember.opacity(0.8) : Binder.brassLight.opacity(0.7), radius: lit ? 2 : 0, y: lit ? 0 : 1)
+            .foregroundStyle(lit ? ArenaMenuStyle.ember : ArenaMenuStyle.gold)
+            .shadow(color: lit ? ArenaMenuStyle.ember.opacity(0.8) : .clear, radius: 3)
             .frame(width: 30, height: 30)
-            .background(Circle().fill(pressed ? Binder.brassPressed : Binder.brass))
-            .overlay(Circle().inset(by: 2.5).stroke(Binder.brassDeep.opacity(0.55), lineWidth: 0.8))
-            .overlay(Circle().stroke(.black.opacity(0.5), lineWidth: 0.8))
-            .shadow(color: .black.opacity(pressed ? 0.15 : 0.4), radius: pressed ? 1 : 2, y: pressed ? 0 : 1.5)
+            .background(Circle().fill(Color.black.opacity(pressed ? 0.7 : 0.5)))
+            .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 0.9).opacity(0.8))
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
     }
@@ -284,14 +279,13 @@ struct BinderChip: View {
     var body: some View {
         HStack(spacing: 5) {
             if let icon { Image(systemName: icon).font(.system(size: 11, weight: .bold)) }
-            Text(title).font(.system(size: 13, weight: .bold, design: .serif)).lineLimit(1)
+            Text(title).font(ArenaMenuStyle.font(13, .bold)).lineLimit(1)
         }
-        .foregroundStyle(chosen ? Color(red: 1, green: 0.94, blue: 0.80) : Color(red: 0.98, green: 0.82, blue: 0.48))
-        .shadow(color: .black.opacity(0.7), radius: 0, y: 1)
-        .padding(.horizontal, 12).frame(minHeight: 32)
-        .background { TavernFill(material: chosen ? .ember : .leather).clipShape(Capsule()).padding(1.5) }
-        .overlay { TavernCapsuleRim(thin: true) }
-        .shadow(color: .black.opacity(chosen ? 0.2 : 0.35), radius: chosen ? 1 : 2, y: chosen ? 0 : 1)
+        .foregroundStyle(chosen ? Color(red: 0.11, green: 0.06, blue: 0.03) : ArenaMenuStyle.dim)
+        .padding(.horizontal, 12).frame(minHeight: 30)
+        // Arena's filter chips: dark glass, filled gold when chosen.
+        .background(Capsule().fill(chosen ? AnyShapeStyle(ArenaMenuStyle.goldFill) : AnyShapeStyle(Color.black.opacity(0.5))))
+        .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 0.9).opacity(chosen ? 0 : 0.7))
     }
 }
 
@@ -306,8 +300,8 @@ struct BinderNote: View {
         HStack(alignment: .top, spacing: 10) {
             BinderStamp(icon: icon, size: 28).padding(.top, 1)
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 15, weight: .bold, design: .serif)).foregroundStyle(DeckStudioPalette.ink)
-                Text(message).font(.system(size: 13, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
+                Text(title).font(ArenaMenuStyle.font(15, .bold)).foregroundStyle(ArenaMenuStyle.text)
+                Text(message).font(ArenaMenuStyle.font(13, .regular)).foregroundStyle(ArenaMenuStyle.dim)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -326,10 +320,10 @@ struct BinderEmptyLeaf: View {
     var body: some View {
         VStack(spacing: 10) {
             BinderStamp(icon: icon, size: 56)
-            Text(title).font(.system(size: 20, weight: .bold, design: .serif)).foregroundStyle(DeckStudioPalette.ink)
+            Text(title).font(.system(size: 20, weight: .bold, design: .serif)).foregroundStyle(ArenaMenuStyle.text)
                 .multilineTextAlignment(.center)
             if let message {
-                Text(message).font(.system(size: 14, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
+                Text(message).font(ArenaMenuStyle.font(14, .regular)).foregroundStyle(ArenaMenuStyle.dim)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -339,19 +333,39 @@ struct BinderEmptyLeaf: View {
     }
 }
 
-/// A symbol struck into a brass coin.
+/// A symbol in a glass circle (it was struck into a brass coin).
 struct BinderStamp: View {
     let icon: String
     var size: CGFloat = 28
 
     var body: some View {
-        Image(systemName: icon).font(.system(size: size * 0.44, weight: .bold)).foregroundStyle(Binder.engraved)
-            .shadow(color: Binder.brassLight.opacity(0.7), radius: 0, y: 1)
+        // A gold emblem in a glass circle.
+        ArenaEmblem(symbol: icon, size: size * 0.42, lit: true)
             .frame(width: size, height: size)
-            .background(Circle().fill(Binder.brass))
-            .overlay(Circle().inset(by: size * 0.08).stroke(Binder.brassDeep.opacity(0.55), lineWidth: 0.8))
-            .overlay(Circle().stroke(.black.opacity(0.5), lineWidth: 0.8))
-            .shadow(color: .black.opacity(0.35), radius: 1.5, y: 1)
+            .background(Circle().fill(Color.black.opacity(0.5)))
+            .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 0.9))
             .accessibilityHidden(true)
+    }
+}
+
+/// Arena's checkbox face, for toggles drawn by a style (the real Toggle carries the contract).
+struct ArenaCheckFace: View {
+    let isOn: Bool
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(isOn ? AnyShapeStyle(LinearGradient(colors: [Color(red: 1, green: 0.62, blue: 0.32), Color(red: 0.74, green: 0.25, blue: 0.08)],
+                                                          startPoint: .top, endPoint: .bottom))
+                           : AnyShapeStyle(Color.black.opacity(0.45)))
+            RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 1.2)
+            if isOn {
+                Image(systemName: "checkmark").font(.system(size: 12, weight: .black)).foregroundStyle(.white)
+            }
+        }
+        .frame(width: 22, height: 22)
+        .shadow(color: isOn ? ArenaMenuStyle.ember.opacity(0.6) : .clear, radius: 5)
+        .animation(.easeOut(duration: 0.15), value: isOn)
+        .accessibilityHidden(true)
     }
 }

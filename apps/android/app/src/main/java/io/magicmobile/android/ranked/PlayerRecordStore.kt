@@ -58,9 +58,9 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
     /** Records a finished game; a ranked game moves the ladder and returns how. */
     fun record(mode: PlayMode, outcome: RankOutcome, opponents: List<MatchOpponent>, opponentBracket: Int?, aiSkill: Int?, deckID: String,
                deckName: String, commander: String?, colors: List<String>, deckBracket: Int, turns: Int, aiDeckID: String? = null,
-               engineMatchID: String? = null, gameRecordFile: String? = null): RankChange? {
+               engineMatchID: String? = null, gameRecordFile: String? = null, durationSeconds: Int? = null): RankChange? {
         val (next, change) = file.recording(now(), mode, outcome, opponents, opponentBracket, aiSkill, deckID, deckName, commander, colors,
-            deckBracket, turns, aiDeckID, engineMatchID, gameRecordFile)
+            deckBracket, turns, aiDeckID, engineMatchID, gameRecordFile, durationSeconds)
         file = next; save()
         if (mode == PlayMode.RANKED) publish?.invoke(file.rank, file.title, shownCommander)
         // The finished game goes to the profile server too (when there is a profile): never blocks play.
@@ -93,6 +93,15 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
     /** A kept record by file name, for the ranked upload. */
     fun gameRecord(name: String): ByteArray? =
         if ('/' in name) null else runCatching { File(gameRecordsDir, name).readBytes() }.getOrNull()
+
+    /** Whether the named record is still on the phone (readable or not). */
+    fun gameRecordIsKept(name: String): Boolean = '/' !in name && File(gameRecordsDir, name).exists()
+
+    /** The server's answer for a ranked AI game (PlayerRecordFile.settlingRanked). */
+    fun settleRanked(ticket: String, standing: io.magicmobile.android.game.RankedStanding) {
+        val next = file.settlingRanked(ticket, standing.settlement, standing.check, standing.change, standing.points)
+        if (next != file) { file = next; save() }
+    }
 
     /** The server answered for this ticket (or never will). */
     fun resolvePendingRankedResult(ticket: String) {
@@ -150,6 +159,8 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
     }
 }
 
-/** The AI deck pool on this phone: the precons (Core) plus ai-decks.json. */
-fun aiPool(precons: List<io.magicmobile.android.ondevice.PreconDeck>, bracketDecks: List<AIDeck>): List<AIDeck> =
-    precons.map { AIDeck(it.id, it.name, "", "", it.commander ?: "", io.magicmobile.android.game.CommanderBracket.CORE, it.deck) } + bracketDecks
+/** The AI deck pool on this phone: the precons (Core) plus ai-decks.json, each with its Power when rated. */
+fun aiPool(precons: List<io.magicmobile.android.ondevice.PreconDeck>, bracketDecks: List<AIDeck>,
+           power: io.magicmobile.android.game.DeckPowerData? = null): List<AIDeck> =
+    precons.map { AIDeck(it.id, it.name, "", "", it.commander ?: "", io.magicmobile.android.game.CommanderBracket.CORE, it.deck, power?.decks?.get(it.id)) } +
+        bracketDecks

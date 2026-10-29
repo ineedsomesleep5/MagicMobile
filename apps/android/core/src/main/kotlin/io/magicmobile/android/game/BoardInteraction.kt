@@ -375,6 +375,7 @@ data class BoardFocusTracker(
     private val gameID: String? = null,
     private val turnKey: String? = null,
     private val switchPending: Boolean = false,
+    private val targetKey: String? = null,
 ) {
     /** A tap on an opponent. It replaces any switch still waiting on a prompt. */
     fun select(playerID: String): BoardFocusTracker = copy(focusedID = playerID, switchPending = false)
@@ -388,6 +389,19 @@ data class BoardFocusTracker(
         val active = snapshot.activePlayerId
         val switched = active != null && BoardOpponentFocus.opponents(snapshot).any { it.playerId == active }
         return next.copy(focusedID = if (switched) active else next.focusedID, switchPending = false)
+    }
+
+    /**
+     * A target question whose choices are all on opponents the board isn't showing turns the board to the first of them,
+     * once per question (ArenaTargetReach). [snapshot] shows the current focus; a tap afterwards still sticks.
+     */
+    fun showTargets(snapshot: GameSnapshot, targetable: Set<String> = GameBoardInteractionState.boardTargetableIds(snapshot)): BoardFocusTracker {
+        val prompt = snapshot.promptEnvelopeV2 ?: return this
+        if (!snapshot.isViewer(prompt.playerId) || targetable.isEmpty()) return this
+        val key = "${snapshot.id}:${prompt.id}:${prompt.messageId}"
+        if (key == targetKey) return this
+        val opponent = ArenaTargetReach.of(snapshot, targetable).opponentToShow
+        return if (opponent != null) copy(targetKey = key, focusedID = opponent, switchPending = false) else copy(targetKey = key)
     }
 
     companion object {
@@ -412,9 +426,9 @@ object SpectatorSeatPresentation {
         val count = snapshot.remainingOpponents.size
         val players = if (count == 1) "1 player still in" else "$count players still in"
         val seat = snapshot.seat
-        if (seat == null || snapshot.isViewer(seat.playerId)) return "You’re out · $players · Turn ${snapshot.turn}"
+        if (seat == null || snapshot.isViewer(seat.playerId)) return "You’re out · $players · Turn ${snapshot.displayTurn}"
         // The hand row already shows the stand-in's hand count; this line fits a phone.
-        return "${seat.life} life · $players · Turn ${snapshot.turn}"
+        return "${seat.life} life · $players · Turn ${snapshot.displayTurn}"
     }
 }
 

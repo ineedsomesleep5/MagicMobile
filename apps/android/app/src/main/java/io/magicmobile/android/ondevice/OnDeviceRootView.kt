@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentSize
@@ -178,8 +179,45 @@ class OnDeviceViewModel(application: Application) : AndroidViewModel(application
     val account = PlayerAccount(application, viewModelScope)
     /** A table invite link waiting for the root view to open it. */
     var joinLinkCode by mutableStateOf<String?>(null)
+    /** Your decks on every phone and browser signed in to this profile (docs/DECK_SYNC.md). */
+    private val deckSync by lazy {
+        io.magicmobile.android.studio.DeckSync(io.magicmobile.android.studio.DeckLibrarySyncAdapter(setup.library), setup.deckSyncState,
+            account.deckSyncAPI) { io.magicmobile.android.social.SupabaseLite.code(it) }
+    }
+
+    /** One deck sync in the background; errors stay quiet and the next sync tries again. Concurrent calls share one run. */
+    fun syncDecks() {
+        if (account.phase != PlayerAccount.Phase.READY) return
+        viewModelScope.launch {
+            val profile = account.profileID() ?: return@launch
+            try { deckSync.sync(profile) } catch (error: kotlinx.coroutines.CancellationException) { throw error } catch (error: Exception) { /* offline or refused: the next sync tries again */ }
+        }
+    }
+
+    /** A deck changed here or a tombstone waits to go up. */
+    fun deckSyncPending(): Boolean = runCatching { deckSync.hasPending() }.getOrDefault(false)
+
+    /** Voice chat for this online game (VoiceRoom); null in solo games and while the server's switch is off. */
+    var voiceRoom by mutableStateOf<VoiceRoom?>(null); private set
+
+    /**
+     * Voice chat (VoiceRoom; docs/VOICE_CHAT.md): one room per online game once it has its channel and the server's
+     * voiceChat switch is on. Nobody is in voice until they tap the mic; leaving the game leaves the channel.
+     */
+    fun syncVoiceRoom(table: RelayTable?) {
+        val channel = table?.voiceChannel
+        val seat = io.magicmobile.android.game.VoiceChatRules.account(table?.endpoint?.seatID)
+        val on = io.magicmobile.android.game.AppConfigState.current.isOn(io.magicmobile.android.game.VoiceChatRules.SWITCH, default = false)
+        voiceRoom?.let { if (on && it.channel == channel && it.account == seat) return }
+        voiceRoom?.close()
+        voiceRoom = null
+        if (!on || table == null || channel == null || seat == null) return
+        voiceRoom = VoiceRoom(getApplication(), channel, seat, viewModelScope) { c, s -> account.voiceToken(c, s) }
+            .also { room -> room.seatNames = { table.seatNames } }
+    }
 
     override fun onCleared() {
+        voiceRoom?.close()
         // The engine must stop its workers even when the activity is finished for good.
         MainScope().launch { runCatching { setup.close() } }
         super.onCleared()
@@ -196,10 +234,6 @@ object OrientationController {
         activity.requestedOrientation = if (portraitEnabled) ActivityInfo.SCREEN_ORIENTATION_FULL_USER else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
     }
 }
-
-private val setupInk = BrandTheme.ink
-private val setupSecondary = BrandTheme.inkSecondary
-private val setupAccent = BrandTheme.ember
 
 /** Port of OnDeviceRootView.swift: setup and lifecycle around the on-device board. */
 @Composable
@@ -237,6 +271,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var guidedShownTips by AppPreferences.string(GuidedGameLaunch.SHOWN_TIPS_KEY, "")
     var guidedGame by rememberSaveable { mutableStateOf(false) }
     var guidedTipID by rememberSaveable { mutableStateOf<String?>(null) }
+    // The game on the table is a lesson (Lessons.kt): recorded, coached, never counted.
+    var lessonRun by remember { mutableStateOf<io.magicmobile.android.ui.LessonRun?>(null) }
     var showFriends by remember { mutableStateOf(false) }
     // A friend's message during a game (the banner) and the Messages sheet it opens (a name, or "" for the list).
     var messageBanner by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -245,11 +281,32 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // The profile name is the name at every table; friends see the table this phone hosts while it has open seats.
     LaunchedEffect(vm.account.username) { vm.account.username?.let { playerDisplayName = it } }
     var showDecks by remember { mutableStateOf(false) }
-    // Decks is a spell book: it opens on the tavern table, then Deck Studio is its first page; Done closes it again.
-    val grimoireFilm = remember { io.magicmobile.android.studio.GrimoireFilm() }
-    fun openDecks() { if (!showDecks) grimoireFilm.open { showDecks = true } }
+    // Deck Studio's editor or importer is open over the whole screen (the Decks tab's fullScreenCover).
+    var decksCovered by remember { mutableStateOf(false) }
+    // The Play panel over the menu (Arena's blade), its way to play and its tab (OnDeviceRootView.swift's Arena menus).
+    var playPanel by rememberSaveable { mutableStateOf(false) }
+    var playModeRaw by AppPreferences.string(io.magicmobile.android.game.ArenaPlayMode.STORAGE_KEY, io.magicmobile.android.game.ArenaPlayMode.QUICK.raw)
+    var playTabRaw by rememberSaveable { mutableStateOf(io.magicmobile.android.game.ArenaPlayTab.FIND.raw) }
+    val playTab = io.magicmobile.android.game.ArenaPlayTab.entries.firstOrNull { it.raw == playTabRaw } ?: io.magicmobile.android.game.ArenaPlayTab.FIND
+    var optionsStartPage by remember { mutableStateOf<io.magicmobile.android.menus.ArenaOptionsPage?>(null) }
+    // Decks is the Arena menus' Decks tab (Caleb, 2026-10-22; it was a spell book that opened on the table, film and all).
+    fun openDecks() { if (!showDecks) { playPanel = false; showDecks = true } }
+    fun openPlayPanel(mode: io.magicmobile.android.game.ArenaPlayMode? = null) {
+        if (mode != null) { playModeRaw = mode.raw; playTabRaw = io.magicmobile.android.game.ArenaPlayTab.FIND.raw }
+        GameAudio.play(GameSound.UI_OPEN)
+        playPanel = true
+    }
     var studioOpen by remember { mutableStateOf<io.magicmobile.android.studio.DeckStudioOpen?>(null) }
     var confirmLeave by remember { mutableStateOf(false) }
+    // The freeze log (docs/FREEZE_LOG.md): the game menu's Report a freeze, and the launch question once answered.
+    var confirmFreezeReport by remember { mutableStateOf(false) }
+    var freezeOfferClosed by remember { mutableStateOf<String?>(null) }
+    // When this game's engine match began, for the game's length on the profile.
+    var gameStartedAt by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(session.matchID) { gameStartedAt = if (session.matchID != null) System.currentTimeMillis() else null }
+    // The launch question asks at most once in FreezeRules.ASK_INTERVAL_SECONDS (Unix seconds; -1 before it ever asked).
+    var freezeAskedAt by AppPreferences.double("magicmobile.freeze.askedAt", -1.0)
+    var freezeOfferAsked by remember { mutableStateOf<String?>(null) }
     var bannerError by remember { mutableStateOf<String?>(null) }
     /** The session error the player closed; a different error shows again. */
     var dismissedSessionError by remember { mutableStateOf<String?>(null) }
@@ -266,20 +323,37 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var lobby by rememberSaveable { mutableStateOf<String?>(null) }
     // Development fixtures (SocialFixtures): open the profile or the friends sheet at launch.
     LaunchedEffect(Unit) {
-        when (io.magicmobile.android.ranked.SocialFixtures.openScreen?.substringBefore(":")) {
+        val screen = io.magicmobile.android.ranked.SocialFixtures.openScreen
+        when (screen?.substringBefore(":")) {
             "profile" -> lobby = "profile"
             "rankedHall" -> lobby = "rankedHall"
             "leaderboard" -> lobby = "leaderboard"
+            "play" -> openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.QUICK)
+            "play-ranked", "queue" -> openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.RANKED)
+            "play-custom" -> openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.CUSTOM)
+            "play-friends" -> { playTabRaw = io.magicmobile.android.game.ArenaPlayTab.FRIENDS.raw; playPanel = true }
+            "play-recent" -> { playTabRaw = io.magicmobile.android.game.ArenaPlayTab.RECENT.raw; playPanel = true }
+            "decks", "deck" -> openDecks()
+            "custom" -> showSetup = true
+            "settings" -> { optionsStartPage = io.magicmobile.android.menus.ArenaOptionsPage.of(screen.substringAfter(":", "")); showAppearance = true }
+            "updates" -> showUpdates = true
+            "downloads" -> showDownloads = true
+            "learn" -> showHowToPlay = true
+            "learn-table" -> { howToPlayOpensTable = true; showHowToPlay = true }
             "friends", "public", "search", "messages", "conversation" -> showFriends = true
         }
     }
     var quickBracket by AppPreferences.int("magicmobile.quick.opponentBracket", 0)
     var quickDeckID by AppPreferences.string("magicmobile.quick.opponentDeck", "")
     var quickSkill by AppPreferences.int("magicmobile.quick.aiSkill", 3)
+    /** Easy, Medium or Hard pick the AI's deck by Power and set its skill; "advanced" keeps the bracket, deck and skill controls. */
+    var quickLevel by AppPreferences.string("magicmobile.quick.level", "medium")
     var activeMatch by remember { mutableStateOf<ActiveMatch?>(null) }
     // Who goes first in this AI game: Ranked always rolls, other games follow the player's choice.
     fun startingPlayerMode(): String = activeMatch?.mode?.startingPlayerMode(aiStartingPlayerMode) ?: aiStartingPlayerMode
     var rankChange by remember { mutableStateOf<io.magicmobile.android.game.RankChange?>(null) }
+    /** Why the last ranked win left the ladder alone, once the server answers. */
+    var rankNote by remember { mutableStateOf<String?>(null) }
     var ceremony by remember { mutableStateOf<io.magicmobile.android.game.RankChange?>(null) }
     var showBracketSheet by remember { mutableStateOf(false) }
     var bracketRevision by remember { mutableIntStateOf(0) }
@@ -339,13 +413,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             ?: if (selectedDeckID.startsWith("precon:")) io.magicmobile.android.game.CommanderBracket.CORE
             else selectedBracketReport?.let { io.magicmobile.android.game.DeckBracketPreference.effective(it.minimum, declaredBracket(selectedDeckID)) }
     }
-    val selectedDeckColors: List<String> = setup.bracketDecks.firstOrNull { it.playerDeckID == selectedDeckID }?.colors?.map { it.toString() } ?: emptyList()
-    val deckPickerSections = listOfNotNull(TavernPickerSection("Included precons", precons.map { it.name to "precon:${it.id}" })) +
-        io.magicmobile.android.game.CommanderBracket.entries.mapNotNull { bracket ->
-            setup.bracketDecks.filter { it.bracket == bracket }.takeIf { it.isNotEmpty() }?.let { decks ->
-                TavernPickerSection("Included · ${bracket.title}", decks.map { "${it.name} · ${it.commander}" to it.playerDeckID })
-            }
-        } + listOfNotNull(setup.localDecks.takeIf { it.isNotEmpty() }?.let { decks -> TavernPickerSection("Saved on this device", decks.map { it.deck.name to "local:${it.id}" }) })
+    val selectedDeckColors: List<String> = setup.bracketDecks.firstOrNull { it.playerDeckID == selectedDeckID }?.colors?.map { it.toString() }
+        ?: selectedDeck?.let { deck -> io.magicmobile.android.game.ArenaDeckColors.colors(deck.entries.filter { it.section == "commanders" }.map { it.name }) { setup.catalogue?.find(it)?.identity } }
+        ?: emptyList()
     val aiDeckPickerSections = io.magicmobile.android.game.CommanderBracket.entries.mapNotNull { bracket ->
         aiPool.filter { it.bracket == bracket }.takeIf { it.isNotEmpty() }?.let { decks -> TavernPickerSection(bracket.title, decks.map { it.name to it.id }) }
     }
@@ -365,12 +435,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
 
     fun makeVersusIntro(): Pair<VersusSeat, List<VersusSeat>> {
         val name = playerDisplayName.trim()
-        val you = VersusSeat("you", name.ifEmpty { "You" }, selectedDeck?.commanderName)
+        val tier = record.file.rank.position.tier
+        val you = VersusSeat("you", name.ifEmpty { "You" }, selectedDeck?.commanderName, tier)
         // A table knows everyone's commander before its first snapshot shows the command zones.
         val tableSeats = (setup.multiplayer as? RelayTable)?.tableSeats.orEmpty()
         if (setup.usingMultiplayer && tableSeats.any { it.isLocal } && tableSeats.any { !it.isLocal }) {
             val local = tableSeats.first { it.isLocal }
-            return VersusSeat("you", local.name, local.commanders.firstOrNull() ?: you.commander) to
+            return VersusSeat("you", local.name, local.commanders.firstOrNull() ?: you.commander, tier) to
                 tableSeats.filter { !it.isLocal }.take(3).map { VersusSeat(it.id, it.name, it.commanders.firstOrNull()) }
         }
         session.snapshot?.let { snapshot ->
@@ -390,24 +461,38 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     val mayStartSolo = validName && selectedDeck != null && selectedDeckBracket != null && setup.identity != null &&
         !setup.isBusy && !setup.needsLeave && matchPhase == io.magicmobile.android.game.RankedMatchmaker.Phase.Idle
 
+    /** `repick`: a ranked game's AI deck for the Power its server ticket names (ranked_ai_tuning). */
     fun startSolo(mode: io.magicmobile.android.game.PlayMode, deck: Deck, deckBracket: io.magicmobile.android.game.CommanderBracket,
-                  opponent: io.magicmobile.android.game.AIDeck, skill: Int) {
+                  opponent: io.magicmobile.android.game.AIDeck, skill: Int, repick: ((Double) -> io.magicmobile.android.game.AIDeck?)? = null) {
         try { playerDisplayName = OnDeviceSetupModel.playerName(playerDisplayName) }
         catch (error: EngineError) { setup.errorMessage = error.message; return }
         activeMatch = ActiveMatch(mode, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, deckBracket.level,
             listOf(io.magicmobile.android.game.MatchOpponent(opponent.name, opponent.commander, true)), opponent.bracket.level, skill, opponent.id)
-        rankChange = null
+        rankChange = null; rankNote = null
         if (mode == io.magicmobile.android.game.PlayMode.RANKED) record.beginRankedAIGame(null)
         val settings = GameResumeSettings(selectedDeckID, listOf(opponent.id), skill, mode.startingPlayerMode(aiStartingPlayerMode), mode.raw, deckBracket.level)
         scope.launch {
             // The server's ticket for a ranked game, so its result counts there too; its seed deals this game.
             var seed: Long? = null
+            var foe = opponent
+            var aiSkill = skill
+            var mistakes: Int? = null
+            var resumeSettings = settings
             if (mode == io.magicmobile.android.game.PlayMode.RANKED) {
                 val ticket = vm.account.startRankedAIGame(deckBracket.level)
                 record.beginRankedAIGame(ticket?.id, seeded = ticket != null)
                 seed = ticket?.seed
+                // The server tunes the AI without an app build: its skill, mistakes and the deck's Power.
+                ticket?.ai?.let { tuned ->
+                    foe = repick?.invoke(tuned.power) ?: opponent
+                    aiSkill = tuned.skill; mistakes = tuned.mistakePercent
+                    resumeSettings = settings.copy(aiDeckIDs = listOf(foe.id), aiSkill = aiSkill)
+                    activeMatch = activeMatch?.copy(opponents = listOf(io.magicmobile.android.game.MatchOpponent(foe.name, foe.commander, true)),
+                        opponentBracket = foe.bracket.level, aiSkill = aiSkill, aiDeckID = foe.id)
+                }
             }
-            setup.startAI(playerDisplayName, deck, listOf(opponent.deck), skill, settings, deckID = selectedDeckID, seed = seed)
+            setup.startAI(playerDisplayName, deck, listOf(foe.deck), aiSkill, resumeSettings, deckID = selectedDeckID, seed = seed,
+                aiMistakePercent = mistakes)
             if (session.matchID == null) activeMatch = null
         }
     }
@@ -430,12 +515,55 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         activeMatch = ActiveMatch(io.magicmobile.android.game.PlayMode.CASUAL, GuidedGameSetup.PLAYER_DECK_ID, deck.name, deck.commanderName, colors,
             core.level, listOf(io.magicmobile.android.game.MatchOpponent(opponent.name, opponent.commander, true)), opponent.bracket.level,
             GuidedGameSetup.AI_SKILL, opponent.id)
-        rankChange = null
+        rankChange = null; rankNote = null
         val settings = GameResumeSettings(GuidedGameSetup.PLAYER_DECK_ID, listOf(opponent.id), GuidedGameSetup.AI_SKILL, aiStartingPlayerMode,
             io.magicmobile.android.game.PlayMode.CASUAL.raw, core.level)
         scope.launch {
             setup.startAI(name, deck, listOf(opponent.deck), GuidedGameSetup.AI_SKILL, settings, deckID = GuidedGameSetup.PLAYER_DECK_ID)
             if (session.matchID == null) { activeMatch = null; endGuidedTips() }
+        }
+    }
+
+    // MARK: Lessons (OnDeviceRootView.swift)
+
+    /** A lesson: the recorded game on the real board, with Maren's notes. Nothing is saved or counted. */
+    fun startLesson(id: String) {
+        val info = io.magicmobile.android.ui.LessonAssets.all(context).firstOrNull { it.id == id } ?: return
+        val script = try { io.magicmobile.android.ui.LessonAssets.script(context, id) }
+        catch (error: Throwable) { setup.errorMessage = error.message; return }
+        howToPlaySeenVersion = HowToPlayLaunch.seenVersionAfterClosing(howToPlaySeenVersion)
+        if (guidedGame) endGuidedTips()
+        val run = io.magicmobile.android.ui.LessonRun(info)
+        val transport = io.magicmobile.android.game.LessonTransport(script, run)
+        run.release = { scope.launch { transport.release(); runCatching { session.refresh() } } }
+        lessonRun = run
+        lobby = null; showSetup = false
+        activeMatch = null; rankChange = null; rankNote = null
+        scope.launch {
+            setup.startLesson(script, transport)
+            if (session.matchID == null) lessonRun = null
+        }
+    }
+
+    /** The next lesson, or after the last one the guided game. */
+    fun nextLesson() {
+        val run = lessonRun ?: return
+        val next = io.magicmobile.android.game.LessonCatalog.next(run.lesson.id, io.magicmobile.android.ui.LessonAssets.all(context))
+        scope.launch {
+            if (!setup.close()) return@launch
+            selection.selectedCard = null; selection.inspectedCard = null
+            lessonRun = null
+            if (next != null) startLesson(next.id) else startGuidedGame()
+        }
+    }
+
+    /** Back to the lessons. */
+    fun finishLesson() {
+        scope.launch {
+            if (!setup.close()) return@launch
+            selection.selectedCard = null; selection.inspectedCard = null
+            lessonRun = null
+            showHowToPlay = true
         }
     }
 
@@ -448,6 +576,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun startQuickMatch() {
         val deck = selectedDeck ?: return
         val bracket = selectedDeckBracket ?: return
+        val level = setup.deckPower?.quickMatch?.get(quickLevel)
+        if (level != null) {
+            io.magicmobile.android.game.AIDeckPool.pickByPower(level.power, null, deck.commanderName, record.file.recentAIDecks, aiPool,
+                setup.deckPower?.closest ?: 3)?.let { return startSolo(io.magicmobile.android.game.PlayMode.QUICK, deck, bracket, it, level.skill) }
+        }
         val opponentBracket = if (quickBracket == 0) minOf(4, bracket.level) else quickBracket
         val opponent = quickDeckID.takeIf { it.isNotEmpty() }?.let { id -> aiPool.firstOrNull { it.id == id } }
             // "Match my deck" at Core or below meets a precon: the Core AI decks are tuned tribal lists.
@@ -458,10 +591,17 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
 
     fun startRankedAI(deck: Deck, bracket: io.magicmobile.android.game.CommanderBracket) {
         val position = record.file.rank.position
-        val opponent = io.magicmobile.android.game.AIDeckPool.pick(position.opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool,
+        // The deck nearest the division's Power from the tier's bracket or lower (docs/DECK_POWER.md); by bracket if unrated.
+        // The server's ticket can name the Power instead (ranked_ai_tuning), when the game starts.
+        val power = setup.deckPower
+        val byPower = { target: Double -> power?.let {
+            io.magicmobile.android.game.AIDeckPool.pickByPower(target, position.tier.maxDeckBracket, deck.commanderName, record.file.recentAIDecks, aiPool, it.closest)
+        } }
+        val opponent = power?.let { byPower(io.magicmobile.android.game.AIDeckPool.rankedTarget(position.tier.ordinal, position.division, it.rankedTiers)) }
+            ?: io.magicmobile.android.game.AIDeckPool.pick(position.opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool,
             preconsOnly = position.tier.preconOpponentsOnly,
             onlyPrecons = if (position.tier.preconOpponentsOnly) io.magicmobile.android.game.AIDeckPool.gentlestPrecons else null) ?: return
-        startSolo(io.magicmobile.android.game.PlayMode.RANKED, deck, bracket, opponent, position.tier.aiSkill)
+        startSolo(io.magicmobile.android.game.PlayMode.RANKED, deck, bracket, opponent, position.tier.aiSkill, repick = byPower)
     }
 
     /** The host opens a two-seat relay table and shares its code; the guest joins. A table that never fills hands the seat to an AI. */
@@ -469,7 +609,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         val matchID = ticket.matchId ?: return startRankedAI(deck, bracket)
         activeMatch = ActiveMatch(io.magicmobile.android.game.PlayMode.RANKED, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, bracket.level,
             listOf(io.magicmobile.android.game.MatchOpponent(ticket.opponent ?: "Challenger", null, false)), null, null, null, matchID)
-        rankChange = null
+        rankChange = null; rankNote = null
         if (ticket.isHost) {
             setup.hostOnline(playerDisplayName, deck, 2, emptyList(), 2)
             (setup.multiplayer as? RelayTable)?.tableCode?.let { matchmaker.shareTable(matchID, it) }
@@ -538,7 +678,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             delay(450)  // after the friends sheet closes
             activeMatch = ActiveMatch(mode, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, bracket.level,
                 listOf(io.magicmobile.android.game.MatchOpponent(friend, null, false)), null, null, null, privateTable = true)
-            rankChange = null
+            rankChange = null; rankNote = null
             challengeTarget = friend to mode
             setup.hostOnline(playerDisplayName, deck, 2, emptyList(), 2)
             val code = (setup.multiplayer as? RelayTable)?.tableCode
@@ -576,7 +716,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 val code = accepted.tableCode ?: throw io.magicmobile.android.social.SupabaseLite.Failure("challenge_closed")
                 activeMatch = ActiveMatch(challenge.playMode, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, bracket.level,
                     listOf(io.magicmobile.android.game.MatchOpponent(friend, null, false)), null, null, null, accepted.matchId, privateTable = true)
-                rankChange = null
+                rankChange = null; rankNote = null
                 setup.joinOnline(code, playerDisplayName, deck)
                 watchPersonTable(friend)
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -591,19 +731,27 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                    gameRecordFile: String? = null) {
         val colors = match.colors.ifEmpty { io.magicmobile.android.game.PlayerStats.colors(snapshot?.human?.zones?.command?.firstOrNull()?.card?.manaCost) }
         val change = record.record(match.mode, outcome, match.opponents, match.opponentBracket, match.aiSkill, match.deckID, match.deckName,
-            match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID, gameRecordFile)
+            match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID, gameRecordFile,
+            gameStartedAt?.let { ((System.currentTimeMillis() - it) / 1000).toInt() })
         rankChange = change
+        rankNote = null
+        val ranked = match.mode == io.magicmobile.android.game.PlayMode.RANKED
+        val recordedID = if (ranked) record.file.matches.firstOrNull()?.id else null
         scope.launch {
             match.rankedMatchID?.let { id -> matchmaker.report(id, outcome) }
             // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile),
             // then upload the game so its rank history point is the standing after it.
-            if (match.mode == io.magicmobile.android.game.PlayMode.RANKED) vm.account.afterRefresh?.invoke()
+            if (ranked) vm.account.afterRefresh?.invoke()
+            // The server's word replaces the phone's guess on the result screen still showing this game.
+            val settled = recordedID?.let { id -> record.file.matches.firstOrNull { it.id == id } }
+            if (settled != null && rankChange == change) { rankChange = settled.rankChange; rankNote = settled.rankNote }
         }
         if (change != null && change.isMilestone) scope.launch { delay(1500); if (rankChange == change) ceremony = change }
     }
 
     /** Records a finished game once: every game goes into the profile, ranked games move the ladder. */
     fun recordFinishedGameIfNeeded() {
+        if (lessonRun != null) return
         val snapshot = session.snapshot ?: return
         if (!snapshot.isCompleted && !snapshot.isSpectating) return
         val current = activeMatch ?: selectedDeck?.let { deck ->
@@ -641,8 +789,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         scope.launch {
             if (setup.leave()) {
                 if (guidedGame) endGuidedTips()
+                lessonRun = null
                 selection.selectedCard = null; selection.inspectedCard = null
-                activeMatch = null; rankChange = null; ceremony = null; matchmaker.finish(); rankedConnectJob?.cancel()
+                activeMatch = null; rankChange = null; rankNote = null; ceremony = null; matchmaker.finish(); rankedConnectJob?.cancel()
             }
         }
     }
@@ -653,7 +802,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun startAI() {
         val deck = selectedDeck ?: return
         if (aiPrecons.size != opponentCount) return
-        activeMatch = null; rankChange = null
+        activeMatch = null; rankChange = null; rankNote = null
         val opponentDecks = aiPrecons.map { it.deck }
         val settings = GameResumeSettings(selectedDeckID, aiIDs.take(opponentCount.coerceIn(1, 3)), aiSkill, aiStartingPlayerMode)
         scope.launch {
@@ -678,7 +827,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                     saved.deckBracket ?: 2, foes.map { io.magicmobile.android.game.MatchOpponent(it.name, it.commander, true) },
                     foes.firstOrNull()?.bracket?.level, saved.aiSkill, foes.firstOrNull()?.id)
             }
-            rankChange = null
+            rankChange = null; rankNote = null
             if (mode == null && ids.size == saved.aiDeckIDs.size && ids.size in 1..3) {
                 opponentCount = ids.size
                 ids.getOrNull(0)?.let { aiPreconID = it }; ids.getOrNull(1)?.let { aiPrecon2ID = it }; ids.getOrNull(2)?.let { aiPrecon3ID = it }
@@ -696,15 +845,16 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         if (session.snapshot?.isCompleted != true || setup.usingMultiplayer) return requestLeave()
         val mode = activeMatch?.mode
         val guided = guidedGame
+        if (lessonRun != null) return nextLesson()
         scope.launch {
             if (!setup.close()) return@launch
             if (guided) return@launch startGuidedGame()
             selection.selectedCard = null; selection.inspectedCard = null
-            activeMatch = null; rankChange = null
+            activeMatch = null; rankChange = null; rankNote = null
             // Quick Match deals a new opponent; Ranked looks for the next match.
             when (mode) {
                 io.magicmobile.android.game.PlayMode.QUICK -> startQuickMatch()
-                io.magicmobile.android.game.PlayMode.RANKED -> { lobby = "ranked"; findRankedMatch() }
+                io.magicmobile.android.game.PlayMode.RANKED -> { playModeRaw = io.magicmobile.android.game.ArenaPlayMode.RANKED.raw; findRankedMatch() }
                 else -> startAI()
             }
         }
@@ -821,6 +971,19 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+    // Deck sync (docs/DECK_SYNC.md): when the profile is ready or its name changes, on returning to the app and every
+    // 5 minutes while it is open; a change here goes up a few seconds after the last one, when something waits to go up.
+    val accountReady = vm.account.phase == PlayerAccount.Phase.READY
+    // The server's settings for this build (AppConfig): the menu's notice, name fixes, feature switches.
+    LaunchedEffect(accountReady) { if (accountReady) vm.account.refreshAppConfig() }
+    LaunchedEffect(accountReady, vm.account.username, appForeground) {
+        if (!accountReady || !appForeground) return@LaunchedEffect
+        while (true) { vm.syncDecks(); delay(5 * 60_000L) }
+    }
+    LaunchedEffect(setup.localDecks, accountReady) {
+        if (!accountReady || !vm.deckSyncPending()) return@LaunchedEffect
+        delay(3_000); vm.syncDecks()
+    }
     LaunchedEffect(portraitModeEnabled, activeGame) { OrientationController.apply(activity, portraitModeEnabled, activeGame) }
     LaunchedEffect(session.snapshot?.isCompleted, session.snapshot?.isSpectating) { recordFinishedGameIfNeeded() }
     LaunchedEffect(session.snapshot?.turn) { io.magicmobile.android.ui.GamePerformanceRecorder.noteTurn(session.snapshot?.turn) }
@@ -851,11 +1014,34 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         if (activeGame) { matchmaker.finish(); rankedConnectJob?.cancel() }
         if (activeGame) io.magicmobile.android.ui.GamePerformanceRecorder.begin(activeMatch?.mode?.raw ?: if (setup.usingMultiplayer) "online" else "custom", activeMatch?.aiSkill)
         else io.magicmobile.android.ui.GamePerformanceRecorder.end()
+        if (activeGame) {
+            FreezeLog.mode = activeMatch?.mode?.raw ?: if (setup.usingMultiplayer) "table" else "custom"
+            FreezeLog.crumb("Game started (${FreezeLog.mode}${if (setup.resume.resumedGame) ", resumed" else ""})")
+        } else FreezeLog.mode = "none"
         GameAudio.setScene(if (activeGame) GameMusic.GAME else GameMusic.MENU)
         // A resumed game is not a new matchup: no versus intro.
         if (!activeGame || setup.resume.resumedGame) { versusIntro = null; return@LaunchedEffect }
         if (reduceMotion) GameAudio.play(GameSound.VERSUS, after = 0.2)
         else { versusIntro = makeVersusIntro(); GameAudio.play(GameSound.VERSUS, after = 0.05) }
+    }
+    LaunchedEffect(matchPhase) {
+        when (val phase = matchPhase) {
+            io.magicmobile.android.game.RankedMatchmaker.Phase.Idle -> {}
+            is io.magicmobile.android.game.RankedMatchmaker.Phase.Searching -> FreezeLog.crumb("Ranked: searching")
+            is io.magicmobile.android.game.RankedMatchmaker.Phase.Matched ->
+                FreezeLog.crumb("Ranked: matched (${if (phase.ticket.matchId == null) "AI" else if (phase.ticket.isHost) "host" else "guest"})")
+        }
+    }
+    // Session errors log themselves; these are the setup's and the menus' own.
+    LaunchedEffect(bannerError) { bannerError?.takeIf { it != session.errorMessage }?.let { FreezeLog.crumb("Notice: $it") } }
+    fun sendFreezeReport(incident: io.magicmobile.android.game.FreezeIncident) {
+        scope.launch {
+            val sent = FreezeLog.send(incident) { kind, report -> vm.account.sendDiagnostic(kind, report) }
+            val notice = if (sent) "Freeze report sent. Thank you." else "The freeze report couldn't be sent. It's still saved on this phone."
+            bannerError = notice
+            delay(5_000)
+            if (bannerError == notice) bannerError = null
+        }
     }
     val errorKey = setup.errorMessage ?: session.errorMessage
     LaunchedEffect(errorKey) {
@@ -892,7 +1078,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         val room = table?.room ?: return@LaunchedEffect
         if (activeMatch?.isPersonTable == true && !room.localReady) selectedDeck?.let { setup.readyForMatch(playerDisplayName, it) }
     }
-    LaunchedEffect(table?.endpoint?.matchID) { if (table?.endpoint != null) setup.attachTable(table, selectedDeckID, selectedDeck) }
+    LaunchedEffect(table?.endpoint?.matchID) {
+        vm.syncVoiceRoom(table)
+        if (table?.endpoint != null) setup.attachTable(table, selectedDeckID, selectedDeck)
+    }
     LaunchedEffect(table?.isConnected, table?.isSuspended) { setup.updateSessionForeground() }
     // Relay tables carry quick chat between phones; solo games only answer from the AI.
     LaunchedEffect(session.snapshot?.id, table) {
@@ -907,7 +1096,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // Deck Studio handles Back itself while it is open.
     BackHandler(enabled = !activeGame && showSetup && !showDecks) {
         GameAudio.play(GameSound.UI_BACK)
-        if (!setup.isBusy && !setup.needsLeave) showSetup = false
+        // Back from the custom table returns to the Play panel's Custom page, as its header's chevron does.
+        if (!setup.isBusy && !setup.needsLeave) { showSetup = false; openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.CUSTOM) }
     }
     BackHandler(enabled = activeGame) { requestLeave() }
 
@@ -949,7 +1139,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
 
     // The main menu is showing with nothing over it (no game, setup, saved-game offer or sheet).
     val menuIsFree = !activeGame && !showSetup && !setup.needsLeave && setup.resume.offer == null && !startingRollVisible &&
-        !(showDecks || showAppearance || showUpdates || showDownloads || showHowToPlay || showGuidedWelcome)
+        !(showDecks || showAppearance || showUpdates || showDownloads || showHowToPlay || showGuidedWelcome || showFriends)
     // Friends' challenges arrive while the menu or a lobby is open (never during a game), and only for a player with
     // friends: nobody else can send one.
     val watchesChallenges = appForeground && vm.account.phase == io.magicmobile.android.social.PlayerAccount.Phase.READY &&
@@ -972,22 +1162,207 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         howToPlaySeenVersion = HowToPlayLaunch.seenVersionAfterClosing(howToPlaySeenVersion)
     }
 
+    // MARK: Arena menus (OnDeviceRootView.swift)
+
+    /** A deck's colours from its commanders' identities in the card catalogue (empty until it is loaded). */
+    val catalogue = setup.catalogue
+    fun deckColors(deck: Deck): List<String> = io.magicmobile.android.game.ArenaDeckColors.colors(
+        deck.entries.filter { it.section == "commanders" || it.section == "commander" }.map { it.name }) { name -> catalogue?.find(name)?.identity }
+
+    /** The top bar's lit tab for what the menu shows; a utility panel lights its own icon instead. */
+    val menuTab = io.magicmobile.android.game.ArenaMenuTab.lit(showAppearance || showUpdates || showDownloads || showFriends, showDecks, showHowToPlay, lobby)
+
+    fun selectMenuTab(tab: io.magicmobile.android.game.ArenaMenuTab) {
+        // A table being set up or left keeps its page until it's done.
+        if ((setup.isBusy || setup.needsLeave) && tab != io.magicmobile.android.game.ArenaMenuTab.LEARN) return
+        when (tab) {
+            io.magicmobile.android.game.ArenaMenuTab.LEARN -> { showHowToPlay = true; return }
+            io.magicmobile.android.game.ArenaMenuTab.DECKS -> { openDecks(); return }
+            io.magicmobile.android.game.ArenaMenuTab.HOME -> lobby = null
+            io.magicmobile.android.game.ArenaMenuTab.PROFILE -> lobby = "profile"
+            io.magicmobile.android.game.ArenaMenuTab.RANKED -> lobby = "rankedHall"
+        }
+        showSetup = false
+        showDecks = false
+        if (matchPhase == io.magicmobile.android.game.RankedMatchmaker.Phase.Idle && !challengeWaiting) playPanel = false
+    }
+
+    /** The chosen deck as a deck box. */
+    val selectedDeckBox = selectedDeck?.let { deck ->
+        io.magicmobile.android.menus.ArenaDeckBoxModel(selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, selectedDeckBracket?.label ?: "")
+    }
+
+    /** Every deck as a box, by shelf: your own, the precons, then the included decks by bracket. */
+    val deckBoxSections = remember(setup.localDecks, setup.precons, setup.bracketDecks, setup.bracketRules, bracketRevision, catalogue) {
+        val mine = setup.localDecks.map { saved ->
+            val id = "local:${saved.id}"
+            val bracket = io.magicmobile.android.game.DeckBracketPreference.effective(setup.bracketRules.evaluate(saved.deck).minimum, declaredBracket(id))
+            io.magicmobile.android.menus.ArenaDeckBoxModel(id, saved.deck.name, saved.deck.commanderName, deckColors(saved.deck), bracket.label)
+        }
+        val preconBoxes = setup.precons.map {
+            io.magicmobile.android.menus.ArenaDeckBoxModel("precon:${it.id}", it.name, it.commander, deckColors(it.deck), io.magicmobile.android.game.CommanderBracket.CORE.label)
+        }
+        val included = io.magicmobile.android.game.CommanderBracket.entries.mapNotNull { bracket ->
+            setup.bracketDecks.filter { it.bracket == bracket }.takeIf { it.isNotEmpty() }?.let { decks ->
+                io.magicmobile.android.menus.ArenaDeckSection("included-${bracket.level}", "Included · ${bracket.label}", decks.map {
+                    io.magicmobile.android.menus.ArenaDeckBoxModel(it.playerDeckID, it.name, it.commander, it.colors.map(Char::toString), bracket.label)
+                })
+            }
+        }
+        listOf(io.magicmobile.android.menus.ArenaDeckSection("mine", "My Decks", mine, offersNewDeck = true),
+            io.magicmobile.android.menus.ArenaDeckSection("precons", "Precons", preconBoxes)) + included
+    }
+    // The boxes' pips read the catalogue; it loads once the Play panel opens.
+    LaunchedEffect(playPanel) { if (playPanel) setup.loadCatalogue() }
+
+    fun homeContent(): io.magicmobile.android.menus.ArenaHomeContent {
+        val rank = record.file.rank
+        val season = io.magicmobile.android.game.RankLadder.seasonName(rank.season)
+        val art = { id: Int, x: Float, y: Float -> io.magicmobile.android.menus.ArenaHomeArt(id, x, y) }
+        return io.magicmobile.android.menus.ArenaHomeContent(
+            features = listOf(
+                io.magicmobile.android.menus.ArenaFeature("ranked", "Ranked season", "Ranked · $season", art(io.magicmobile.android.R.drawable.home_art_ur_dragon, 0.62f, 0.3f)) {
+                    selectMenuTab(io.magicmobile.android.game.ArenaMenuTab.RANKED)
+                },
+                io.magicmobile.android.menus.ArenaFeature("board", "New", "The Arena board", art(io.magicmobile.android.R.drawable.home_art_edgar_markov, 0.55f, 0.22f)) {
+                    showUpdates = true
+                },
+                io.magicmobile.android.menus.ArenaFeature("friends", "Friends", "Bring a friend to the table", art(io.magicmobile.android.R.drawable.home_art_yshtola, 0.62f, 0.25f)) {
+                    showFriends = true
+                },
+                // The tip jar (it was a strip at the foot of the old menu): the support page, in the browser.
+                io.magicmobile.android.menus.ArenaFeature("support", "Support", "Enjoying MagicMobile?", art(io.magicmobile.android.R.drawable.home_art_atraxa, 0.5f, 0.2f)) {
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SupportProject.URL))) }
+                }),
+            tiles = listOf(
+                io.magicmobile.android.menus.ArenaHomeTile("quick", "Quick Match", "", art(io.magicmobile.android.R.drawable.home_art_krenko, 0.5f, 0.38f)) {
+                    openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.QUICK)
+                },
+                // The rank shows on the rail and the top bar; the tile names the mode only (the judge, 2026-10-22).
+                io.magicmobile.android.menus.ArenaHomeTile("ranked", "Ranked", "",
+                    art(io.magicmobile.android.R.drawable.home_art_miirym, 0.55f, 0.4f)) { openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.RANKED) },
+                io.magicmobile.android.menus.ArenaHomeTile("learn", HowToPlayText.TITLE, "", art(io.magicmobile.android.R.drawable.home_art_giada, 0.6f, 0.3f)) {
+                    showHowToPlay = true
+                }),
+            deck = selectedDeckBox, rank = rank.position, wins = rank.wins, losses = rank.losses,
+            friendsOnline = vm.account.onlineFriendCount, unread = vm.account.incomingCount + vm.account.unreadMessages > 0,
+            play = { openPlayPanel() }, friends = { showFriends = true }, updates = { showUpdates = true }, downloads = { showDownloads = true },
+            openDeck = { openPlayPanel() }, openRank = { selectMenuTab(io.magicmobile.android.game.ArenaMenuTab.RANKED) })
+    }
+
+    fun playModel(): io.magicmobile.android.menus.ArenaPlayPanelModel = io.magicmobile.android.menus.ArenaPlayPanelModel(
+        sections = deckBoxSections, selectedDeckID = selectedDeckID, selectDeck = { selectedDeckID = it }, deckBracket = selectedDeckBracket,
+        mode = io.magicmobile.android.game.ArenaPlayMode.of(playModeRaw), setMode = { playModeRaw = it.raw },
+        tab = playTab, setTab = { playTabRaw = it.raw },
+        quickBracket = quickBracket, setQuickBracket = { quickBracket = it }, quickDeckID = quickDeckID, setQuickDeckID = { quickDeckID = it },
+        quickSkill = quickSkill, setQuickSkill = { quickSkill = it }, quickLevel = quickLevel, setQuickLevel = { quickLevel = it }, startingPlayer = aiStartingPlayerMode, setStartingPlayer = { aiStartingPlayerMode = it },
+        aiPool = aiPool, rank = record.file.rank, canSearchPeople = vm.account.rankedQueue != null,
+        search = matchPhase.takeIf { it != io.magicmobile.android.game.RankedMatchmaker.Phase.Idle }
+            ?: if (io.magicmobile.android.ranked.SocialFixtures.openScreen == "queue") io.magicmobile.android.game.RankedMatchmaker.Phase.Searching(fixtureLaunch) else null,
+        waitingFor = if (challengeWaiting) challengeTarget?.first else null,
+        playWithFriends = playWithFriends, setPlayWithFriends = { playWithFriends = it },
+        mayStart = mayStartSolo, status = if (setup.identity == null || setup.isBusy) setup.status else null,
+        recent = io.magicmobile.android.game.ArenaPlayRules.recentGames(record.file.matches, setup.deckIDs),
+        close = { playPanel = false }, newDeck = ::openDecks, explainBracket = { showBracketSheet = true },
+        startQuick = ::startQuickMatch, findRanked = ::findRankedMatch,
+        cancelSearch = { matchmaker.cancel() }, playAINow = { matchmaker.skipToAI() }, cancelChallenge = { challenges.cancelOutgoing() },
+        openCustom = { playPanel = false; showSetup = true },
+        rankedHall = { playPanel = false; lobby = "rankedHall" }, leaderboard = { playPanel = false; lobby = "leaderboard" },
+        challengeFriend = { showFriends = true },
+        hostOnline = { playWithFriends = true; playPanel = false; showSetup = true },
+        joinOnline = { playWithFriends = true; playPanel = false; showSetup = true },
+        chooseRecent = { game ->
+            selectedDeckID = game.deckID
+            playModeRaw = io.magicmobile.android.game.ArenaPlayMode.of(game.mode).raw
+        })
+
+    /** The custom table shows, or a table being left keeps its page (OnDeviceRootView.swift arenaMenu). */
+    val setupShown = showSetup || (setup.needsLeave && activeMatch?.isPersonTable != true)
+
+    fun setAISeats(ids: List<String>, count: Int) {
+        aiPreconID = ids[0]; aiPrecon2ID = ids[1]; aiPrecon3ID = ids[2]; opponentCount = count
+    }
+
+    fun customTableModel() = CustomTableModel(
+        setup = setup, deck = selectedDeck, deckID = selectedDeckID, deckBox = selectedDeckBox, bracket = selectedDeckBracket,
+        playerName = playerDisplayName, setPlayerName = { playerDisplayName = it.take(24) }, validName = validName,
+        online = playWithFriends, setOnline = { playWithFriends = it },
+        aiPool = aiPool, aiIDs = aiIDs, aiSections = aiDeckPickerSections,
+        selectAIDeck = { index, id -> when (index) { 0 -> aiPreconID = id; 1 -> aiPrecon2ID = id; else -> aiPrecon3ID = id } },
+        opponentCount = opponentCount,
+        // A seat comes back with the deck it last had; an empty one gets a precon.
+        addSeat = {
+            io.magicmobile.android.game.ArenaCustomTable.addSeat(aiIDs, opponentCount, aiPool.map { it.id }.toSet(),
+                aiPool.filter { it.isPrecon }.map { it.id }, aiPreconID)?.let { (ids, count) -> setAISeats(ids, count) }
+        },
+        removeSeat = { index -> io.magicmobile.android.game.ArenaCustomTable.removeSeat(aiIDs, opponentCount, index)?.let { (ids, count) -> setAISeats(ids, count) } },
+        aiSkill = aiSkill, setAISkill = { aiSkill = it }, startingMode = aiStartingPlayerMode, setStartingMode = { aiStartingPlayerMode = it },
+        mayStart = mayStart, onlinePlayers = playerCount, setOnlinePlayers = { playerCount = it },
+        back = { GameAudio.play(GameSound.UI_BACK); showSetup = false; openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.CUSTOM) },
+        changeDeck = { showSetup = false; openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.CUSTOM) },
+        explainBracket = { showBracketSheet = true },
+        openStudio = { studioOpen = it; openDecks() },
+        start = ::startAI, leave = { confirmLeave = true },
+        hostOnline = {
+            val deck = selectedDeck
+            if (deck != null) scope.launch {
+                val aiCount = onlineAICount(playerCount)
+                setup.hostOnline(playerDisplayName, deck, playerCount, aiIDs.take(aiCount).mapNotNull { id -> aiPool.firstOrNull { it.id == id }?.deck }, aiSkill)
+            }
+        },
+        joinOnline = { code -> selectedDeck?.let { setup.joinOnline(code, playerDisplayName, it) } },
+        readyOnline = { selectedDeck?.let { setup.readyForMatch(playerDisplayName, it) } })
+
+    // A search or a challenge waits in the Play panel (Arena's blade: Play turns into Cancel under a timer).
+    LaunchedEffect(matchPhase != io.magicmobile.android.game.RankedMatchmaker.Phase.Idle) {
+        if (matchPhase != io.magicmobile.android.game.RankedMatchmaker.Phase.Idle && !activeGame) playPanel = true
+    }
+    LaunchedEffect(challengeWaiting) { if (challengeWaiting) { playTabRaw = io.magicmobile.android.game.ArenaPlayTab.FRIENDS.raw; playPanel = true } }
+    LaunchedEffect(activeGame) { if (activeGame) playPanel = false }
+    BackHandler(enabled = !activeGame && playPanel && !showSetup) {
+        if (matchPhase == io.magicmobile.android.game.RankedMatchmaker.Phase.Idle && !challengeWaiting) { GameAudio.play(GameSound.UI_BACK); playPanel = false }
+    }
+    BackHandler(enabled = !activeGame && !playPanel && !showSetup && lobby != null) {
+        GameAudio.play(GameSound.UI_BACK)
+        lobby = if (lobby == "leaderboard") "rankedHall" else null
+    }
+
     MaterialTheme(colorScheme = darkColorScheme()) {
-        CompositionLocalProvider(LocalBrandAmbientMotion provides !(showDecks || showAppearance || showUpdates || showDownloads || showHowToPlay || showGuidedWelcome),
-            LocalNativeTurnControl provides turnControl, LocalPlayerAccount provides vm.account) {
+        CompositionLocalProvider(LocalBrandAmbientMotion provides !(showDecks || showAppearance || showUpdates || showDownloads || showHowToPlay || showGuidedWelcome
+                || showFriends || showBracketSheet || showOfflineArtPrompt),
+            LocalNativeTurnControl provides turnControl, LocalPlayerAccount provides vm.account,
+            // A friend's profile can join their open table: every page over the menu closes first, then the table setup opens.
+            io.magicmobile.android.ranked.LocalJoinFriendTable provides { code: String ->
+                showFriends = false; lobby = null; chatProfile = null
+                scope.launch { delay(450); openJoinLink(code) }
+            }) {
             Box(Modifier.fillMaxSize().background(BrandTheme.canvas)) {
                 if (activeGame) {
+                    val gameBoardMode by io.magicmobile.android.ui.AppPreferences.string(io.magicmobile.android.game.BoardMode.key, io.magicmobile.android.game.BoardMode.defaultValue)
                     CompositionLocalProvider(
+                        // On the Arena board the root's overlays over the game (Maren's and the guided game's notes, the recovery
+                        // banner) draw the Arena way too, as the board's own panels do (iOS: the board's environment).
+                        io.magicmobile.android.menus.LocalArenaBoard provides
+                            (io.magicmobile.android.game.BoardMode.resolved(gameBoardMode) == io.magicmobile.android.game.BoardMode.ARENA),
                         LocalInspectorBattlefield provides (session.snapshot?.players?.flatMap { it.zones.battlefield } ?: emptyList()),
+                        io.magicmobile.android.board.LocalLessonFocus provides (lessonRun?.focus ?: io.magicmobile.android.game.LessonSpot.Focus()),
+                        io.magicmobile.android.board.LocalLessonFocusReport provides lessonRun?.let { run -> { id: String -> run.boardFocused(id) } },
+                        io.magicmobile.android.board.LocalLessonCoverReport provides lessonRun?.let { run -> { cover: io.magicmobile.android.game.LessonBoardCover -> run.boardCovered(cover) } },
                         LocalGameRematchTitle provides when {
+                            lessonRun != null -> if (io.magicmobile.android.game.LessonCatalog.next(lessonRun!!.lesson.id,
+                                io.magicmobile.android.ui.LessonAssets.all(context)) == null) io.magicmobile.android.game.LessonText.GUIDED
+                                else io.magicmobile.android.game.LessonText.NEXT
                             setup.usingMultiplayer -> null
                             activeMatch?.mode == io.magicmobile.android.game.PlayMode.QUICK -> "Play Again"
                             activeMatch?.mode == io.magicmobile.android.game.PlayMode.RANKED -> "Next Match"
                             else -> "Rematch"
                         },
                         io.magicmobile.android.board.LocalGameRankChange provides rankChange,
+                        io.magicmobile.android.board.LocalGameRankNote provides rankNote,
                         LocalGameConcede provides GameConcedeHandler { concede() },
+                        LocalFreezeReport provides { confirmFreezeReport = true },
                         LocalEmoteCenter provides vm.emotes,
+                        LocalVoiceRoom provides vm.voiceRoom,
                         // Messages from friends inside a game too: the game menu's Messages button.
                         io.magicmobile.android.social.LocalFriendMessages provides
                             if (vm.account.phase == io.magicmobile.android.social.PlayerAccount.Phase.READY && vm.account.username != null && vm.account.messagesAvailable)
@@ -1006,9 +1381,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         val phaseStops by io.magicmobile.android.ui.AppPreferences.string(io.magicmobile.android.game.OnDeviceSmartPass.STOPS_KEY,
                             io.magicmobile.android.game.OnDeviceSmartPass.Settings.encode(io.magicmobile.android.game.OnDeviceSmartPass.defaultStops))
                         val stopForOwnSpells by io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.STOP_FOR_OWN_SPELLS_KEY, false)
-                        androidx.compose.runtime.LaunchedEffect(smartAutoPass, phaseStops, stopForOwnSpells) {
+                        val stopForThreats by io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.STOP_FOR_THREATS_KEY, true)
+                        androidx.compose.runtime.LaunchedEffect(smartAutoPass, phaseStops, stopForOwnSpells, stopForThreats) {
                             session.setSmartPass(io.magicmobile.android.game.OnDeviceSmartPass.Settings(smartAutoPass,
-                                io.magicmobile.android.game.OnDeviceSmartPass.Settings.decode(phaseStops), stopForOwnSpells))
+                                io.magicmobile.android.game.OnDeviceSmartPass.Settings.decode(phaseStops), stopForOwnSpells, stopForThreats))
                         }
                         // Hidden from TalkBack while the starting roll covers it.
                         Box(Modifier.fillMaxSize().alpha(if (setup.isBusy) 0.999f else 1f)
@@ -1056,63 +1432,68 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                                 Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 6.dp)) {
                                 if (tip != null) GuidedGameCoachCard(tip, dismiss = { guidedTipID = null }, turnOff = ::endGuidedTips)
                             }
+                            // A lesson that ends in a win hands over to the result screen, whose button goes on to the next lesson.
+                            lessonRun?.let { run ->
+                                // Below the top opponent's portrait and life, as on iPhone.
+                                if (session.snapshot?.isCompleted != true) Box(Modifier.align(Alignment.TopCenter).fillMaxSize().statusBarsPadding().padding(top = 56.dp)) {
+                                    io.magicmobile.android.ui.LessonCoachCard(run, nextTitle = if (io.magicmobile.android.game.LessonCatalog.next(run.lesson.id,
+                                        io.magicmobile.android.ui.LessonAssets.all(context)) == null) io.magicmobile.android.game.LessonText.GUIDED
+                                        else io.magicmobile.android.game.LessonText.NEXT, next = ::nextLesson, done = ::finishLesson)
+                                }
+                            }
                         }
                     }
-                } else if (showSetup || (setup.needsLeave && activeMatch?.isPersonTable != true)) {
-                    SetupScreen(setup, selectedDeck, aiPrecons, deckPickerSections, aiDeckPickerSections, playerDisplayName, { playerDisplayName = it.take(24) }, portraitModeEnabled,
-                        { portraitModeEnabled = it }, selectedDeckID, { selectedDeckID = it }, aiIDs, { index, id ->
-                            when (index) { 0 -> aiPreconID = id; 1 -> aiPrecon2ID = id; else -> aiPrecon3ID = id }
-                        }, opponentCount, { opponentCount = it }, aiSkill, { aiSkill = it }, aiStartingPlayerMode, { aiStartingPlayerMode = it },
-                        playWithFriends, { playWithFriends = it }, mayStart,
-                        onlinePlayers = playerCount, setOnlinePlayers = { playerCount = it },
-                        hostOnline = {
-                            val deck = selectedDeck
-                            if (deck != null) scope.launch {
-                                val aiCount = onlineAICount(playerCount)
-                                setup.hostOnline(playerDisplayName, deck, playerCount, aiIDs.take(aiCount).mapNotNull { id -> aiPool.firstOrNull { it.id == id }?.deck }, aiSkill)
-                            }
-                        },
-                        joinOnline = { code -> selectedDeck?.let { setup.joinOnline(code, playerDisplayName, it) } },
-                        readyOnline = { selectedDeck?.let { setup.readyForMatch(playerDisplayName, it) } },
-                        back = { GameAudio.play(GameSound.UI_BACK); showSetup = false },
-                        openSettings = { GameAudio.play(GameSound.UI_OPEN); showAppearance = true },
-                        openDecks = ::openDecks, start = ::startAI, leave = { confirmLeave = true },
-                        openStudio = { studioOpen = it; openDecks() })
-                } else if (lobby != null) {
-                    val deckSlot: @Composable () -> Unit = {
-                        io.magicmobile.android.ranked.PlayDeckSection(selectedDeck?.name, selectedDeck?.commanderName, selectedDeckBracket,
-                            selectedDeckID.startsWith("local:"), selectedDeckID, deckPickerSections, { selectedDeckID = it }, ::openDecks,
-                            { showBracketSheet = true }, enabled = !setup.isBusy && matchPhase == io.magicmobile.android.game.RankedMatchmaker.Phase.Idle)
-                    }
-                    BackHandler {
-                        GameAudio.play(GameSound.UI_BACK)
-                        lobby = when (lobby) { "chooser", "profile" -> null; "ranked", "leaderboard" -> "rankedHall"; else -> "chooser" }
-                    }
-                    when (lobby) {
-                        "quick" -> io.magicmobile.android.ranked.QuickMatchScreen(selectedDeckBracket, quickBracket, { quickBracket = it }, quickDeckID,
-                            { quickDeckID = it }, quickSkill, { quickSkill = it }, aiStartingPlayerMode, { aiStartingPlayerMode = it }, aiPool, mayStartSolo,
-                            if (setup.identity == null) setup.status else null, ::startQuickMatch, { lobby = "chooser" }, deckSlot)
-                        "ranked" -> io.magicmobile.android.ranked.RankedLobbyScreen(record.file.rank, selectedDeckBracket, vm.account.rankedQueue != null,
-                            mayStartSolo, if (setup.identity == null) setup.status else null, ::findRankedMatch, { lobby = "profile" }, { lobby = "rankedHall" }, deckSlot)
-                        "rankedHall" -> io.magicmobile.android.ranked.RankedHallScreen(vm.account, record.file.rank, play = { lobby = "ranked" },
-                            leaderboard = { lobby = "leaderboard" }, profile = { lobby = "profile" }, back = { lobby = "chooser" })
-                        "leaderboard" -> io.magicmobile.android.ranked.RankedLeaderboardScreen(vm.account) { lobby = "rankedHall" }
-                        "profile" -> io.magicmobile.android.ranked.PlayerProfileScreen(record, vm.account, vm.account.username ?: playerDisplayName,
-                            setup.localDecks.mapNotNull { saved -> saved.deck.entries.firstOrNull { it.section == "commander" }?.name } + setup.aiPool.map { it.commander },
-                            loadMetadata = { runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { io.magicmobile.android.studio.NativeDeckMetadataCatalogue(setup.awaitCatalogue()) } }.getOrNull() }) { lobby = null }
-                        else -> io.magicmobile.android.ranked.PlayModeChooser(record.file.rank.position, io.magicmobile.android.game.RankLadder.seasonName(record.file.rank.season),
-                            quick = { lobby = "quick" }, ranked = { lobby = "rankedHall" }, custom = { lobby = null; showSetup = true }, back = { lobby = null })
-                    }
                 } else {
-                    TavernMainMenu(selectedDeck?.name ?: "Choose a deck", playerDisplayName, play = { lobby = "chooser" },
-                        decks = ::openDecks, settings = { showAppearance = true }, news = { showUpdates = true },
-                        commanderName = selectedDeck?.commanderName, downloads = { showDownloads = true }, howToPlay = { showHowToPlay = true },
-                        friends = { showFriends = true }, friendsBadge = vm.account.onlineFriendCount + vm.account.incomingCount + vm.account.unreadMessages,
-                        profile = { lobby = "profile" }, rank = record.file.rank.position)
+                    // Every menu page under Arena's top bar, over the 3D tavern room (OnDeviceRootView.swift arenaMenu).
+                    CompositionLocalProvider(io.magicmobile.android.menus.LocalArenaBoard provides true,
+                        io.magicmobile.android.menus.LocalArenaMenuBackdrop provides true) {
+                        BoxWithConstraints(Modifier.fillMaxSize()) {
+                            val compact = maxWidth < maxHeight
+                            io.magicmobile.android.menus.ArenaRoomBackdrop(if (showDecks) 0.62f else if (lobby == null && !setupShown) 0f else 0.55f)
+                            // Only the room shows behind the Play panel, darkened.
+                            // Deck Studio's editor covers the whole screen, top bar too (a fullScreenCover on iOS).
+                            val studioCovered = showDecks && decksCovered
+                            if (!playPanel) Box(Modifier.fillMaxSize().then(if (studioCovered) Modifier else Modifier.windowInsetsPadding(WindowInsets.statusBars)
+                                .padding(top = io.magicmobile.android.menus.ArenaMenuStyle.barHeight))) {
+                                // The Decks tab: Deck Studio under the top bar, as Arena's Decks page (DeckStudioRootView).
+                                if (showDecks) io.magicmobile.android.studio.DeckStudioRootView(setup, selectedDeckID, { selectedDeckID = it },
+                                    preparePlay = { showDecks = false; studioOpen = null; openPlayPanel() }, dismiss = { showDecks = false; studioOpen = null }, open = studioOpen,
+                                    covered = { decksCovered = it })
+                                // The custom table: Arena's event page under the top bar (OnDeviceRootView.swift setupContent).
+                                else if (setupShown) CustomTablePage(customTableModel())
+                                else when (lobby) {
+                                    "rankedHall" -> io.magicmobile.android.ranked.RankedHallScreen(vm.account, record.file.rank,
+                                        play = { openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.RANKED) },
+                                        leaderboard = { lobby = "leaderboard" }, profile = { lobby = "profile" }, back = { lobby = null })
+                                    "leaderboard" -> io.magicmobile.android.ranked.RankedLeaderboardScreen(vm.account) { lobby = "rankedHall" }
+                                    "profile" -> io.magicmobile.android.ranked.PlayerProfileScreen(record, vm.account, vm.account.username ?: playerDisplayName,
+                                        setup.localDecks.mapNotNull { saved -> saved.deck.entries.firstOrNull { it.section == "commander" }?.name } + setup.aiPool.map { it.commander },
+                                        loadMetadata = { runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { io.magicmobile.android.studio.NativeDeckMetadataCatalogue(setup.awaitCatalogue()) } }.getOrNull() }) { lobby = null }
+                                    else -> io.magicmobile.android.menus.ArenaHomeView(homeContent(), compact)
+                                }
+                            }
+                            androidx.compose.animation.AnimatedVisibility(playPanel,
+                                enter = if (reduceMotion) fadeIn() else androidx.compose.animation.slideIn { full -> if (compact) androidx.compose.ui.unit.IntOffset(0, full.height) else androidx.compose.ui.unit.IntOffset(full.width, 0) } + fadeIn(),
+                                exit = if (reduceMotion) fadeOut() else androidx.compose.animation.slideOut { full -> if (compact) androidx.compose.ui.unit.IntOffset(0, full.height) else androidx.compose.ui.unit.IntOffset(full.width, 0) } + fadeOut()) {
+                                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).padding(top = io.magicmobile.android.menus.ArenaMenuStyle.barHeight)) {
+                                    io.magicmobile.android.menus.ArenaPlayPanel(playModel(), compact)
+                                }
+                            }
+                            if (!studioCovered) io.magicmobile.android.menus.ArenaTopBar(menuTab, compact, ::selectMenuTab, settings = { showAppearance = true },
+                                rank = record.file.rank.position, openRank = { selectMenuTab(io.magicmobile.android.game.ArenaMenuTab.RANKED) },
+                                unread = vm.account.incomingCount + vm.account.unreadMessages > 0, messages = { showFriends = true },
+                                updates = { showUpdates = true }, downloads = { showDownloads = true },
+                                lit = io.magicmobile.android.game.ArenaTopBarLit.of(showAppearance, showUpdates, showDownloads, showFriends))
+                        }
+                    }
                 }
 
                 // The starting roll, on an opaque cover: a relay table's shared roll (the host's recorded dice,
                 // played back on every phone) or its "Who goes first?" panel, or the AI table's local roll.
+                // The roll follows the board: on the Arena board it rolls on the board (dimmed, no tavern table).
+                val boardModeValue by io.magicmobile.android.ui.AppPreferences.string(io.magicmobile.android.game.BoardMode.key, io.magicmobile.android.game.BoardMode.defaultValue)
+                androidx.compose.runtime.CompositionLocalProvider(io.magicmobile.android.menus.LocalArenaBoard provides
+                    (io.magicmobile.android.game.BoardMode.resolved(boardModeValue) == io.magicmobile.android.game.BoardMode.ARENA)) {
                 if (multiplayerRollVisible) {
                     val sharedRoll = table.startingRoll
                     StartingRollCover {
@@ -1152,6 +1533,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         }
                     }
                 }
+                }
 
                 // Recovery banner. On the starting roll's cover only a roll error shows, still readable and dismissible.
                 // A session error stays up until updates resume or it is dismissed: polling has stopped, and a
@@ -1177,6 +1559,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                             }
                         } else if (activeGame && !setup.canUseSession) {
                             Text(setup.liveStatus, color = TavernPalette.parchment, style = bannerText)
+                            // Everyone still at the table may vote to go on without a player who is away (TableLeaveRules).
+                            val table = setup.multiplayer as? RelayTable
+                            table?.continueVote?.let { vote ->
+                                BannerButton(if (vote.voted) "Waiting for the others (${vote.voters.size}/${vote.needed})"
+                                    else io.magicmobile.android.game.TableLeaveRules.buttonTitle(vote),
+                                    io.magicmobile.android.ui.TavernButtonKind.PRIMARY, !vote.voted) { table.voteToContinue() }
+                            }
                         } else if (activeGame && session.snapshot == null) {
                             Text("Waiting for the first game update.", color = TavernPalette.parchment, style = bannerText)
                         }
@@ -1194,15 +1583,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                     }
                 }
 
-                if (!activeGame && matchPhase != io.magicmobile.android.game.RankedMatchmaker.Phase.Idle) {
-                    io.magicmobile.android.ranked.RankedSearchOverlay(matchPhase, record.file.rank.position, { matchmaker.skipToAI() }, { matchmaker.cancel() })
-                }
-                val target = challengeTarget
-                if (!activeGame && challengeWaiting && target != null) {
-                    io.magicmobile.android.ranked.ChallengeWaitingOverlay(target.first, target.second, record.file.rank.position) { challenges.cancelOutgoing() }
-                }
                 val invite = challengeIncoming.firstOrNull()
-                if (menuIsFree && (lobby == null || lobby == "chooser") && !challengeWaiting && activeMatch == null && invite != null) {
+                if (menuIsFree && lobby == null && !challengeWaiting && activeMatch == null && invite != null) {
                     Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 6.dp), contentAlignment = Alignment.TopCenter) {
                         io.magicmobile.android.ranked.ChallengeInviteBanner(invite, { acceptChallenge(invite) }, { scope.launch { challenges.decline(invite) } })
                     }
@@ -1223,39 +1605,50 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 setup.resume.notice?.let { notice ->
                     ResumeNoticeBanner(notice, Modifier.align(Alignment.TopCenter)) { setup.resume.notice = null }
                 }
+                // The server's notice on the main menu (AppConfig): it stays until closed, then never comes back.
+                val appNotice = io.magicmobile.android.ui.AppConfigStore.shownNotice
+                if (appNotice != null && menuIsFree && setup.resume.notice == null) {
+                    ResumeNoticeBanner(appNotice.text, Modifier.align(Alignment.TopCenter).testTag("menu.notice"), autoDismiss = false) {
+                        io.magicmobile.android.ui.AppConfigStore.dismissNotice(appNotice)
+                    }
+                }
+                // A player left the table and the others play on (TableLeaveRules).
+                (setup.multiplayer as? RelayTable)?.let { table ->
+                    val notice = table.tableNotice
+                    if (activeGame && notice != null) ResumeNoticeBanner(notice, Modifier.align(Alignment.TopCenter)) { table.tableNotice = null }
+                }
             }
 
-            if (showAppearance) BoardSheet({ showAppearance = false }) {
-                AppearanceSettings(portraitModeEnabled, { portraitModeEnabled = it }, inGame = activeGame) { showAppearance = false }
+            // Panels, not sheets: the menu's pages open as Arena's glass over the dimmed menu (ArenaPanels.kt).
+            io.magicmobile.android.menus.ArenaPanel(showAppearance, { showAppearance = false; optionsStartPage = null }, maxWidth = 560.dp, fitsContent = true) {
+                io.magicmobile.android.menus.ArenaOptionsView(portraitModeEnabled, { portraitModeEnabled = it }, setup.identity?.upstreamCommit, optionsStartPage)
             }
-            if (showUpdates) BoardSheet({ showUpdates = false }) { UpdatesSheet(setup.identity?.upstreamCommit) { showUpdates = false } }
-            if (showHowToPlay) BoardSheet(::closeHowToPlay, background = BrandTheme.canvas, skipPartiallyExpanded = true) {
+            io.magicmobile.android.menus.ArenaPanel(showUpdates, { showUpdates = false }, io.magicmobile.android.menus.ArenaPanelPlacement.TRAILING) {
+                NativeUpdateNewsView(setup.identity?.upstreamCommit)
+            }
+            io.magicmobile.android.menus.ArenaPanel(showHowToPlay, ::closeHowToPlay, fitsContent = true) {
                 // The first visit opens straight into the table's tutorial; the menu offers both.
-                HowToPlayView(::closeHowToPlay, Modifier.fillMaxWidth().fillMaxHeight(0.94f), tutorialID = if (howToPlayOpensTable) HowToPlayText.tutorials[0].id else null,
-                    playGuided = if (howToPlayOpensTable) null else ::startGuidedGame)
+                HowToPlayView(::closeHowToPlay, Modifier.fillMaxWidth().fillMaxHeight(), tutorialID = if (howToPlayOpensTable) HowToPlayText.tutorials[0].id else null,
+                    playGuided = if (howToPlayOpensTable) null else ::startGuidedGame,
+                    playLesson = if (howToPlayOpensTable) null else ::startLesson)
             }
-            if (showGuidedWelcome) BoardSheet(::answerGuidedWelcome, background = BrandTheme.canvas) {
-                GuidedGameWelcomeView(playGuided = { answerGuidedWelcome(); startGuidedGame() },
+            io.magicmobile.android.menus.ArenaPanel(showGuidedWelcome, ::answerGuidedWelcome, maxWidth = 560.dp, dismissable = false, fitsContent = true) {
+                GuidedGameWelcomeView(playGuided = {
+                    // The welcome's main button: the first lesson (the guided game follows the last one).
+                    answerGuidedWelcome()
+                    io.magicmobile.android.ui.LessonAssets.all(context).firstOrNull()?.let { startLesson(it.id) } ?: startGuidedGame()
+                },
                     readHowToPlay = {
                         answerGuidedWelcome()
                         scope.launch { delay(450); howToPlayOpensTable = true; showHowToPlay = true }
                     }, skip = ::answerGuidedWelcome, modifier = Modifier.fillMaxWidth())
             }
-            // DeckStudioRootView, full screen over the menu (fullScreenCover on iOS).
-            io.magicmobile.android.studio.StudioCover(showDecks, animated = false) {
-                io.magicmobile.android.studio.DeckStudioRootView(setup, selectedDeckID, { selectedDeckID = it },
-                    preparePlay = { showSetup = true }, dismiss = { grimoireFilm.close { showDecks = false; studioOpen = null } }, open = studioOpen)
-            }
-            // The film of the book opening and closing plays over the menu and Deck Studio alike.
-            io.magicmobile.android.studio.GrimoireFilmLayer(grimoireFilm)
-            if (showDownloads) {
-                LaunchedEffect(Unit) { setup.loadCatalogue() }
+            if (showDownloads) LaunchedEffect(Unit) { setup.loadCatalogue() }
+            io.magicmobile.android.menus.ArenaPanel(showDownloads, { showDownloads = false }, fitsContent = true) {
                 val catalogueNames = setup.catalogue?.cards?.map { it.name }
-                BoardSheet({ showDownloads = false }, skipPartiallyExpanded = true) {
-                    NativeDownloadsView(setup.localDecks.map { NativeDownloadDeck.of("local:${it.id}", it.deck) } +
-                        precons.map { NativeDownloadDeck.of("precon:${it.id}", it.deck) }, selectedDeckID, setup.identity != null,
-                        catalogueNames, setup.errorMessage?.takeIf { setup.catalogue == null }) { showDownloads = false }
-                }
+                NativeDownloadsView(setup.localDecks.map { NativeDownloadDeck.of("local:${it.id}", it.deck) } +
+                    precons.map { NativeDownloadDeck.of("precon:${it.id}", it.deck) }, selectedDeckID, setup.identity != null,
+                    catalogueNames, setup.errorMessage?.takeIf { setup.catalogue == null }) { showDownloads = false }
             }
             if (activeGame && vm.emotes.isChatOpen) BoardSheet({ vm.emotes.openChat(false) }, skipPartiallyExpanded = true) {
                 val profileReady = vm.account.phase == PlayerAccount.Phase.READY
@@ -1266,13 +1659,14 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 // A player opened from the table chat: their public profile covers the chat.
                 chatProfile?.let { name ->
                     androidx.compose.ui.window.Dialog({ chatProfile = null }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+                        io.magicmobile.android.ui.EdgeToEdgeDialogWindow()
                         io.magicmobile.android.ranked.PublicProfileScreen(vm.account, name, null, null) { chatProfile = null }
                     }
                 }
             }
-            if (showBracketSheet) {
+            io.magicmobile.android.menus.ArenaPanel(showBracketSheet, { showBracketSheet = false }, maxWidth = 560.dp, fitsContent = true) {
                 val deck = selectedDeck; val report = selectedBracketReport
-                if (deck != null && report != null) BoardSheet({ showBracketSheet = false }, skipPartiallyExpanded = true) {
+                if (deck != null && report != null) {
                     val fixed = setup.bracketDecks.firstOrNull { it.playerDeckID == selectedDeckID }?.bracket
                         ?: if (selectedDeckID.startsWith("precon:")) io.magicmobile.android.game.CommanderBracket.CORE else null
                     io.magicmobile.android.ranked.DeckBracketSheet(deck.name, report, run { bracketRevision; declaredBracket(selectedDeckID) }, fixed,
@@ -1282,23 +1676,52 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             messagesHub?.let { initial ->
                 androidx.compose.ui.window.Dialog({ messagesHub = null }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false,
                     decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+                    io.magicmobile.android.ui.EdgeToEdgeDialogWindow()
                     BackHandler { messagesHub = null }
                     io.magicmobile.android.social.FriendMessagesHub(vm.account, initial.ifEmpty { null }) { messagesHub = null }
                 }
             }
-            if (showFriends) BoardSheet({ showFriends = false }, skipPartiallyExpanded = true) {
+            io.magicmobile.android.menus.ArenaPanel(showFriends, { showFriends = false }, io.magicmobile.android.menus.ArenaPanelPlacement.LEADING) {
                 FriendsSheet(vm.account, join = { code -> scope.launch { delay(450); openJoinLink(code) } }, myRankStep = record.file.rank.position.step,
                     challenge = { friend, mode -> challengeFriend(friend.username, mode) }) { showFriends = false }
             }
-            if (showOfflineArtPrompt) {
-                ConfirmationDialog("Play offline with card art?",
+            // An Arena question, not the system dialog (the menus have no Android dialogs).
+            io.magicmobile.android.menus.ArenaPanel(showOfflineArtPrompt, { offlineArtPromptSeen = true; showOfflineArtPrompt = false }, maxWidth = 460.dp,
+                fitsContent = true) {
+                io.magicmobile.android.menus.ArenaPromptPanel("Play offline with card art?",
                     "Card art loads from Scryfall while you're online. Save your decks' images now so they show without a connection too.",
-                    listOf(ConfirmationAction("Choose downloads") { offlineArtPromptSeen = true; showOfflineArtPrompt = false; showDownloads = true }),
-                    cancelTitle = "Not now") { offlineArtPromptSeen = true; showOfflineArtPrompt = false }
+                    "Choose downloads", "Not now", "offlineArt") {
+                    offlineArtPromptSeen = true; showOfflineArtPrompt = false
+                    scope.launch { delay(350); showDownloads = true }
+                }
+            }
+            // An Arena question on the main menu after a freeze in an earlier run; nothing is sent without Send.
+            val freezeOffer = FreezeLog.launchOffer?.takeIf { offer ->
+                offer.id != freezeOfferClosed && (offer.id == freezeOfferAsked ||
+                    io.magicmobile.android.game.FreezeRules.mayAsk(freezeAskedAt.takeIf { it >= 0 }?.let { System.currentTimeMillis() / 1000.0 - it }))
+            }
+            LaunchedEffect(freezeOffer?.id, menuIsFree, showOfflineArtPrompt) {
+                if (freezeOffer != null && menuIsFree && !showOfflineArtPrompt && freezeOfferAsked != freezeOffer.id) {
+                    freezeOfferAsked = freezeOffer.id; freezeAskedAt = System.currentTimeMillis() / 1000.0
+                }
+            }
+            io.magicmobile.android.menus.ArenaPanel(freezeOffer != null && menuIsFree && !showOfflineArtPrompt,
+                { freezeOffer?.let { freezeOfferClosed = it.id; FreezeLog.decline(it) } }, maxWidth = 460.dp, fitsContent = true) {
+                io.magicmobile.android.menus.ArenaPromptPanel("The last game froze. Send the report?",
+                    "It holds the game's state and your recent actions, not your account or decks.", "Send", "Not now", "freezeReport") {
+                    freezeOffer?.let { freezeOfferClosed = it.id; sendFreezeReport(it) }
+                }
+            }
+            if (confirmFreezeReport) {
+                io.magicmobile.android.ranked.ArenaConfirmation("Send a freeze report with this game's state?", null, "Send", destructive = false,
+                    confirm = { sendFreezeReport(FreezeLog.record(io.magicmobile.android.game.FreezeRules.REPORTED, game = session.freezeContext())) }) {
+                    confirmFreezeReport = false
+                }
             }
             if (confirmLeave) {
                 val message = when {
                     setup.multiplayer?.endpoint?.isHost == true -> "You are hosting. Leaving ends this match for everyone; it cannot be resumed."
+                    setup.multiplayer?.endpoint != null -> "You leave the table and the others play on without you. You can't come back to this game."
                     else -> "This closes the current match. It cannot be resumed after leaving."
                 }
                 ConfirmationDialog("Leave this game?", message, listOf(ConfirmationAction("Leave game", destructive = true) { closeGame() })) { confirmLeave = false }
@@ -1312,522 +1735,12 @@ private fun BannerButton(title: String, kind: io.magicmobile.android.ui.TavernBu
     io.magicmobile.android.ui.TavernButton(action, kind = kind, compact = true, enabled = enabled) { io.magicmobile.android.ui.TavernButtonText(title) }
 }
 
-/** Port of TavernMainMenu (Board/MainMenuViews.swift). */
-@Composable
-fun TavernMainMenu(deckName: String, playerName: String, play: () -> Unit, decks: () -> Unit, settings: () -> Unit, news: (() -> Unit)? = null,
-                   commanderName: String? = null, downloads: (() -> Unit)? = null, howToPlay: (() -> Unit)? = null,
-                   friends: (() -> Unit)? = null, friendsBadge: Int = 0, profile: (() -> Unit)? = null,
-                   rank: io.magicmobile.android.game.RankPosition? = null) {
-    val reduceMotion = LaunchEnvironment.reduceMotion
-    var appeared by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { appeared = true }
-    val alpha by animateFloatAsState(if (appeared) 1f else 0f, tween(if (reduceMotion) 0 else 450), label = "menuAppear")
-    val offset by animateFloatAsState(if (appeared || reduceMotion) 0f else 14f, tween(if (reduceMotion) 0 else 450), label = "menuOffset")
-    Box(Modifier.fillMaxSize()) {
-        BrandBackdrop(Modifier.fillMaxSize())
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), horizontalAlignment = Alignment.CenterHorizontally) {
-            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-                val horizontal = maxWidth > maxHeight
-                val cardWidth = if (horizontal) minOf(150.dp, maxHeight * 0.36f) else minOf(160.dp, maxWidth * 0.38f, maxHeight * 0.19f)
-                val height = maxHeight
-                // No scrolling in either orientation (Caleb, 2026-10-02 landscape, 2026-10-04 portrait): short screens
-                // tighten the brand block; anything still too tall scales to fit.
-                val density = if (!horizontal) (if (height < 700.dp) 1 else 0) else if (height < 400.dp) 2 else if (height < 470.dp) 1 else 0
-                // The deck and commander beside (landscape) or above (portrait) the actions; landscape gives each half the width.
-                val deckPart: @Composable (Modifier) -> Unit = { partModifier ->
-                    Column(partModifier.widthIn(max = 400.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (!horizontal) MenuIdentity(compact = false, playerName, density)
-                        HeroCommanderCard(commanderName, cardWidth)
-                        MenuDeckTile(deckName, commanderName)
-                    }
-                }
-                val actionsPart: @Composable (Modifier) -> Unit = { partModifier ->
-                    Column(partModifier.widthIn(max = 400.dp).fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(when (density) { 0 -> 14.dp; 1 -> 10.dp; else -> 8.dp })) {
-                        if (horizontal) Box(Modifier.padding(bottom = if (density == 0) 8.dp else 2.dp)) { MenuIdentity(compact = true, playerName, density) }
-                        BrandButton({ GameAudio.play(GameSound.MENU_PLAY); play() }, Modifier.semantics { contentDescription = "Play Commander" }) {
-                            SfImage("flame.fill", LocalContentColor.current, 19.dp)
-                            Text("Play Commander", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current,
-                                style = sf(19f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
-                            SfImage("chevron.right", LocalContentColor.current, 15.dp)
-                        }
-                        BrandButton({ decks() }, Modifier.semantics { contentDescription = "Decks" }, kind = BrandButtonKind.SECONDARY) {
-                            SfImage("rectangle.stack.fill", LocalContentColor.current, 17.dp)
-                            Text("Decks", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current,
-                                style = sf(17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
-                            SfImage("chevron.right", LocalContentColor.current, 14.dp)
-                        }
-                        // Friends and Profile share a row (Caleb, 2026-10-04) so the menu fits without scrolling.
-                        val social: @Composable (Modifier) -> Unit = { itemModifier ->
-                            friends?.let { openFriends ->
-                                BrandButton({ GameAudio.play(GameSound.UI_OPEN); openFriends() }, itemModifier.semantics {
-                                    contentDescription = if (friendsBadge > 0) "Friends, $friendsBadge online or waiting" else "Friends"
-                                }, kind = BrandButtonKind.SECONDARY) {
-                                    SfImage("person.2.fill", LocalContentColor.current, 17.dp)
-                                    Text("Friends", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current, maxLines = 1,
-                                        style = sf(17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
-                                    if (friendsBadge > 0) Text("$friendsBadge", Modifier.background(BrandTheme.ember, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 2.dp),
-                                        color = Color.White, style = sf(13f, SfWeight.black))
-                                }
-                            }
-                            profile?.let { openProfile ->
-                                BrandButton({ GameAudio.play(GameSound.UI_OPEN); openProfile() }, itemModifier.testTag("menu.profile").semantics {
-                                    contentDescription = rank?.let { "Profile, ${it.title}" } ?: "Profile"
-                                }, kind = BrandButtonKind.SECONDARY) {
-                                    rank?.let { io.magicmobile.android.ranked.RankEmblem(it.tier, 26.dp) }
-                                        ?: SfImage("person.crop.circle.fill", LocalContentColor.current, 17.dp)
-                                    Text("Profile", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current, maxLines = 1,
-                                        style = sf(17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
-                                }
-                            }
-                        }
-                        if (friends != null || profile != null) {
-                            if (androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { social(Modifier.fillMaxWidth()) }
-                            else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) { social(Modifier.weight(1f)) }
-                        }
-                        // iOS ViewThatFits: one row with the widest gap that fits, else a column.
-                        BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-                            val count = 1 + listOfNotNull(news, downloads, howToPlay).size
-                            val gap = listOf(20.dp, 8.dp, 0.dp).firstOrNull { 72.dp * count + it * (count - 1) <= maxWidth }
-                            val utilities: @Composable () -> Unit = {
-                                BrandIconButton("Settings", "gearshape.fill", { GameAudio.play(GameSound.UI_OPEN); settings() })
-                                news?.let { BrandIconButton("Updates", "scroll.fill", { GameAudio.play(GameSound.PAGE_FLIP); it() }) }
-                                downloads?.let { BrandIconButton("Downloads", "arrow.down.to.line.circle.fill", { GameAudio.play(GameSound.UI_OPEN); it() }) }
-                                howToPlay?.let {
-                                    BrandIconButton(HowToPlayText.TITLE, "questionmark.circle", { GameAudio.play(GameSound.PAGE_FLIP); it() },
-                                        Modifier.testTag("menu.howToPlay"))
-                                }
-                            }
-                            if (gap != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally)) { utilities() }
-                            else Column { utilities() }
-                        }
-                    }
-                }
-                if (horizontal) {
-                    // A fixed screen that never scrolls: laid out at its natural height and scaled down only if taller.
-                    FitsHeight(Modifier.fillMaxSize().alpha(alpha).offset(y = offset.dp)) {
-                        Row(Modifier.widthIn(max = 960.dp).fillMaxWidth().padding(horizontal = 36.dp, vertical = if (density == 0) 16.dp else 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(44.dp), verticalAlignment = Alignment.CenterVertically) {
-                            deckPart(Modifier.weight(1f)); actionsPart(Modifier.weight(1f))
-                        }
-                    }
-                } else {
-                    FitsHeight(Modifier.fillMaxSize().alpha(alpha).offset(y = offset.dp)) {
-                        Column(Modifier.fillMaxWidth().padding(horizontal = 26.dp, vertical = if (density == 0) 16.dp else 8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(if (density == 0) 14.dp else 10.dp)) {
-                            deckPart(Modifier); actionsPart(Modifier)
-                        }
-                    }
-                }
-            }
-            SupportBanner()
-        }
-    }
-}
-
-/** Lays its content out at its natural height and scales it down only if that is taller than the space, keeping it centred. */
-@Composable
-private fun FitsHeight(modifier: Modifier, content: @Composable () -> Unit) {
-    androidx.compose.ui.layout.Layout(content, modifier) { measurables, constraints ->
-        val placeable = measurables.first().measure(constraints.copy(minWidth = 0, minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity))
-        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else placeable.width
-        val height = if (constraints.hasBoundedHeight) constraints.maxHeight else placeable.height
-        val scale = if (placeable.height > height) height.toFloat() / placeable.height else 1f
-        layout(width, height) {
-            placeable.placeWithLayer((width - placeable.width) / 2, (height - placeable.height) / 2) { scaleX = scale; scaleY = scale }
-        }
-    }
-}
-
-/** Walnut & Ember: the deck's name on a parchment label in brass trim. */
-@Composable
-private fun MenuDeckTile(deckName: String, commanderName: String?) {
-    Column(Modifier.glow(Color.Black.copy(alpha = 0.45f), 6.dp, 9.dp)
-        .tavernFill(TavernMaterial.PARCHMENT, RoundedCornerShape(9.dp)).tavernBrassFrame(0.6f)
-        .padding(horizontal = 22.dp, vertical = 9.dp)
-        .semantics(mergeDescendants = true) { contentDescription = commanderName?.let { "Your deck: $deckName, commander $it" } ?: "Your deck: $deckName" },
-        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text("YOUR DECK", color = io.magicmobile.android.studio.DeckStudioPalette.accent, style = sf(10f, SfWeight.heavy, SfDesign.SERIF, tracking = 2.2f))
-        Text(deckName, color = TavernPalette.ink, style = io.magicmobile.android.ui.tavernDisplay(21f), textAlign = TextAlign.Center)
-        if (!commanderName.isNullOrEmpty()) Text(commanderName, color = io.magicmobile.android.studio.DeckStudioPalette.secondaryInk,
-            style = sf(13f, design = SfDesign.SERIF).copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), textAlign = TextAlign.Center)
-    }
-}
-
-/** The brand block. `density` 0 is the full layout; 1 and 2 tighten it to fit a short screen. */
-@Composable
-private fun MenuIdentity(compact: Boolean, playerName: String, density: Int) {
-    Column(horizontalAlignment = if (compact) Alignment.Start else Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(if (density == 0) 8.dp else 5.dp)) {
-        // Portrait leaves the mark out so the deck and actions sit higher (the app icon carries it).
-        if (compact) BrandMark(when (density) { 0 -> 52.dp; 1 -> 42.dp; else -> 34.dp })
-        if (density < 2) Text("MAGICMOBILE", color = BrandTheme.inkSecondary, style = sf(12f, SfWeight.heavy, tracking = 3f))
-        // Portrait and tighter landscape layouts set the title on one line.
-        BrandTitle(if (density == 0 && compact) "Your next\ngreat game." else "Your next great game.",
-            if (compact) (when (density) { 0 -> 32f; 1 -> 27f; else -> 24f }) else (if (density == 0) 30f else 26f),
-            textAlign = if (compact) TextAlign.Start else TextAlign.Center)
-        // In the tavern's hand, like the title above it (no system type on the menu).
-        if (density < 2 && playerName.isNotBlank()) Text("Welcome back, ${playerName.trim()}", color = io.magicmobile.android.ui.TavernPalette.parchment.copy(alpha = 0.8f),
-            style = io.magicmobile.android.ui.sf(16f, io.magicmobile.android.ui.SfWeight.regular, io.magicmobile.android.ui.SfDesign.SERIF)
-                .copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
-            textAlign = if (compact) TextAlign.Start else TextAlign.Center)
-    }
-}
-
-/** The setup screen (OnDeviceRootView.setupContent). */
-@Composable
-private fun SetupScreen(setup: OnDeviceSetupModel, selectedDeck: Deck?, aiPrecons: List<io.magicmobile.android.game.AIDeck>,
-                        deckSections: List<TavernPickerSection<String>>, aiSections: List<TavernPickerSection<String>>,
-                        playerName: String, setPlayerName: (String) -> Unit,
-                        portraitModeEnabled: Boolean, setPortraitModeEnabled: (Boolean) -> Unit, selectedDeckID: String, selectDeck: (String) -> Unit,
-                        aiIDs: List<String>, selectAIDeck: (Int, String) -> Unit, opponentCount: Int, setOpponentCount: (Int) -> Unit,
-                        aiSkill: Int, setAISkill: (Int) -> Unit, startingMode: String, setStartingMode: (String) -> Unit,
-                        playWithFriends: Boolean, setPlayWithFriends: (Boolean) -> Unit, mayStart: Boolean,
-                        onlinePlayers: Int, setOnlinePlayers: (Int) -> Unit, hostOnline: () -> Unit, joinOnline: (String) -> Unit,
-                        readyOnline: () -> Unit,
-                        back: () -> Unit, openSettings: () -> Unit, openDecks: () -> Unit, start: () -> Unit, leave: () -> Unit,
-                        openStudio: (io.magicmobile.android.studio.DeckStudioOpen) -> Unit) {
-    // In a match room, the deck and name stay editable until the player taps Ready.
-    val editableInRoom = (setup.multiplayer as? RelayTable)?.room?.let { !it.localReady } ?: false
-    val seatLocked = setup.isBusy || (setup.needsLeave && !editableInRoom)
-    val locked = setup.isBusy || setup.needsLeave
-    Box(Modifier.fillMaxSize()) {
-        BrandBackdrop(Modifier.fillMaxSize(), cards = false)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).windowInsetsPadding(WindowInsets.safeDrawing),
-            horizontalAlignment = Alignment.CenterHorizontally) {
-            Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Row(Modifier.heightIn(min = 44.dp).clickable(enabled = !locked, onClick = back).alpha(if (locked) 0.45f else 1f),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        SfImage("chevron.left", setupAccent, 17.dp)
-                        Text("Main menu", color = setupAccent, style = SfText.body(SfWeight.semibold))
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Box(Modifier.size(44.dp).clickable(onClick = openSettings).semantics { contentDescription = "Settings" }, contentAlignment = Alignment.Center) {
-                        SfImage("gearshape.fill", setupAccent, 17.dp)
-                    }
-                }
-                BrandTitle("Your next game.", 34f)
-                Text("Choose your deck. Take your seat.", color = setupSecondary, style = SfText.subheadline())
-                // The two sides of the table.
-                Box(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
-                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            CommanderDeckPortrait(selectedDeck?.commanderName, Modifier.size(112.dp, 156.dp))
-                            Text("Your deck", color = setupSecondary, style = SfText.caption())
-                            Text(selectedDeck?.name ?: "Choose a deck", color = setupInk, style = SfText.headline(), textAlign = TextAlign.Center)
-                            io.magicmobile.android.studio.DeckStudioSetupDeckStatus(setup, selectedDeckID, selectedDeck, openStudio)
-                        }
-                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            if (playWithFriends) {
-                                Box(Modifier.size(112.dp, 156.dp).background(BrandTheme.surface, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                                    SfImage("person.2.fill", setupSecondary, 34.dp)
-                                }
-                                Text("iPhone + Android", color = setupSecondary, style = SfText.caption())
-                                Text("${(setup.multiplayer as? RelayTable)?.seatsWanted?.takeIf { it > 0 } ?: 2} seats", color = setupInk, style = SfText.headline())
-                            } else {
-                                CommanderDeckPortrait(aiPrecons.firstOrNull()?.commander, Modifier.size(112.dp, 156.dp))
-                                Text("$opponentCount AI ${if (opponentCount == 1) "opponent" else "opponents"}", color = setupSecondary, style = SfText.caption())
-                                Text(if (opponentCount == 1) aiPrecons.firstOrNull()?.name ?: "Choose opponents" else "Choose each deck below",
-                                    color = setupInk, style = SfText.headline(), textAlign = TextAlign.Center)
-                            }
-                        }
-                    }
-                    VersusMedallion(50.dp, Modifier.align(Alignment.TopCenter).padding(top = (156 / 2 - 25).dp))
-                }
-                // Your seat
-                Column(Modifier.fillMaxWidth().brandPanel(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    BrandDivider(Modifier.fillMaxWidth(), title = "Your seat")
-                    val profileName = LocalPlayerAccount.current?.username
-                    TavernTextField(playerName, setPlayerName, "Player name", Modifier.semantics { contentDescription = "Player name" },
-                        enabled = !seatLocked && profileName == null)
-                    Text(if (profileName != null) "Your profile name. Change it in Friends." else "Choose a name with 1–24 characters.",
-                        color = setupSecondary, style = SfText.caption())
-                    TavernToggle("Auto-Rotate", portraitModeEnabled, setPortraitModeEnabled)
-                    TavernPicker("Your deck", selectedDeckID, deckSections, selectDeck, enabled = !seatLocked)
-                    BrandButton(openDecks, kind = BrandButtonKind.SECONDARY, enabled = !seatLocked) {
-                        SfImage("rectangle.stack.badge.plus", BrandTheme.ink, 17.dp)
-                        BrandButtonText("Browse, import or edit decks", BrandButtonKind.SECONDARY)
-                    }
-                    ArtworkPreferenceToggle()
-                }
-                // Players
-                Column(Modifier.fillMaxWidth().brandPanel(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    IosSegmented(listOf("ai", "online"), if (playWithFriends) "online" else "ai", { mode -> if (!locked) setPlayWithFriends(mode == "online") },
-                        { if (it == "ai") "AI" else "Online" })
-                    if (playWithFriends) {
-                        OnlineTablePanel(setup, selectedDeck, onlinePlayers, setOnlinePlayers, aiIDs, selectAIDeck, aiSkill, setAISkill,
-                            mayHost = selectedDeck != null && runCatching { OnDeviceSetupModel.playerName(playerName) }.isSuccess &&
-                                setup.identity != null && !setup.isBusy && !setup.needsLeave,
-                            hostOnline, joinOnline, readyOnline)
-                    } else {
-                        TavernStepper("AI opponents: $opponentCount", opponentCount, 1..3, setOpponentCount, enabled = !locked)
-                        for (index in 0 until opponentCount.coerceIn(1, 3)) {
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text("AI ${index + 1} deck", color = setupSecondary, style = SfText.caption())
-                                TavernPicker("AI ${index + 1} deck", aiIDs[index], aiSections,
-                                    { selectAIDeck(index, it) }, enabled = !locked, showsTitle = false)
-                            }
-                        }
-                        TavernStepper("AI skill: $aiSkill", aiSkill, 1..10, setAISkill, enabled = !locked)
-                        Text("Higher skill levels allow more thinking and may slow turns.", color = setupSecondary, style = SfText.caption())
-                        IosSegmented(listOf("choose", "roll"), startingMode, { if (!locked) setStartingMode(it) }, { if (it == "roll") "Roll D20" else "Choose" })
-                        Text(if (startingMode == "roll") "Everyone rolls a D20. The highest roll starts; ties reroll." else "Choose the starting player when the match begins.",
-                            color = setupSecondary, style = SfText.caption())
-                        BrandButton(start, Modifier.semantics { contentDescription = "Start game" }, enabled = mayStart) { BrandButtonText("Start game") }
-                    }
-                }
-                Text(setup.status, color = setupSecondary, style = SfText.caption())
-                if (setup.needsLeave) BrandButton(leave, kind = BrandButtonKind.SECONDARY, enabled = !setup.isBusy && !setup.session.isWorking) {
-                    Text("Leave / retry closing", color = Color(1f, 0.27f, 0.23f), style = sf(17f, SfWeight.bold))
-                }
-                if (setup.identity == null) BrandButton({ setup.prepare() }, kind = BrandButtonKind.SECONDARY) { BrandButtonText("Retry loading local catalogue", BrandButtonKind.SECONDARY) }
-                OnDeviceDiagnosticsEntry(setup)
-                if (!BuildConfig.NATIVE_ENGINE) Text("This build has no native engine. Install the full APK to play.", color = Color(1f, 0.6f, 0.3f), style = SfText.caption(SfWeight.semibold))
-            }
-        }
-    }
-}
-
-/** NativeArtworkPreferenceView: consent for live Scryfall images. */
-@Composable
-private fun ArtworkPreferenceToggle() {
-    val context = LocalContext.current
-    var enabled by remember { mutableStateOf(Artwork.enabled(context)) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        TavernToggle("Scryfall live images", enabled, { value -> enabled = value; Artwork.setEnabled(context, value) })
-        Text("Show saved art first, then sharper images online. Offline download quality stays unchanged.", color = setupSecondary, style = SfText.caption())
-        Text("Scryfall receives card names—including your hand—and your IP address.", color = setupSecondary, style = SfText.caption())
-    }
-}
-
-/** AppearanceSettingsView (Board/MainMenuViews.swift). */
-@Composable
-private fun AppearanceSettings(portraitModeEnabled: Boolean, setPortraitModeEnabled: (Boolean) -> Unit, inGame: Boolean, done: () -> Unit) {
-    Column(Modifier.fillMaxWidth().tavernFill(TavernMaterial.LEATHER,
-        overlayBrush = androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f))))) {
-        IosSheetHeader("Settings", done)
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            if (inGame) ArtworkPreferenceToggle()
-            PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
-            FollowTurnsToggle()
-            io.magicmobile.android.board.AutoPassAfterCastToggle()
-            io.magicmobile.android.board.SmartAutoPassToggle()
-            BoardEffectsPicker()
-            GamePerformancePanel()
-            SupportSettingsPanel()
-        }
-    }
-}
-
-/** NativeUpdateNewsView.swift. */
-@Composable
-private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
-    val context = LocalContext.current
-    fun open(url: String) { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } }
-    Column(Modifier.fillMaxWidth()) {
-        IosSheetHeader("Updates", done)
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            IosListSection("Installed build") {
-                IosListRow("MagicMobile", value = "${BuildConfig.VERSION_NAME} (${BuildConfig.RELEASE_BUILD})")
-                upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
-            }
-            IosListSection("What's new") {
-                IosListRow("Message your friends from Friends, or from the game menu in the middle of a game. A banner shows a new message.", systemImage = "bubble.left.and.bubble.right.fill")
-                IosListRow("Repeat a combo: do the same thing three times in a turn and the game offers to repeat it, as many times as you pick, until you can't, or until they lose. It waits for your triggers and keeps choosing the same kind of target.", systemImage = "arrow.triangle.2.circlepath")
-                IosListRow("Ranked opens the Ranked Hall, with a live leaderboard of this season's players and who's online.", systemImage = "trophy.fill")
-                IosListRow("Spread-out token piles stack back up with the Stack chip.", systemImage = "square.stack.3d.up.fill")
-                IosListRow("Keep your profile: sign in with Google on the Profile screen, and your name, friends and rank follow you to any phone.", systemImage = "person.crop.circle.badge.checkmark")
-                IosListRow("Choose the artwork for any card in Deck Studio. Your pick shows in games and offline, survives export and import, and online images match it.", systemImage = "paintpalette.fill")
-                IosListRow("The offline download now includes every token and emblem.", systemImage = "arrow.down.to.line.circle.fill")
-                IosListRow("The stack is a stack of parchment slips: what resolves next, whose it is, its targets, and Resolve all.", systemImage = "square.stack.3d.up.fill")
-                IosListRow("Don't ask again: tick it on a card's \"you may\" question and the game answers it for you for the rest of the game. Change your mind in the game menu.", systemImage = "checkmark.square.fill")
-                IosListRow("Resolve all: one tap lets a pile of triggers on the stack resolve, and it stops if an opponent responds.", systemImage = "forward.fill")
-                IosListRow("Your spells resolve without an extra tap. Turn off Pass After Casting in Settings to hold priority.", systemImage = "bolt.fill")
-                IosListRow("Pick any number of cards at once with Select all, and remember which of your triggers goes first.", systemImage = "rectangle.stack.fill")
-                IosListRow("The AI waits less while your triggers resolve, and XMage is updated with 78 new cards and many card fixes.", systemImage = "sparkles")
-                IosListRow("When you can see the top of your library (Conspicuous Snoop, Future Sight, Courser of Kruphix), it sits beside your portrait. Tap it to see it large and cast or play it.", systemImage = "eye.fill")
-                IosListRow("Your portrait glows when you can cast from your graveyard, exile or the top of your library, not only your commander, and the zone menu says which.", systemImage = "sparkles")
-                IosListRow("A small sun or moon shows when it's day or night, the storm count shows under the turn plate, and City's Blessing shows on your medallion.", systemImage = "moon.stars")
-                IosListRow("The starting roll has more table: the header sits at the top and the dice get the room below it.", systemImage = "dice")
-                IosListRow("Pages turn like real paper: drag a page by its edge and it curls under your finger.", systemImage = "hand.draw.fill")
-                IosListRow("The starting roll happens on the tavern table: every player's d20 tumbles across it and lands.", systemImage = "dice")
-                IosListRow("Your profile shows your games at a glance: win rate, favourite commanders, colours and rank history. Your game history lives there now.", systemImage = "chart.bar.fill")
-                IosListRow("Find friends as you type their name, and open any player's profile. Choose whether yours is public, friends only or private.", systemImage = "person.2.fill")
-                IosListRow("Deck Studio's menus and prompts are the binder's own, and held sideways both pages fill the binder with Add cards floating over the page.", systemImage = "list.bullet.rectangle.portrait")
-                IosListRow("Decks is a spell book that opens into a leather card binder: chapters are stitched leather index tabs, and every card sits in a sleeve with a minus and a plus beneath it. Held sideways it lies open as two pages.", systemImage = "book.fill")
-                IosListRow("Switch between your deck and every card you can add, and filter both by mana value with the brass coins.", systemImage = "books.vertical.fill")
-                IosListRow("Easier on your battery: the game rests while it waits for you, and the app is a smaller download.", systemImage = "battery.100")
-                IosListRow("Challenge a friend to a Quick Match, or to Ranked when you're in the same tier. Friend ranked games count.", systemImage = "figure.fencing")
-                IosListRow("A real 3D tavern room behind the menu that shifts as you tilt your phone, with flickering candles.", systemImage = "flame.fill")
-                IosListRow("Your profile picture is your favorite commander's art.", systemImage = "person.crop.circle")
-                IosListRow("The menu fits on one screen, and Downloads matches the tavern.", systemImage = "rectangle.stack.fill")
-                IosListRow("Smoother rank badge turns and lighter menu animations.", systemImage = "sparkles")
-                IosListRow("Ranked: climb from Bronze to Mythic in monthly seasons, against players near your rank or an AI at your tier.", systemImage = "shield.lefthalf.filled")
-                IosListRow("Quick Match: one AI at your deck's bracket, or choose its bracket, deck and skill.", systemImage = "bolt.fill")
-                IosListRow("Every deck shows its Commander bracket, with the Game Changers and combos behind it.", systemImage = "checkmark.seal")
-                IosListRow("Your profile: rank, season history, stats, achievements, titles and match history.", systemImage = "person.crop.circle")
-                IosListRow("21 new included decks from Bracket 1 to 4, for you and for the AI.", systemImage = "rectangle.stack.fill")
-                IosListRow("The Walnut Tavern: a new table, menus and painted card frames, in portrait and landscape.", systemImage = "table.furniture")
-                IosListRow("Every spell is cast with its own moment at the centre of the table; your commander gets the big one.", systemImage = "sparkles")
-                IosListRow("Tap a player's medallion for their counters, poison and commander damage, and swap between opponents.", systemImage = "person.crop.circle")
-                IosListRow("Big boards run smoother: identical tokens stack once there are eight.", systemImage = "square.stack.3d.up")
-                IosListRow("A Back button while declaring attackers and blockers.", systemImage = "arrow.uturn.backward")
-                IosListRow("Friends, table chat and invite links that open straight into your table.", systemImage = "person.2.fill")
-            }
-            IosListSection("XMage news", footer = "Opens GitHub. Upstream changes are not installed automatically. New cards and abilities become available only after a compatible MagicMobile build is tested and released.") {
-                IosListRow("XMage release notes", systemImage = "arrow.up.right.square") { open("https://github.com/magefree/mage/releases") }
-                IosListRow("Latest upstream changes", systemImage = "arrow.up.right.square") { open("https://github.com/magefree/mage/commits/master/") }
-            }
-            // Same notice as the download site's footer.
-            IosListSection("About", footer = "Independent fan project. Not affiliated with Wizards of the Coast. Magic: The Gathering and card artwork belong to their respective owners.") {
-                IosListRow("Card images", value = "Scryfall")
-                IosListRow("Privacy", systemImage = "arrow.up.right.square") { open("https://magicmobile-downloads.vercel.app/privacy/") }
-            }
-            IosListSection("Support MagicMobile", footer = SupportProject.NOTE) {
-                IosListRow(SupportProject.ACTION, systemImage = "heart.fill") { open(SupportProject.URL) }
-            }
-        }
-    }
-}
-
 private fun onlineAICount(humans: Int): Int = AppPreferences.int("magicmobile.relay.aiOpponentCount", 0).value.coerceIn(0, maxOf(0, 4 - humans))
 
-/** Host or join a cross-play table, then the match room (OnDeviceRootView's Game Center section, over the relay). */
-@Composable
-private fun OnlineTablePanel(setup: OnDeviceSetupModel, selectedDeck: Deck?, players: Int, setPlayers: (Int) -> Unit, aiIDs: List<String>,
-                             selectAIDeck: (Int, String) -> Unit, aiSkill: Int, setAISkill: (Int) -> Unit, mayHost: Boolean,
-                             host: () -> Unit, join: (String) -> Unit, ready: () -> Unit) {
-    val context = LocalContext.current
-    val table = setup.multiplayer as? RelayTable
-    var storedAICount by AppPreferences.int("magicmobile.relay.aiOpponentCount", 0)
-    val aiCount = storedAICount.coerceIn(0, maxOf(0, 4 - players))
-    val code = setup.relayJoinCode
-    val locked = setup.isBusy || setup.needsLeave
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (table == null) {
-            TavernPicker("Human players", players, listOf(TavernPickerSection(null, (2..4).map { "$it players" to it })), setPlayers, enabled = !locked)
-            TavernStepper("AI opponents: $aiCount", aiCount, 0..maxOf(0, 4 - players), { storedAICount = it }, enabled = !locked)
-            for (index in 0 until aiCount) {
-                TavernPicker("AI ${index + 1} deck", aiIDs[index], io.magicmobile.android.game.CommanderBracket.entries.mapNotNull { bracket ->
-                    setup.aiPool.filter { it.bracket == bracket }.takeIf { it.isNotEmpty() }?.let { decks -> TavernPickerSection(bracket.title, decks.map { it.name to it.id }) } },
-                    { selectAIDeck(index, it) }, enabled = !locked)
-            }
-            if (aiCount > 0) {
-                TavernStepper("AI skill: $aiSkill", aiSkill, 1..10, setAISkill, enabled = !locked)
-                Text("The host’s AI choices apply to everyone. Higher skill may slow turns.", color = setupSecondary, style = SfText.caption())
-            }
-            Text("Share the invite link, or friends type the table code. Every player needs this app version and keeps it open during the match.",
-                color = setupSecondary, style = SfText.caption())
-            BrandButton(host, Modifier.semantics { contentDescription = "Host a table" }, enabled = mayHost) { BrandButtonText("Host a table") }
-            BrandDivider(Modifier.fillMaxWidth(), title = "or join")
-            TavernTextField(code, { value -> setup.relayJoinCode = value.uppercase().filter { it in TableJoinLink.ALPHABET }.take(6) }, "Table code",
-                Modifier.semantics { contentDescription = "Table code" }, enabled = !locked)
-            BrandButton({ join(code) }, kind = BrandButtonKind.SECONDARY, enabled = mayHost && code.length == 6) {
-                BrandButtonText("Join table", BrandButtonKind.SECONDARY)
-            }
-        } else {
-            table.tableCode?.let { tableCode ->
-                Column(Modifier.fillMaxWidth().background(BrandTheme.canvas.copy(alpha = 0.6f), RoundedCornerShape(12.dp)).padding(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("TABLE CODE", color = setupSecondary, style = sf(12f, SfWeight.bold, tracking = 1.4f))
-                    Text(tableCode.chunked(3).joinToString(" "), Modifier.semantics { contentDescription = "Table code $tableCode" },
-                        color = setupInk, style = sf(34f, SfWeight.black, io.magicmobile.android.ui.SfDesign.MONOSPACED, tracking = 2f))
-                    if (table.room == null && table.endpoint == null && !table.isFailed) {
-                        Text("Players ${table.seatsTaken}/${table.seatsWanted.coerceAtLeast(2)}", color = setupSecondary, style = SfText.caption())
-                        IosTextButton("Share invite link", {
-                            val link = TableJoinLink.url(tableCode) ?: return@IosTextButton
-                            val send = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_SUBJECT, "Join my MagicMobile table")
-                                putExtra(Intent.EXTRA_TEXT, "Tap to join my MagicMobile table (code $tableCode): $link")
-                            }
-                            runCatching { context.startActivity(Intent.createChooser(send, "Share invite link")) }
-                        }, color = setupAccent, bold = true)
-                    }
-                }
-            }
-            Text(table.status, color = setupInk, style = SfText.callout())
-            if (table.room == null && table.endpoint == null && !table.isFailed && table.waitingSeats.isNotEmpty()) {
-                RelayWaitingRoomView(table.waitingSeats) { table.removeFromTable(it) }
-            }
-            table.room?.let { room -> MatchRoomView(room, selectedDeck?.name, selectedDeck?.commanderName, ready) }
-        }
-    }
-}
-
-/** A relay table that is still filling: who has joined and, for the host, a Remove control per joiner (RelayWaitingRoomView). */
-@Composable
-private fun RelayWaitingRoomView(seats: List<RelayWaitingSeat>, remove: (String) -> Unit) {
-    var removal by remember { mutableStateOf<RelayWaitingSeat?>(null) }
-    Column(Modifier.fillMaxWidth().background(BrandTheme.canvas.copy(alpha = 0.6f), RoundedCornerShape(12.dp)).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("AT THE TABLE", color = setupSecondary, style = sf(12f, SfWeight.bold, tracking = 1.4f))
-        for (seat in seats) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                SfImage(if (seat.connected) "person.crop.circle" else "wifi.exclamationmark", setupSecondary, 20.dp)
-                Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(seat.name, color = setupInk, style = SfText.headline())
-                        if (seat.isHost) Text("HOST", Modifier.background(setupAccent.copy(alpha = 0.25f), RoundedCornerShape(50))
-                            .padding(horizontal = 5.dp, vertical = 1.dp), color = setupInk, style = sf(11f, SfWeight.black))
-                    }
-                    Text(if (seat.isLocal) "You" else if (seat.connected) "Joined" else "Reconnecting…", color = setupSecondary, style = SfText.caption())
-                }
-                if (seat.removable) {
-                    IosTextButton("Remove", { removal = seat }, Modifier.semantics { contentDescription = "Remove ${seat.name}" },
-                        color = io.magicmobile.android.ui.rgb(1.0, 0.27, 0.23), bold = true)
-                }
-            }
-        }
-        if (seats.any { it.removable }) {
-            Text("Remove anyone you did not invite. The match room opens when every seat is taken.", color = setupSecondary, style = SfText.caption())
-        }
-    }
-    removal?.let { seat ->
-        ConfirmationDialog("Remove ${seat.name} from the table?", "Their seat opens for someone else. Anyone with the code can still join.",
-            listOf(ConfirmationAction("Remove", destructive = true) { remove(seat.id) })) { removal = null }
-    }
-}
-
-/** Relay pregame room: who is here, who is ready, and their commanders (MatchRoomView). */
-@Composable
-private fun MatchRoomView(room: RelayTable.MatchRoom, deckName: String?, localCommander: String?, ready: () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(BrandTheme.canvas.copy(alpha = 0.6f), RoundedCornerShape(12.dp)).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("MATCH ROOM", color = setupSecondary, style = sf(12f, SfWeight.bold, tracking = 1.4f))
-        for (player in room.players) {
-            val commanders = if (player.isLocal && !room.localReady) listOfNotNull(localCommander) else player.commanders
-            Row(Modifier.semantics { contentDescription = "${player.name}, ${if (player.isReady) "ready" else "not ready"}" },
-                horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                CommanderDeckPortrait(commanders.firstOrNull(), Modifier.size(40.dp, 56.dp).alpha(if (player.isReady) 1f else 0.4f))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(player.name, color = setupInk, style = SfText.headline())
-                        if (player.isHost) Text("HOST", Modifier.background(setupAccent.copy(alpha = 0.25f), RoundedCornerShape(50))
-                            .padding(horizontal = 5.dp, vertical = 1.dp), color = setupInk, style = sf(11f, SfWeight.black))
-                    }
-                    Text(if (commanders.isEmpty()) (if (player.isReady) "Ready" else "Choosing a deck…") else commanders.joinToString(" & "),
-                        color = setupSecondary, style = SfText.caption(), maxLines = 2)
-                }
-                SfImage(if (player.isReady) "checkmark.circle.fill" else "hourglass", if (player.isReady) Color(0.2f, 0.78f, 0.35f) else setupSecondary, 20.dp)
-            }
-        }
-        room.aiSummary?.let { Text(it, color = setupSecondary, style = SfText.caption()) }
-        if (room.localReady) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                SfImage("checkmark.seal.fill", Color(0.2f, 0.78f, 0.35f), 16.dp)
-                Text("You're ready. The game starts when everyone is.", color = Color(0.2f, 0.78f, 0.35f), style = SfText.callout(SfWeight.semibold))
-            }
-        } else {
-            Text("Pick your deck above, then ready up${deckName?.let { " with $it" } ?: ""}.", color = setupSecondary, style = SfText.caption())
-            BrandButton(ready, Modifier.semantics { contentDescription = "Ready" }, enabled = deckName != null) { BrandButtonText("Ready") }
-        }
-    }
-}
-
 /** The game being played from Quick Match or Ranked (or a custom table, for the profile), for its result. */
+/** Development fixture (MAGICMOBILE_UI_TEST_OPEN=queue): when the Play panel's search began. */
+private val fixtureLaunch = System.currentTimeMillis()
+
 private data class ActiveMatch(
     val mode: io.magicmobile.android.game.PlayMode, val deckID: String, val deckName: String, val commander: String?, val colors: List<String>,
     val deckBracket: Int, val opponents: List<io.magicmobile.android.game.MatchOpponent>, val opponentBracket: Int?, val aiSkill: Int?,

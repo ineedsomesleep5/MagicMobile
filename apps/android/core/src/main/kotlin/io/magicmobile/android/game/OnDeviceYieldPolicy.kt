@@ -16,7 +16,10 @@ class OnDeviceYieldPolicy {
 
     data class Context(val matchID: String, val seatID: String, val viewerID: String, val activePlayerID: String?, val turn: Long,
                        val phase: String, val localHumanEnabled: Boolean, val foreground: Boolean, val emptyStack: Boolean,
-                       val selfAuthority: Boolean, val resyncRequired: Boolean, val prompt: Prompt?)
+                       val selfAuthority: Boolean, val resyncRequired: Boolean, val prompt: Prompt?,
+                       /** An opponent's spell or ability on the stack threatens what you control, and you asked to stop for those
+                        *  (OnDeviceSmartPass.threatensViewer, Settings.stopForThreats): even a skip that passes responses stops. */
+                       val threatToMe: Boolean = false)
 
     enum class StopReason(val message: String) {
         UNAVAILABLE("Auto-pass stopped. Pass priority manually."),
@@ -26,6 +29,7 @@ class OnDeviceYieldPolicy {
         DECISION("Auto-pass stopped. A choice needs your attention."),
         INTERRUPTED("Auto-pass stopped. Review the current game state."),
         LIMIT("Auto-pass stopped after its safety limit."),
+        THREAT("Auto-pass stopped. An opponent's spell threatens your permanents."),
     }
 
     sealed class Decision {
@@ -63,6 +67,7 @@ class OnDeviceYieldPolicy {
             value.turn < anchor.turn || value.activePlayerID.isNullOrEmpty() -> StopReason.INTERRUPTED
             turnBoundary -> StopReason.TURN_CHANGED
             mode == Mode.SAFE_END_TURN && !value.emptyStack -> StopReason.STACK
+            value.threatToMe && !value.emptyStack -> StopReason.THREAT
             now >= expiresAt || attempted.size >= mode.passLimit -> StopReason.LIMIT
             prompt != null && prompt.manaPlayerID != value.viewerID && prompt.kind == "SELECT" && prompt.selectMode == "priority" -> StopReason.CONTROL_CHANGED
             prompt != null && !ordinaryPriority(prompt, value.viewerID) -> StopReason.DECISION

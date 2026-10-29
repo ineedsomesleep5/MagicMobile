@@ -1,15 +1,17 @@
-# The opening hand
+# Hall and Cut
 
-Mode: Persuade / Experience. User rejected the initial restrained serif design and explicitly requested high motion on mobile and desktop using Scroll Craft. That feedback supersedes the previous direction and its review.
+Mode: Persuade / Experience. Caleb picked this from three Arena mock-ups on October 24, 2026 ("I like the combo one"),
+replacing the Walnut & Ember "Opening hand" build.
 
-THESIS: Deal a hand of Magic cards into the app, then take the game with you.
+THESIS: Walk the hall of ways to play, then roll for first: your turn.
 
-OWN-WORLD: Walnut & Ember, the app's brand (approved 2026-10-01/02): a candlelit tavern wall, carved walnut, tooled leather, brass rims and frames, parchment panels and ember firelight. Source Serif 4 throughout. Genuine card textures on modeled 3D objects, an app reveal on the board's leather table, and a leather download desk with a parchment details card and an ember download plaque. Materials and tokens: [DESIGN.md](DESIGN.md).
+OWN-WORLD: Arena, like the apps (DESIGN.md): dark glass, gold hairlines, the orange pill, commander art as the light,
+and the game's own D20.
 
-STORY: Encounter the hand; imagine a deck; cards gather into the real app (the landscape main menu); see the portrait and landscape battlefield previews; choose a phone download.
+STORY: A commander and one word; the hand and the board; the hall of modes (play, climb, build, host, challenge,
+classic, learn); the roll for first; your turn, and the three screens to play it on.
 
-FIRST VIEWPORT: Oversized two-line headline, central layered seven-card hand, clear download access and a small destination dock. Phone composition keeps the headline above the hand and shortens the timeline.
+FIRST VIEWPORT: The bar with the three screens and the die, and *Commander.* over the Ur-Dragon with its card.
 
-FORM: Opening-hand grammar with scroll fan/rotation, a separate pinned gather/reveal peak, natural-flow proof and a platform-choice download desk. Replaces seed05b95575's rejected quiet composition. Full brief, layer contract, feeling curve, score and fingerprint rationale: `scrollcraft/builds/magicmobile/BRIEF.md`.
-
-AUTHORITY: The user's requested Scroll Craft workflow is primary for this revision. No generated comp is claimed approved. User acceptance and production deployment remain pending.
+FORM: Cutlist opening, a gallery walk (pinned, sideways), a pinned roll peak, a full-bleed close, then the downloads in
+normal flow. Brief, feeling curve and fingerprint: `scrollcraft/builds/magicmobile/BRIEF.md`.

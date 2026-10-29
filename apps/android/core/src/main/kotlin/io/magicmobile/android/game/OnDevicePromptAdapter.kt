@@ -15,7 +15,7 @@ object OnDevicePromptAdapter {
     private fun b(value: Boolean) = JsonPrimitive(value)
 
     fun presentation(prompt: EnginePrompt, viewerPlayerID: String, cards: List<ZoneCard>, players: List<PlayerGameState> = emptyList(),
-                     actingAttackerPlayerID: String? = null): OnDevicePromptPresentation {
+                     actingAttackerPlayerID: String? = null, stack: List<XmageStackObject> = emptyList()): OnDevicePromptPresentation {
         validate(prompt, viewerPlayerID)
         val revision = prompt.revision.toInt()
         val fields = linkedMapOf<String, J>(
@@ -34,8 +34,10 @@ object OnDevicePromptAdapter {
         }
         fun targetLabel(id: String): String {
             if (id == viewerPlayerID) return "You"
+            // An ability on the stack has no card of its own: it goes by its source ("Zur the Enchanter’s ability").
+            val ability = stack.firstOrNull { it.id == id && it.sourceCard?.id != id }?.let { "${it.displaySourceName}’s ability" }
             return EngineDisplayText.label(players.firstOrNull { it.playerId == id }?.displayName
-                ?: cards.firstOrNull { it.id == id }?.card?.name ?: id)
+                ?: cards.firstOrNull { it.id == id }?.card?.name ?: ability ?: id)
         }
         fun command(base: JsonObject, vararg extra: Pair<String, J>): JsonObject = JsonObject(base + extra)
         when (prompt.kind) {
@@ -172,6 +174,9 @@ object OnDevicePromptAdapter {
                         }
                     }
                     if (row["sourceCard"] == null) row["sourceUnavailableReason"] = s("Source details unavailable")
+                    val card = item["sourceCard"]
+                    val rules = if (card == null || card["hideInfo"].bool == true) emptyList() else card["rules"].array?.mapNotNull { it.string } ?: emptyList()
+                    EngineDisplayText.abilityRule(label!!, rules, row["sourceName"].string)?.let { row["rulesText"] = s(it) }
                     JsonObject(row)
                 })
                 if (prompt.responseTypes.contains("boolean") && prompt.payload["required"].bool == false) {
@@ -509,6 +514,22 @@ object OnDevicePromptAdapter {
  * No HTML renderer, network requests, attributed links, or hidden-card lookup.
  */
 object EngineDisplayText {
+    private val pickerNumber = Regex("^\\s*\\d+\\.\\s*")
+    private val triggerLine = Regex("^(?:[^—\\n]{1,40}—\\s*)?(?:When|Whenever|At)\\b")
+
+    /** The full rule a trigger or ability choice shows (abilityRule in OnDevicePromptAdapter.swift; parity/ability-rule-cases.json). */
+    fun abilityRule(label: String, sourceRules: List<String>, sourceName: String? = null): String? {
+        // The source's name stands in for the label's {this}, so its line is found and no raw "{this}" is drawn as a symbol.
+        val fragment = text(label.replace(pickerNumber, "")).let { if (sourceName.isNullOrEmpty()) it else it.replace("{this}", sourceName, ignoreCase = true) }
+        val lines = sourceRules.flatMap { text(it).split("\n") }.filter { it.isNotEmpty() }
+        if (fragment.isNotEmpty()) {
+            val holding = lines.filter { it.contains(fragment, ignoreCase = true) }
+            if (holding.size == 1) return holding[0]
+            return fragment.replaceFirstChar { it.uppercaseChar() }
+        }
+        return lines.filter { triggerLine.containsMatchIn(it) }.singleOrNull()
+    }
+
     fun label(source: String, fallback: String = ""): String {
         val value = text(source).split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
         return value.ifEmpty { fallback }

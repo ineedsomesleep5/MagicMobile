@@ -52,7 +52,10 @@ object DesignPreview {
         // Profiles and friends (ranked/SocialFixtures.kt): a fixture account instead of the server, and a screen to open at launch.
         "MAGICMOBILE_UI_TEST_SOCIAL", "MAGICMOBILE_UI_TEST_OPEN",
         // The starting roll preview (MAGICMOBILE_DESIGN_PREVIEW=starting-roll): seats 2-4, and 1 to roll by itself.
-        "MAGICMOBILE_STARTING_ROLL_SEATS", "MAGICMOBILE_STARTING_ROLL_AUTO")
+        "MAGICMOBILE_STARTING_ROLL_SEATS", "MAGICMOBILE_STARTING_ROLL_AUTO",
+        // The Arena board (iOS `-magicmobile.boardMode arena`): the board mode and Card Frames for the preview, and the hand's
+        // posture (open, pop, spread); MAGICMOBILE_BOARD_RESOURCE_LAYOUT_UI_TEST=sections fills the sections on crowded-battlefield.
+        "MAGICMOBILE_BOARD_MODE", "MAGICMOBILE_CARD_FRAMES", "MAGICMOBILE_ARENA_HAND", "MAGICMOBILE_BOARD_RESOURCE_LAYOUT_UI_TEST")
 
     fun extras(intent: Intent?): Map<String, String> {
         if (!BuildConfig.DEBUG || intent == null) return emptyMap()
@@ -87,6 +90,7 @@ fun DesignPreviewHost() {
     val state = GameBoardDesignPreviewState.of(preview) ?: GameBoardDesignPreviewState.NORMAL_BATTLEFIELD
     var boardFXStep by remember { mutableIntStateOf(0) }
     var snapshot by remember { mutableStateOf(if (preview == "board-fx") GameBoardPreviewFixtures.boardFXStep(0)
+        else if (preview == "roll") GameBoardPreviewFixtures.startingPlayerPrompt()
         else GameBoardPreviewFixtures.snapshot(state, environment = LaunchEnvironment.values)) }
     var status by remember { mutableStateOf("") }
     val selection = remember {
@@ -100,6 +104,13 @@ fun DesignPreviewHost() {
         }
     }
     var portrait by AppPreferences.boolean(PortraitModePreference.key, true)
+    // The board the preview shows (MAGICMOBILE_BOARD_MODE=arena) and its Card Frames (MAGICMOBILE_CARD_FRAMES=1 or 0).
+    var boardMode by AppPreferences.string(io.magicmobile.android.game.BoardMode.key, io.magicmobile.android.game.BoardMode.defaultValue)
+    var arenaFrames by AppPreferences.boolean(io.magicmobile.android.game.CardFramesPreference.arenaKey, io.magicmobile.android.game.CardFramesPreference.arenaDefault)
+    LaunchedEffect(Unit) {
+        LaunchEnvironment["MAGICMOBILE_BOARD_MODE"]?.let { boardMode = io.magicmobile.android.game.BoardMode.resolved(it).rawValue }
+        LaunchEnvironment["MAGICMOBILE_CARD_FRAMES"]?.let { arenaFrames = it == "1" || it == "true" }
+    }
     if (preview == "board-fx" && LaunchEnvironment["MAGICMOBILE_BOARD_FX_AUTOPLAY"] == "1") {
         LaunchedEffect(Unit) {
             while (true) {
@@ -137,10 +148,31 @@ fun DesignPreviewHost() {
     }
     MaterialTheme(colorScheme = darkColorScheme()) {
         Box(Modifier.fillMaxSize()) {
-            NativeGameView(snapshot, selection, null, null, null, "Design Preview", { status = it },
-                { action -> status = "Development fixture: captured ${action.label}. No engine command sent." },
-                { _, label, _ -> status = "Development fixture: captured $label. No engine command sent." },
-                {}, {}, { null }, {}, {}, portrait, { portrait = it })
+            // MAGICMOBILE_DESIGN_PREVIEW=roll: the board with XMage's starting-player question under the AI table's starting roll,
+            // as OnDeviceRootView covers it (on the Arena board it rolls on the board). It never creates a match.
+            var rollRevealed by remember { mutableIntStateOf(0) }
+            var rollDismissed by remember { mutableStateOf(preview != "roll") }
+            val roll = remember {
+                if (preview != "roll") null else {
+                    val draws = listOf(17, 6).iterator()
+                    io.magicmobile.android.ondevice.OnDeviceStartingRoll.generate(listOf("human", "ai-1")) { if (draws.hasNext()) draws.next() else 1 }
+                }
+            }
+            androidx.compose.runtime.CompositionLocalProvider(io.magicmobile.android.board.LocalStartingRollVisible provides !rollDismissed) {
+                NativeGameView(snapshot, selection, null, null, null, "Design Preview", { status = it },
+                    { action -> status = "Development fixture: captured ${action.label}. No engine command sent." },
+                    { _, label, _ -> status = "Development fixture: captured $label. No engine command sent." },
+                    {}, {}, { null }, {}, {}, portrait, { portrait = it })
+            }
+            if (roll != null && !rollDismissed) {
+                androidx.compose.runtime.CompositionLocalProvider(io.magicmobile.android.menus.LocalArenaBoard provides
+                    (io.magicmobile.android.game.BoardMode.resolved(boardMode) == io.magicmobile.android.game.BoardMode.ARENA)) {
+                    io.magicmobile.android.ondevice.StartingRollCover {
+                        io.magicmobile.android.ondevice.MultiplayerD20View(roll, mapOf("human" to "You", "ai-1" to "AI"), true, rollRevealed,
+                            roll.steps.getOrNull(rollRevealed)?.seatID, onRollTap = { rollRevealed = minOf(rollRevealed + 1, roll.steps.size) }) { rollDismissed = true }
+                    }
+                }
+            }
             Column(Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 24.dp)) {
                 if (status.startsWith("Development fixture: captured")) {
                     Text(status, Modifier.background(Color.Black).padding(4.dp).semantics { contentDescription = "preview.captured-command" },

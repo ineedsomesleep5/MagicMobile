@@ -17,8 +17,23 @@ struct CardTile: View {
     var imageVariant: CardImageCacheVariant = .board
     /// Room a token copy's tag leaves at the trailing edge (TokenCopyFrameLayout.tagTrailingReserve).
     var tokenCopyTagTrailingReserve: CGFloat = 0
+    /// A token copy's "Token copy" tag; off where the caller marks the copy itself (an Arena tile crops the card).
+    var tokenCopyTag = true
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.nativeTurnControl) private var nativeTurnControl
+    /// The Arena board: the hand's cards glow around their own outline (ArenaOutlineGlow) instead of a coloured line.
+    @Environment(\.arenaBoard) private var arena
+
+    private var arenaHand: Bool { arena && zoneName == "Hand" }
+
+    /// The hand's glow border: playable cards breathe cyan; a card being cast or chosen glows gold.
+    private var arenaHandGlow: (tone: ArenaOutlineGlow.Tone, breathes: Bool)? {
+        guard arenaHand else { return nil }
+        if pending || selected { return (.selected, false) }
+        if targetable { return (.target, false) }
+        if legal || castOffered { return (.playable, true) }
+        return nil
+    }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -27,6 +42,7 @@ struct CardTile: View {
                     CardArtPlaceholder(card: card, width: width, height: height)
                 } else if let source = card.tokenCopySourceName {
                     TokenCopyCardFace(card: card, source: source, width: width, height: height, imageVariant: imageVariant,
+                                      showsTag: tokenCopyTag,
                                       tagTrailingReserve: tokenCopyTagTrailingReserve)
                 } else if nativeTurnControl != nil {
                     NativeCardArtworkView(card: card, variant: imageVariant) { loading, _ in
@@ -51,6 +67,7 @@ struct CardTile: View {
             .brightness(card.tapped == true && !ignoreTappedRotation ? -0.12 : 0)
             .frame(width: width, height: height)
             .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay { if card.card.faceDown == true { FaceDownMark(width: width) } }
 
             XmageCardIconStrip(icons: ignoreTappedRotation ? [] : card.visibleXmageIcons, cardWidth: width)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -99,9 +116,10 @@ struct CardTile: View {
             }
         }
         .frame(width: width, height: height)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(strokeColor, lineWidth: strokeWidth))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(arenaHand ? .black.opacity(0.45) : strokeColor,
+                                                          lineWidth: arenaHand ? 0.8 : strokeWidth))
         .overlay(alignment: .topLeading) {
-            if castOffered && !pending {
+            if castOffered && !pending && !arenaHand {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
                     .padding(4).background(.black.opacity(0.85), in: Circle()).padding(3)
@@ -109,6 +127,7 @@ struct CardTile: View {
             }
         }
         .overlay {
+            if !arenaHand {
             Group {
             if castOffered && legal && !selected && !pending && !targetable {
                 RoundedRectangle(cornerRadius: 8)
@@ -147,8 +166,11 @@ struct CardTile: View {
             }
             // The existing playable glow breathes in the hand; nothing new is drawn.
             .modifier(PlayableGlowPulse(active: zoneName == "Hand" && (legal || castOffered) && !selected && !pending && !targetable))
+            }
         }
-        .shadow(color: shadowColor, radius: shadowRadius)
+        .shadow(color: tileShadow.color, radius: tileShadow.radius, y: tileShadow.y)
+        // After the shadow, so the light casts none.
+        .modifier(HandGlowBackground(glow: arenaHandGlow))
         .rotationEffect(.degrees(card.tapped == true && !ignoreTappedRotation ? 90 : 0))
         .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? nil : .spring(response: 0.35, dampingFraction: 0.7), value: card.tapped)
         .contentShape(RoundedRectangle(cornerRadius: 6))
@@ -158,6 +180,12 @@ struct CardTile: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityValue(zoneName == "Hand" ? CardPlayAffordance(land: legal, spell: castOffered).accessibilityValue : "")
         .accessibilityHint(playHint)
+    }
+
+
+    /// The tile's shadow, typed here so the body stays inside CI's 200 ms type-check budget.
+    private var tileShadow: (color: Color, radius: CGFloat, y: CGFloat) {
+        arenaHand ? (Color.black.opacity(0.5), 4, 2) : (shadowColor, shadowRadius, 0)
     }
 
     private var playHint: String {
@@ -270,6 +298,27 @@ struct CardCounterBadgeStrip: View {
         if label == "LOY" { return MagicPalette.arcaneBlue }
         if label == "SHD" { return MagicPalette.antiqueGold }
         return MagicPalette.leather
+    }
+}
+
+/// Your own face-down card (exiled by Hideaway or Foretell, a morph, a manifest): its real face, dimmed, with a closed
+/// eye, as only you see it.
+struct FaceDownMark: View {
+    let width: CGFloat
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.38))
+            Image(systemName: "eye.slash.fill")
+                .font(.system(size: max(width * 0.13, 8), weight: .bold))
+                .foregroundStyle(MagicPalette.parchment)
+                .padding(max(width * 0.04, 3))
+                .background(MagicPalette.iron.opacity(0.85), in: Capsule())
+                .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.5), lineWidth: 0.7))
+                .padding(.top, max(width * 0.05, 3))
+        }
+        .allowsHitTesting(false)
+        .accessibilityLabel(String(localized: "Face down: only you can see it"))
     }
 }
 
@@ -442,6 +491,7 @@ struct TokenCopyCardFace: View {
     let width: CGFloat
     let height: CGFloat
     var imageVariant: CardImageCacheVariant = .board
+    var showsTag = true
     var tagTrailingReserve: CGFloat = 0
     @Environment(\.nativeTurnControl) private var nativeTurnControl
 
@@ -505,6 +555,7 @@ struct TokenCopyCardFace: View {
             }
 
             let slot = frame.tagSlot
+            if showsTag {
             Text(TokenCopyPresentation.tag(source: source, cardWidth: width))
                 .font(.system(size: frame.tagFontSize, weight: .black))
                 .tracking(0.3)
@@ -516,6 +567,7 @@ struct TokenCopyCardFace: View {
                 .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.6), lineWidth: 0.7))
                 .frame(width: slot.width, height: slot.height, alignment: .leading)
                 .offset(x: slot.minX, y: slot.minY)
+            }
         }
         .frame(width: width, height: height, alignment: .topLeading)
         .overlay(
@@ -566,6 +618,23 @@ struct TokenCopyCardFace: View {
             Image(systemName: loading ? "hourglass" : "sparkles")
                 .font(.system(size: max(width * 0.18, 10), weight: .semibold))
                 .foregroundStyle(MagicPalette.antiqueGold.opacity(loading ? 0.34 : 0.42))
+        }
+    }
+}
+
+/// The Arena hand's outline glow behind a tile. A modifier keeps the background closure out of the tile's long modifier
+/// chain, where its overload inference alone measured 205 ms in CI (budget 200 ms).
+private struct HandGlowBackground: ViewModifier {
+    let glow: (tone: ArenaOutlineGlow.Tone, breathes: Bool)?
+
+    func body(content: Content) -> some View {
+        // One branch for the content, so a tile keeps its identity as the glow comes and goes.
+        content.background { glowView }
+    }
+
+    @ViewBuilder private var glowView: some View {
+        if let glow {
+            ArenaOutlineGlow(outline: .card, tone: glow.tone, breathes: glow.breathes)
         }
     }
 }

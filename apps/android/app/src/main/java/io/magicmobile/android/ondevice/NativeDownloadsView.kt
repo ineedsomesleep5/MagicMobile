@@ -4,26 +4,33 @@ import android.content.Context
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -34,47 +41,41 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import io.magicmobile.android.Artwork
 import io.magicmobile.android.ArtworkDownloadClient
 import io.magicmobile.android.ArtworkDownloadService
 import io.magicmobile.android.ArtworkQuality
 import io.magicmobile.android.DownloadScan
-import io.magicmobile.android.board.MenuEntry
 import io.magicmobile.android.core.Deck
+import io.magicmobile.android.game.DownloadReadout
+import io.magicmobile.android.menus.ArenaCaps
+import io.magicmobile.android.menus.ArenaCheckbox
+import io.magicmobile.android.menus.ArenaMenuStyle
+import io.magicmobile.android.menus.ArenaOptionRow
+import io.magicmobile.android.menus.ArenaPanelHeader
+import io.magicmobile.android.menus.ArenaPillButton
+import io.magicmobile.android.menus.ArenaPlayButton
+import io.magicmobile.android.menus.ArenaSegmented
+import io.magicmobile.android.menus.arenaCard
+import io.magicmobile.android.menus.arenaScrollFade
 import io.magicmobile.android.ui.AppPreferences
-import io.magicmobile.android.ui.BrandTheme
-import io.magicmobile.android.ui.IosAlert
-import io.magicmobile.android.ui.IosMenuPicker
-import io.magicmobile.android.ui.IosSheetHeader
-import io.magicmobile.android.ui.IosToggle
+import io.magicmobile.android.ui.BoardMotionFlags
+import io.magicmobile.android.ui.BrandPressable
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.rgb
-import io.magicmobile.android.ui.sf
-import androidx.compose.foundation.border
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.heading
-import io.magicmobile.android.ranked.leatherCard
-import io.magicmobile.android.ranked.parchmentCard
-import io.magicmobile.android.ui.SfDesign
-import io.magicmobile.android.ui.TavernButton
-import io.magicmobile.android.ui.TavernButtonKind
-import io.magicmobile.android.ui.TavernPalette
-import io.magicmobile.android.ui.TavernPanelTitle
-import io.magicmobile.android.ui.TavernPicker
-import io.magicmobile.android.ui.TavernPickerSection
-import io.magicmobile.android.ui.TavernSheetBackground
-import io.magicmobile.android.ui.TavernSealButton
-import io.magicmobile.android.ui.TavernToggle
-import io.magicmobile.android.ui.tavernTitleBar
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 
@@ -87,49 +88,11 @@ data class NativeDownloadDeck(val id: String, val name: String, val cardNames: L
     }
 }
 
-private val parchment = TavernPalette.parchment
-private val faded = TavernPalette.parchment.copy(alpha = 0.7f)
-private val warning = rgb(1.0, 0.55, 0.45)
-
-/** A leather card in brass with an engraved brass heading (TavernLeatherCard on iOS). */
-@Composable
-private fun FormSection(header: String? = null, footer: String? = null, parchmentCard: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
-    Column(if (parchmentCard) Modifier.parchmentCard() else Modifier.leatherCard(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        header?.let { Text(it.uppercase(), Modifier.semantics { heading() }, color = TavernPalette.brass, style = sf(11f, SfWeight.heavy, SfDesign.SERIF, tracking = 1.4f)) }
-        content()
-        footer?.let { Note(it) }
-    }
-}
-
-@Composable
-private fun Note(text: String) = Text(text, color = faded, style = sf(12f, design = SfDesign.SERIF))
-
-@Composable
-private fun Labeled(title: String, value: String, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(title, color = parchment, style = sf(15f, SfWeight.semibold, SfDesign.SERIF))
-        Text(value, Modifier.weight(1f), color = parchment.copy(alpha = 0.85f), style = sf(14f, design = SfDesign.SERIF),
-            textAlign = androidx.compose.ui.text.style.TextAlign.End)
-    }
-}
-
-@Composable
-private fun FormButton(title: String, enabled: Boolean, label: String, kind: TavernButtonKind = TavernButtonKind.SECONDARY, onClick: () -> Unit) {
-    TavernButton(onClick, Modifier.semantics { contentDescription = label }, kind = kind, fullWidth = true, enabled = enabled) { Text(title) }
-}
-
-/** A brass-rimmed groove filling with ember: a download's progress in the tavern. */
-@Composable
-private fun BrassProgressBar(fraction: Float) {
-    val shape = RoundedCornerShape(50)
-    Box(Modifier.fillMaxWidth().height(12.dp).background(Color.Black.copy(alpha = 0.5f), shape).border(1.5.dp, TavernPalette.brassLine, shape)
-        .semantics { contentDescription = "Download progress ${(fraction.coerceIn(0f, 1f) * 100).toInt()}%" }) {
-        Box(Modifier.fillMaxWidth(fraction.coerceIn(0.04f, 1f)).height(12.dp)
-            .background(Brush.verticalGradient(listOf(rgb(1.0, 0.62, 0.32), TavernPalette.ember)), shape))
-    }
-}
-
-/** NativeDownloadsView.swift: explicit artwork downloads, separate from the bundled rules engine and catalogue. */
+/**
+ * Port of NativeDownloadsView.swift: explicit artwork downloads, separate from the bundled rules engine and catalogue. Arena's
+ * panel (Caleb, 2026-10-22): what is on this phone and the Download plaque first (a readout with Check on its line, a gold bar,
+ * the state once), then what to download from diamond rows and a tab strip; the technical notes fold away at the foot.
+ */
 @Composable
 fun NativeDownloadsView(decks: List<NativeDownloadDeck>, selectedDeckID: String, engineReady: Boolean, catalogueNames: List<String>?, catalogueError: String?,
                         dismiss: () -> Unit) {
@@ -150,6 +113,7 @@ fun NativeDownloadsView(decks: List<NativeDownloadDeck>, selectedDeckID: String,
     var scan by remember { mutableStateOf<DownloadScan?>(null) }
     var scanned by remember { mutableStateOf<String?>(null) }
     var confirmFull by remember { mutableStateOf(false) }
+    var choosingDeck by remember { mutableStateOf(false) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val loadingCatalogue = catalogueNames == null && catalogueError == null
     val names = when (downloadScope) {
@@ -168,17 +132,21 @@ fun NativeDownloadsView(decks: List<NativeDownloadDeck>, selectedDeckID: String,
     val selectionKey = "$downloadScope|$deckID|${quality.id}|${names.size}|$downloadsTokens|${chosen.joinToString(",") { it.printing.key }}"
     val scanPending = scanning || scan == null || scanned != selectionKey
     val current = scan
-    val missingCards = if (downloadScope == "tokens" || current == null) 0 else current.missingCards.size
+    val tokensOnly = downloadScope == "tokens"
+    val missingCards = if (tokensOnly || current == null) 0 else current.missingCards.size
     val missingTokens = if (!downloadsTokens || current == null) 0 else current.missingTokens.size
     val discoveryIncomplete = scanPending || (downloadScope == "catalogue" && loadingCatalogue) || current?.coverageKnown != true
     val missingSummary = if (scanPending) "Checking needed to count missing artwork." else {
         val cards = "${number.format(missingCards)} card/face ${if (missingCards == 1) "image" else "images"}"
         val tokens = "${number.format(missingTokens)} token ${if (missingTokens == 1) "image" else "images"}"
-        val count = if (downloadScope == "tokens") tokens else if (downloadsTokens) "$cards · $tokens" else cards
+        val count = if (tokensOnly) tokens else if (downloadsTokens) "$cards · $tokens" else cards
         if (discoveryIncomplete) "Found so far: $count. Checking needed for the remaining artwork." else "Missing: $count"
     }
-    val estimate = if (discoveryIncomplete) "Checking needed" else "≈ ${Formatter.formatFileSize(context, (missingCards + missingTokens).toLong() * quality.estimatedBytes)}"
-    val fullCatalogue = downloadScope == "catalogue" || downloadScope == "tokens"
+    val estimateSize = Formatter.formatFileSize(context, (missingCards + missingTokens).toLong() * quality.estimatedBytes)
+    val estimate = if (discoveryIncomplete) "Checking needed" else "≈ $estimateSize"
+    val fullCatalogue = downloadScope == "catalogue" || tokensOnly
+    val progress = downloadState.progress
+    val preparing = scanning || progress.status.startsWith("Preparing") || progress.status.startsWith("Checking")
 
     fun runScan() {
         val key = selectionKey
@@ -191,7 +159,7 @@ fun NativeDownloadsView(decks: List<NativeDownloadDeck>, selectedDeckID: String,
         }
     }
     fun startDownload() {
-        if (running || (names.isEmpty() && downloadScope != "tokens")) return
+        if (running || (names.isEmpty() && !tokensOnly)) return
         val preferences = context.getSharedPreferences("magicmobile.artwork", Context.MODE_PRIVATE)
         if (android.os.Build.VERSION.SDK_INT >= 33 && !preferences.getBoolean("askedDownloadNotifications", false)) {
             preferences.edit().putBoolean("askedDownloadNotifications", true).apply()
@@ -202,115 +170,146 @@ fun NativeDownloadsView(decks: List<NativeDownloadDeck>, selectedDeckID: String,
     LaunchedEffect(selectionKey, loadingCatalogue) { runScan() }
     LaunchedEffect(running) { if (!running) runScan() }
 
-    // The tavern's own page (Caleb, 2026-10-04): leather title bar with the wax-seal close, leather cards in brass,
-    // parchment pickers and plaque buttons; no system form chrome.
-    CompositionLocalProvider(io.magicmobile.android.ui.LocalTavernBoard provides true) {
-    Box(Modifier.fillMaxWidth().height((LocalConfiguration.current.screenHeightDp - 56).dp)) {
-    TavernSheetBackground(Modifier.matchParentSize())
+    val readout = DownloadReadout.readout(running, preparing, progress.completed, progress.total, tokensOnly,
+        current?.let { it.cards + it.faceStored + it.printingStored } ?: 0, current?.let { names.size + it.faceTotal + it.printingTotal } ?: 0,
+        current?.tokenStored ?: 0, current?.tokenTotal ?: 0, scanPending || (downloadScope == "catalogue" && loadingCatalogue))
+    val stateLine = DownloadReadout.stateLine(running, preparing, progress.status, scanning, loadingCatalogue && downloadScope == "catalogue", scanPending,
+        missingCards + missingTokens, discoveryIncomplete, estimateSize, quality.label)
+    val storedBytes = current?.bytes ?: Artwork.storedDownloadBytes(context)
+    val coverage = DownloadReadout.coverage(tokensOnly, scanPending, current?.tokensKnown == true, current?.tokenStored ?: 0, current?.tokenTotal ?: 0,
+        storedBytes, Formatter.formatFileSize(context, storedBytes))
+
     Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 6.dp).fillMaxWidth().tavernTitleBar(), verticalAlignment = Alignment.CenterVertically) {
-            TavernPanelTitle("Downloads", Modifier.weight(1f).semantics { heading() }.testTag("downloads.title"))
-            TavernSealButton(dismiss, Modifier.testTag("downloads.close"), contentDescription = "Done")
-        }
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 8.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            FormSection("Artwork", if (downloadScope == "tokens") "Token-only downloads contain no ordinary card images." else "Full catalogue includes opponents’ cards too.") {
-                val scopes = listOf("Full catalogue · recommended" to "catalogue", "All supported tokens" to "tokens", "All saved & included decks" to "decks", "One deck" to "deck")
-                TavernPicker("Download", downloadScope, listOf(TavernPickerSection(null, scopes)), { downloadScope = it }, Modifier.testTag("downloads.scope"), enabled = !running)
-                if (downloadScope == "deck") {
-                    TavernPicker("Deck", deckID, listOf(TavernPickerSection(null, decks.map { it.name to it.id })), { savedDeck = it },
-                        Modifier.testTag("downloads.deck"), enabled = !running)
-                }
-                TavernPicker("Image quality", quality, listOf(TavernPickerSection(null, ArtworkQuality.entries.map { it.label to it })), { qualityID = it.id },
-                    Modifier.testTag("downloads.quality"), enabled = !running)
-                if (downloadScope != "tokens") TavernToggle("Include tokens", includeTokens, { if (!running) includeTokens = it })
-            }
-            FormSection("On this device") {
-                if (loadingCatalogue && downloadScope == "catalogue") ProgressRow("Reading the installed catalogue…")
-                if (catalogueError != null && downloadScope == "catalogue") Text(catalogueError, color = warning, style = sf(14f, design = SfDesign.SERIF))
-                if (downloadScope != "tokens") {
-                    Labeled("Cards", if (scanPending || (downloadScope == "catalogue" && loadingCatalogue)) "Checking needed"
-                        else "${number.format(current!!.cards + current.faceStored + current.printingStored)} / ${number.format(names.size + current.faceTotal + current.printingTotal)}",
-                        Modifier.testTag("downloads.cards"))
-                }
-                Labeled("Tokens", if (scanPending || current?.tokensKnown != true && downloadsTokens) "Checking needed"
-                    else "${number.format(current!!.tokenStored)} / ${number.format(current.tokenTotal)}")
-                if (scanning) ProgressRow("Checking local files…")
-                Labeled("Stored", Formatter.formatFileSize(context, current?.bytes ?: Artwork.storedDownloadBytes(context)))
-                Labeled("Missing artwork", missingSummary)
-                Labeled("Estimated additional download", estimate)
-                Note("Approximate at ${quality.label.lowercase()} quality. Actual download and device storage vary with image sizes, metadata and images already stored.")
-                FormButton("Check for missing artwork", !running && !scanning, "downloads.check") { runScan() }
-            }
-            FormSection("Download", "You can play or leave the app while images download. Wi-Fi is recommended.") {
-                TavernToggle("Download card artwork", remoteArtwork,
-                    { enabled -> Artwork.setEnabled(context, enabled); if (!enabled && running) ArtworkDownloadService.pause(context) },
-                    Modifier.semantics { contentDescription = "nativeArtwork.downloads" },
-                    subtitle = "Uses Scryfall. Online requests share your IP and card names, including your hand.")
-                val progress = downloadState.progress
-                if (running) {
-                    val preparing = progress.status.startsWith("Preparing") || progress.status.startsWith("Checking")
-                    if (preparing) ProgressRow("Preparing image list…")
-                    else BrassProgressBar(if (progress.total == 0) 0f else progress.completed.toFloat() / progress.total)
-                    Text(progress.status, Modifier.testTag("downloads.status"), color = parchment, style = sf(14f, design = SfDesign.SERIF))
-                    FormButton("Cancel download", true, "downloads.cancel", TavernButtonKind.DANGER) { ArtworkDownloadService.pause(context) }
-                } else {
-                    if (progress.total > 0 && progress.status.isNotEmpty()) {
-                        Text(progress.status, Modifier.testTag("downloads.status"), color = parchment, style = sf(14f, design = SfDesign.SERIF))
+        ArenaPanelHeader("Downloads", closeIdentifier = "downloads.close", close = dismiss)
+        Column(Modifier.fillMaxWidth().arenaScrollFade(48.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(16.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                // First: what is on this phone, what is missing, the consent and the Download plaque.
+                Column(Modifier.arenaCard(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Check stands on the readout's line, not alone in a band of its own.
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(readout.count, Modifier.weight(1f).testTag("downloads.summary").semantics { heading() }, color = ArenaMenuStyle.text,
+                            style = ArenaMenuStyle.font(22f, SfWeight.bold).copy(fontFeatureSettings = "tnum"), maxLines = 1)
+                        ArenaPillButton("Check", { runScan() }, Modifier.semantics { contentDescription = "Check for missing artwork" },
+                            enabled = !running && !scanning, identifier = "downloads.check")
                     }
-                    FormButton("Download missing artwork", remoteArtwork && (names.isNotEmpty() || downloadScope == "tokens") && !scanning &&
-                        !(downloadScope == "catalogue" && loadingCatalogue), "downloads.start", TavernButtonKind.PRIMARY) { if (fullCatalogue) confirmFull = true else startDownload() }
-                    if (ArtworkDownloadService.hasPending(context)) {
-                        FormButton("Resume previous download", remoteArtwork, "downloads.resume") { runCatching { ArtworkDownloadService.resume(context) } }
+                    readout.fraction?.let { DownloadProgressBar(it.toFloat(), gold = !running) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (scanning || (running && preparing) || (loadingCatalogue && downloadScope == "catalogue")) {
+                            CircularProgressIndicator(Modifier.size(14.dp), color = ArenaMenuStyle.gold, strokeWidth = 2.dp)
+                        }
+                        if (stateLine.isNotEmpty()) Text(stateLine, Modifier.testTag("downloads.status"), color = ArenaMenuStyle.dim,
+                            style = ArenaMenuStyle.font(12f, SfWeight.semibold))
+                    }
+                    if (coverage.isNotEmpty()) Text(coverage, Modifier.testTag("downloads.cards"), color = ArenaMenuStyle.dim,
+                        style = ArenaMenuStyle.font(13f, SfWeight.medium).copy(fontFeatureSettings = "tnum"))
+                    if (catalogueError != null && downloadScope == "catalogue") Text(catalogueError, color = ArenaMenuStyle.loss, style = ArenaMenuStyle.font(13f, SfWeight.medium))
+                    // The consent, named for what it allows so it doesn't repeat the Download plaque under it; what it shares stays in
+                    // view because it is the consent's terms, not help.
+                    ArenaCheckbox("Online card art", remoteArtwork, { enabled -> Artwork.setEnabled(context, enabled); if (!enabled && running) ArtworkDownloadService.pause(context) },
+                        subtitle = "Uses Scryfall. Online requests share your IP and card names, including your hand.", identifier = "nativeArtwork.downloads")
+                    Text("Shares your IP and card names with Scryfall.", color = ArenaMenuStyle.dim, style = ArenaMenuStyle.font(11.5f, SfWeight.medium))
+                    if (running) {
+                        ArenaPlayButton("Cancel download", { ArtworkDownloadService.pause(context) }, Modifier.fillMaxWidth().height(46.dp), cancel = true,
+                            fontSize = 16f, identifier = "downloads.cancel")
+                    } else {
+                        if (progress.total > 0 && progress.status.isNotEmpty() && stateLine != progress.status) Note(progress.status)
+                        ArenaPlayButton("Download missing artwork", { if (fullCatalogue) confirmFull = true else startDownload() },
+                            Modifier.fillMaxWidth().height(46.dp), fontSize = 17f, identifier = "downloads.start",
+                            enabled = remoteArtwork && (names.isNotEmpty() || tokensOnly) && !scanning && !(downloadScope == "catalogue" && loadingCatalogue))
+                        // Android keeps an interrupted download's list (its foreground service) to pick up again.
+                        if (ArtworkDownloadService.hasPending(context)) {
+                            ArenaPillButton("Resume previous download", { runCatching { ArtworkDownloadService.resume(context) } }, Modifier.align(Alignment.CenterHorizontally),
+                                enabled = remoteArtwork, identifier = "downloads.resume")
+                        }
                     }
                 }
-            }
-            FormSection {
-                MoreInfo(engineReady, catalogueError == null)
-            }
-            val failures = downloadState.failures
-            if (failures.isNotEmpty()) FormSection("Needs attention", parchmentCard = true) {
-                failures.take(20).forEach { Text(it, color = TavernPalette.ink, style = sf(14f, design = SfDesign.SERIF)) }
-                if (failures.size > 20) Text("And ${failures.size - 20} more issues. Check missing artwork below.", color = TavernPalette.ink.copy(alpha = 0.7f), style = sf(12f, design = SfDesign.SERIF))
-                Text("Use Download missing artwork to retry. Already stored artwork is preserved.", color = TavernPalette.ink.copy(alpha = 0.7f), style = sf(12f, design = SfDesign.SERIF))
-            }
-            if (current != null && current.missingTokens.isNotEmpty()) FormSection {
-                Disclosure("Missing tokens · ${number.format(current.missingTokens.size)}") {
-                    current.missingTokens.take(20).forEach { Text("Token $it", color = parchment, style = sf(13f, design = SfDesign.SERIF)) }
+                // Then what to download: the scope as diamond rows, the deck when it is one deck, the quality as a tab strip.
+                Column(Modifier.arenaCard(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ArenaCaps("What to download")
+                    Column {
+                        DownloadReadout.scopes.forEach { (title, value) ->
+                            ArenaOptionRow(title, { downloadScope = value; if (value != "deck") choosingDeck = false }, selected = downloadScope == value,
+                                identifier = "downloads.scope.$value", enabled = !running)
+                        }
+                    }
+                    if (downloadScope == "deck") {
+                        ArenaOptionRow("Deck", { choosingDeck = !choosingDeck }, value = decks.firstOrNull { it.id == deckID }?.name ?: "—", chevron = true,
+                            identifier = "downloads.deck", enabled = !running)
+                        AnimatedVisibility(choosingDeck, enter = fadeIn(tween(180)), exit = fadeOut(tween(180))) {
+                            Column(Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState()).padding(start = 16.dp)) {
+                                decks.forEach { deck ->
+                                    ArenaOptionRow(deck.name, { savedDeck = deck.id; choosingDeck = false }, selected = deck.id == deckID,
+                                        identifier = "downloads.deck.${deck.id}", enabled = !running)
+                                }
+                            }
+                        }
+                    }
+                    ArenaCaps("Image quality", modifier = Modifier.padding(top = 4.dp))
+                    ArenaSegmented(ArtworkQuality.entries.map { it.label to it }, quality, { if (!running) qualityID = it.id },
+                        Modifier.fillMaxWidth().alpha(if (running) 0.5f else 1f), identifier = "downloads.quality", stretch = true)
+                    if (!tokensOnly) ArenaCheckbox("Include tokens", includeTokens, { includeTokens = it }, enabled = !running)
                 }
-            }
-            if (current != null && current.missingCards.isNotEmpty() && downloadScope != "tokens") FormSection {
-                Disclosure("Missing cards · ${number.format(current.missingCards.size)}") {
-                    current.missingCards.take(20).forEach { Text(it, color = parchment, style = sf(13f, design = SfDesign.SERIF)) }
-                    if (current.missingCards.size > 20) Note("And ${current.missingCards.size - 20} more")
+                val failures = downloadState.failures
+                if (failures.isNotEmpty()) Column(Modifier.arenaCard(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ArenaCaps("Needs attention")
+                    failures.take(20).forEach { Text(it, color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(13f, SfWeight.medium)) }
+                    if (failures.size > 20) Note("And ${failures.size - 20} more issues. Check missing artwork below.")
                 }
+                val hasMissingTokens = current != null && current.missingTokens.isNotEmpty()
+                val hasMissingCards = current != null && current.missingCards.isNotEmpty() && !tokensOnly
+                if (hasMissingTokens || hasMissingCards) Column(Modifier.arenaCard(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (hasMissingTokens) Disclosure("Missing tokens · ${number.format(current!!.missingTokens.size)}") {
+                        current.missingTokens.take(20).forEach { Text(it, color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(13f, SfWeight.medium)) }
+                    }
+                    if (hasMissingCards) Disclosure("Missing cards · ${number.format(current!!.missingCards.size)}") {
+                        current.missingCards.take(20).forEach { Text(it, color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(13f, SfWeight.medium)) }
+                        if (current.missingCards.size > 20) Note("And ${current.missingCards.size - 20} more")
+                    }
+                }
+                Box(Modifier.arenaCard().testTag("downloads.info")) { MoreInfo(engineReady, catalogueError == null) }
             }
         }
     }
-    }
-    if (confirmFull) io.magicmobile.android.board.ConfirmationDialog("Download missing artwork?",
-        "$missingSummary ${if (discoveryIncomplete) "The additional download estimate needs checking." else "Estimated additional download: $estimate."} This is approximate; actual download and device storage vary. Images continue downloading while you play or leave the app. Wi-Fi is recommended.",
-        listOf(io.magicmobile.android.board.ConfirmationAction("Download missing images · ${quality.label}") { confirmFull = false; startDownload() })) { confirmFull = false }
+    // The confirmation is the tavern kit's dialog, which draws Arena's glass and buttons over the menus.
+    if (confirmFull) CompositionLocalProvider(io.magicmobile.android.ui.LocalTavernBoard provides true) {
+        io.magicmobile.android.board.ConfirmationDialog("Download missing artwork?",
+            "$missingSummary ${if (discoveryIncomplete) "The additional download estimate needs checking." else "Estimated additional download: $estimate."} This is approximate; actual download and device storage vary. Images continue downloading while you play or leave the app. Wi-Fi is recommended.",
+            listOf(io.magicmobile.android.board.ConfirmationAction("Download missing images · ${quality.label}") { confirmFull = false; startDownload() })) { confirmFull = false }
     }
 }
 
 @Composable
-private fun ProgressRow(title: String) {
-    Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        CircularProgressIndicator(Modifier.size(18.dp), color = TavernPalette.brass, strokeWidth = 2.dp)
-        Text(title, color = parchment, style = sf(14f, design = SfDesign.SERIF))
+private fun Note(text: String) = Text(text, color = ArenaMenuStyle.dim, style = ArenaMenuStyle.font(12f, SfWeight.medium))
+
+/** A download's progress: gold for what is stored (Arena's progress bars), ember for a download under way. */
+@Composable
+private fun DownloadProgressBar(fraction: Float, gold: Boolean) {
+    val shown by animateFloatAsState(fraction.coerceIn(0f, 1f), tween(if (BoardMotionFlags.reduceMotion) 0 else 300), label = "downloadBar")
+    Box(Modifier.fillMaxWidth().height(12.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)
+        .border(1.5.dp, ArenaMenuStyle.gold.copy(alpha = 0.6f), CircleShape)
+        .semantics {
+            contentDescription = "Download progress"; stateDescription = "${(shown * 100).toInt()}%"
+            progressBarRangeInfo = ProgressBarRangeInfo(shown, 0f..1f)
+        }) {
+        Box(Modifier.fillMaxWidth(shown.coerceAtLeast(0.04f)).height(12.dp)
+            .background(Brush.verticalGradient(if (gold) listOf(rgb(1.0, 0.88, 0.56), ArenaMenuStyle.gold) else listOf(rgb(1.0, 0.62, 0.32), ArenaMenuStyle.ember)), CircleShape))
     }
 }
 
+/** A section that opens and closes under a gold chevron (TavernDisclosure), in place of the system disclosure group. */
 @Composable
 private fun Disclosure(title: String, content: @Composable ColumnScope.() -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).clickable { expanded = !expanded }, verticalAlignment = Alignment.CenterVertically) {
-            Text(title, Modifier.weight(1f), color = parchment, style = sf(15f, SfWeight.heavy, SfDesign.SERIF))
-            SfImage(if (expanded) "chevron.up" else "chevron.down", TavernPalette.brass, 14.dp)
+    val turn by animateFloatAsState(if (expanded) 180f else 0f, tween(if (BoardMotionFlags.reduceMotion) 0 else 200), label = "disclosure")
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        BrandPressable({ expanded = !expanded }, Modifier.fillMaxWidth().semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }) {
+            Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 36.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f), color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(15f, SfWeight.bold))
+                Spacer(Modifier.size(8.dp))
+                SfImage("chevron.down", ArenaMenuStyle.gold, 12.dp, Modifier.rotate(turn))
+            }
         }
-        if (expanded) Column(Modifier.padding(bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+        if (expanded) Column(verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
     }
 }
 
@@ -318,8 +317,8 @@ private fun Disclosure(title: String, content: @Composable ColumnScope.() -> Uni
 private fun MoreInfo(engineReady: Boolean, catalogueIncluded: Boolean) {
     Disclosure("More info") {
         @Composable fun label(text: String, ok: Boolean) = Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            SfImage(if (ok) "checkmark.seal.fill" else "exclamationmark.circle", if (ok) TavernPalette.brass else warning, 17.dp)
-            Text(text, color = parchment, style = sf(14f, design = SfDesign.SERIF))
+            SfImage(if (ok) "checkmark.seal.fill" else "exclamationmark.circle", if (ok) ArenaMenuStyle.gold else ArenaMenuStyle.loss, 15.dp)
+            Text(text, color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(13f, SfWeight.medium))
         }
         label(if (engineReady) "Local engine ready" else "Local engine not ready", engineReady)
         label(if (catalogueIncluded) "Card catalogue included" else "Card catalogue unavailable", catalogueIncluded)

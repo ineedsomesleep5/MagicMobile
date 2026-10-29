@@ -74,7 +74,9 @@ class D20Assets private constructor(val model: D20Model, val bank: List<D20Throw
  * (D20ThrowPlan); there is no physics in the app, so the result can never differ from the game's.
  * Frames are drawn only while a die is in the air (and once after any change): an idle table costs nothing.
  */
-class D20TableScene(context: Context, private val assets: D20Assets) {
+class D20TableScene(context: Context, private val assets: D20Assets,
+                    /** On the Arena board the dice roll on the board itself: no tavern table, a clear background over the dimmed board. */
+                    private val onBoard: Boolean = false) {
     private val engine: Engine
     private val renderer: Renderer
     private val scene: Scene
@@ -143,7 +145,14 @@ class D20TableScene(context: Context, private val assets: D20Assets) {
         // Linear tone mapping keeps the table picture's colours exactly as painted; the die is lit to suit.
         colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Linear()).build(engine)
         view.colorGrading = colorGrading
-        renderer.setClearOptions(Renderer.ClearOptions().also { it.clear = true; it.clearColor = doubleArrayOf(0.09, 0.05, 0.03, 1.0) })
+        renderer.setClearOptions(Renderer.ClearOptions().also {
+            it.clear = true; it.clearColor = if (onBoard) doubleArrayOf(0.0, 0.0, 0.0, 0.0) else doubleArrayOf(0.09, 0.05, 0.03, 1.0)
+        })
+        if (onBoard) {
+            // A translucent swap chain and view, so only the dice and their shadows draw over the board.
+            view.blendMode = View.BlendMode.TRANSLUCENT
+            uiHelper.isOpaque = false
+        }
         camera.setProjection(D20TableLayout.VERTICAL_FOV.toDouble() * 180 / Math.PI, 0.5, 1.0, 400.0, Camera.Fov.VERTICAL)
 
         materials = UbershaderProvider(engine)
@@ -206,7 +215,7 @@ class D20TableScene(context: Context, private val assets: D20Assets) {
 
     fun attach(textureView: TextureView) {
         uiHelper.attachTo(textureView)
-        textureView.isOpaque = true
+        textureView.isOpaque = !onBoard
     }
 
     // MARK: Layout
@@ -227,7 +236,7 @@ class D20TableScene(context: Context, private val assets: D20Assets) {
         val next = D20TableLayout(width / density, height / density, area.center.y / density, area.width / density, area.height / density,
             seatCount, mat.second)
         layout = next
-        if (tableLandscape != landscape) {
+        if (!onBoard && tableLandscape != landscape) {
             tableLandscape = landscape
             tableAsset?.let { removeAsset(it) }
             val asset = assetLoader.createAsset(assets.table(landscape)) ?: error("could not read the table")
@@ -445,10 +454,12 @@ class D20TableScene(context: Context, private val assets: D20Assets) {
 /** The table behind the starting roll, as a Compose view: transparent to touches and to TalkBack. */
 @Composable
 fun D20TableView(region: Rect, state: D20TableState, reduceMotion: Boolean, modifier: Modifier = Modifier,
-                 onEdgeHit: (Int) -> Unit = {}, onRebound: (Int) -> Unit = {}, onRest: (Int) -> Unit = {}, onReady: () -> Unit = {}) {
+                 onEdgeHit: (Int) -> Unit = {}, onRebound: (Int) -> Unit = {}, onRest: (Int) -> Unit = {}, onReady: () -> Unit = {},
+                 /** The Arena board: only the dice, on a clear background over the board (iOS D20TableView `onBoard`). */
+                 onBoard: Boolean = false) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current.density
-    val scene = remember { D20Assets.load(context)?.let { D20TableScene(context, it) } }
+    val scene = remember(onBoard) { D20Assets.load(context)?.let { D20TableScene(context, it, onBoard) } }
     DisposableEffect(scene) { onDispose { scene?.destroy() } }
     val edge by rememberUpdatedState(onEdgeHit)
     val rebound by rememberUpdatedState(onRebound)

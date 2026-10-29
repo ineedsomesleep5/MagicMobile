@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
@@ -236,7 +237,18 @@ fun BattlefieldRow(
     runAction: (LegalAction) -> Unit, runTargetAction: (ZoneCard) -> Unit, runCombatCardAction: (ZoneCard) -> Boolean,
     modifier: Modifier = Modifier, flipped: Boolean = false, adaptsToDensity: Boolean = false, availableHeight: Float? = null,
     arrangement: BattlefieldRowArrangement = BattlefieldRowArrangement.AUTOMATIC, allowsManaUndo: Boolean = false, manaPaymentActive: Boolean = false,
+    /** Where the tiles sit in the lane while they fit: centred, or (the Arena board's lands) from its leading edge. */
+    alignment: io.magicmobile.android.game.ArenaLaneAlignment = io.magicmobile.android.game.ArenaLaneAlignment.CENTER,
+    /** The Arena board sizes its rows itself (ArenaRowFit): this many rows, whatever the tile count. */
+    preferredRows: Int? = null,
 ) {
+    /** The Arena board piles identical lands the reference's way and tucks attachments behind their creature as cards. */
+    val arena = io.magicmobile.android.menus.LocalArenaBoard.current
+    val contentAlignment = when (alignment) {
+        io.magicmobile.android.game.ArenaLaneAlignment.LEADING -> Alignment.CenterStart
+        io.magicmobile.android.game.ArenaLaneAlignment.TRAILING -> Alignment.CenterEnd
+        io.magicmobile.android.game.ArenaLaneAlignment.CENTER -> Alignment.Center
+    }
     var expandedGroupIds by rememberSaveable(title) { mutableStateOf(setOf<String>()) }
     // Piles opened with a hold while choosing from them stack again once the choice or combat ends; a pile opened just to look
     // stays open until its Stack chip (Caleb, 2026-10-16).
@@ -274,7 +286,8 @@ fun BattlefieldRow(
     val visibleCards = renderedGroups.map { it.representative }
     val visibleCardCount = renderedGroups.size
     val permanentLayout = availableHeight?.let { height ->
-        val proposed = arrangement.rows(renderedGroups, flipped, arrangement == BattlefieldRowArrangement.LANDSCAPE_RESOURCES || visibleCardCount > 5)
+        val proposed = arrangement.rows(renderedGroups, flipped, preferredRows?.let { it == 2 }
+            ?: (arrangement == BattlefieldRowArrangement.LANDSCAPE_RESOURCES || visibleCardCount > 5))
         ArenaPermanentLayout.of(proposed.map { it.size }, rowWidth, height, cardWidth, cardHeight / maxOf(cardWidth, 1f))
     }
     val targetRenderedWidth = permanentLayout?.cardWidth ?: if (!adaptsToDensity) cardWidth else
@@ -284,6 +297,11 @@ fun BattlefieldRow(
     val rows = permanentLayout?.rows ?: 1
     val arranged = arrangement.rows(renderedGroups, flipped, rows == 2)
     val manaUndoAction = legalActions.firstOrNull { it.type == "undo_mana" }
+
+    /** An activated ability other than mana that the engine offers for this permanent now. */
+    fun hasAbility(card: ZoneCard): Boolean = !card.isPhasedOut && legalActions.any {
+        it.type == "activate_ability" && (it.sourceInstanceId == card.instanceId || it.cardInstanceId == card.instanceId)
+    }
 
     fun legalAction(card: ZoneCard): LegalAction? {
         if (card.isPhasedOut) return null
@@ -327,7 +345,7 @@ fun BattlefieldRow(
                     GameHaptics.impact(haptics)
                 }, release = { if (selection.inspectedCard?.id == card.id) selection.inspectedCard = null }),
             selected = selection.selectedCard?.id == card.id || BattlefieldTokenStack.isChosen(card, chosenIds), legal = action != null,
-            targetable = targetable || combatHighlighted)
+            targetable = targetable || combatHighlighted, ability = hasAbility(card))
         // Chosen in a multi-card prompt: an ember seal, so it reads apart from the cards still to choose from.
         if (BattlefieldTokenStack.isChosen(card, chosenIds)) {
             Box(Modifier.align(Alignment.TopEnd).offset(3.dp, (-3).dp).size(maxOf(18f, renderedCardWidth * 0.22f).dp)
@@ -355,7 +373,9 @@ fun BattlefieldRow(
         val combatHighlighted = combatHighlightIds.any { it in groupIds }
         val legal = group.cards.any { legalAction(it) != null }
         val next = nextChoosable(group)
-        Box(Modifier.offset(y = tappedOffset(card))
+        // The Arena board piles identical lands the reference's way: each copy peeks out from under the one on top.
+        val peeks = if (arena && card.card.isLand) minOf(group.count - 1, 5) else 0
+        Box(Modifier.offset(y = tappedOffset(card)).padding(start = (peeks * renderedCardWidth * 0.12f).dp)
             .semantics { contentDescription = "${group.count} grouped ${card.card.name} cards in $title. " +
                 if (next != null) "Tap to choose the next one. Long press to open the group." else "Tap to expand the group. Long press to inspect a card." }
             .cardBounds(card.instanceId)
@@ -380,7 +400,11 @@ fun BattlefieldRow(
                 } else selection.inspectedCard = card
                 GameHaptics.impact(haptics)
             }, release = { if (selection.inspectedCard?.id == card.id) selection.inspectedCard = null })) {
-            if (tavern && group.count >= BattlefieldTokenStack.threshold) {
+            for (layer in peeks downTo 1) {
+                ArenaBattlefieldCard(group.cards[layer], title, renderedCardWidth.dp, renderedCardHeight.dp,
+                    Modifier.offset((-layer * renderedCardWidth * 0.12f).dp, (layer * 2).dp).clearAndSetSemantics { })
+            }
+            if (tavern && LocalCardFrames.current && group.count >= BattlefieldTokenStack.threshold) {
                 // A big stack reads as a pile: two more frames peek out behind it (frame art only).
                 val frame = io.magicmobile.android.ui.tavernImage(tavernFrameDrawable(io.magicmobile.android.game.TavernFrameKind.of(card)))
                 for (layer in 1 downTo 0) {
@@ -389,8 +413,8 @@ fun BattlefieldRow(
                 }
             }
             ArenaBattlefieldCard(card, title, renderedCardWidth.dp, renderedCardHeight.dp, selected = false, legal = legal,
-                targetable = targetable || combatHighlighted)
-            Text("×${group.count}", Modifier.align(Alignment.BottomStart).padding(3.dp)
+                targetable = targetable || combatHighlighted, ability = group.cards.any(::hasAbility))
+            if (group.count > peeks + 1) Text("×${group.count}", Modifier.align(Alignment.BottomStart).padding(3.dp)
                 .background(MagicPalette.iron.copy(alpha = 0.94f), CircleShape)
                 .border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.58f), CircleShape)
                 .padding(horizontal = 5.dp, vertical = 3.dp), color = Color.White, style = sf(10f, SfWeight.black))
@@ -404,6 +428,28 @@ fun BattlefieldRow(
      */
     @Composable
     fun attachmentGroupTile(group: BattlefieldCardGroup, tucked: Boolean = false) {
+        if (arena) {
+            // The Arena board (the reference's): each Aura and Equipment is its own card tucked behind the creature, shifted left
+            // and a little up so its name and left edge show, one step further per card; the row makes room for them on the left.
+            val attachments = group.cards.drop(1)
+            val shown = attachments.take(3)
+            val step = renderedCardHeight * (if (tucked) 0f else 0.1f)
+            val side = -renderedCardWidth * 0.3f
+            Box(Modifier.padding(start = (renderedCardWidth * 0.3f * shown.size).dp).requiredSize(renderedCardWidth.dp, renderedCardHeight.dp),
+                contentAlignment = Alignment.BottomCenter) {
+                shown.withIndex().reversed().forEach { (index, card) ->
+                    Box(Modifier.offset((side * (index + 1)).dp, (-step * (index + 1)).dp)) { cardTile(card) }
+                }
+                cardTile(group.representative)
+                if (attachments.size > shown.size) {
+                    Text("+${attachments.size - shown.size}", Modifier.align(Alignment.TopEnd).offset(4.dp, (-step * shown.size - 6).dp)
+                        .background(io.magicmobile.android.ui.TavernPalette.leather, CircleShape)
+                        .border(1.dp, io.magicmobile.android.ui.TavernPalette.brass, CircleShape).padding(horizontal = 4.dp),
+                        color = io.magicmobile.android.ui.TavernPalette.label, style = sf(maxOf(9f, renderedCardWidth * 0.13f), SfWeight.heavy, SfDesign.SERIF))
+                }
+            }
+            return
+        }
         val attachments = group.cards.drop(1)
         // Two tabs at most; the rest count on the top tab.
         val shown = attachments.take(2)
@@ -464,7 +510,7 @@ fun BattlefieldRow(
                     val scroll = rememberBoardScrollState()
                     BattlefieldRowScroller(scroll, title, rowWidth, targetRenderedWidth, listOf(arranged[row].map { it.count }),
                         showsIndicator = rowContentWidth(arranged[row]) > rowWidth) {
-                        Box(Modifier.defaultMinSize(minWidth = rowWidth.dp, minHeight = (((availableHeight ?: 0f) - 4) / 2).dp), contentAlignment = Alignment.Center) {
+                        Box(Modifier.defaultMinSize(minWidth = rowWidth.dp, minHeight = (((availableHeight ?: 0f) - 4) / 2).dp), contentAlignment = contentAlignment) {
                             Box(Modifier.padding(horizontal = 8.dp)) { rowTiles(arranged[row], tucked = row > 0) }
                         }
                     }
@@ -475,7 +521,7 @@ fun BattlefieldRow(
             BattlefieldRowScroller(scroll, title, rowWidth, targetRenderedWidth, (0 until rows).map { row -> arranged.getOrElse(row) { emptyList() }.map { it.count } },
                 showsIndicator = showsOverflowIndicator) {
                 // Rows keep their leading edges together; the block is centered in the lane.
-                Box(Modifier.defaultMinSize(minWidth = rowWidth.dp, minHeight = (availableHeight ?: maxOf(cardHeight + 6, 44f)).dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.defaultMinSize(minWidth = rowWidth.dp, minHeight = (availableHeight ?: maxOf(cardHeight + 6, 44f)).dp), contentAlignment = contentAlignment) {
                     Column(Modifier.padding(horizontal = 8.dp, vertical = if (availableHeight == null) 0.dp else 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         for (row in 0 until rows) rowTiles(arranged.getOrElse(row) { emptyList() }, tucked = row > 0)
                     }

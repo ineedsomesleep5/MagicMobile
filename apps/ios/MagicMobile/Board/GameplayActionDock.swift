@@ -645,6 +645,9 @@ struct PortraitBottomCommandBar: View {
 
 struct BoardStackInspector: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.boardPanelClose) private var panelClose
+    /// Closes the sheet, or the Arena board's panel on the table.
+    private func close() { if let panelClose { panelClose() } else { dismiss() } }
     @Environment(\.nativeTurnControl) private var turnControl
     @Environment(\.boardAnswerActions) private var answerActions
     @Environment(\.tavernBoard) private var tavern
@@ -673,11 +676,11 @@ struct BoardStackInspector: View {
                 if let runCommand, let resolve = GameplayAffordances.resolveStackCommand(snapshot: snapshot, pendingActionID: nil,
                                                                                          supported: answerActions.supported) {
                     ResolveStackButton(identifier: "board.stack.sheet.resolveAll") {
-                        inspectedCard = nil; dismiss()
+                        inspectedCard = nil; close()
                         runCommand(resolve, "Resolve the stack", "resolve-stack-\(resolve.promptId ?? "")")
                     }
                 }
-                Button("Done") { inspectedCard = nil; dismiss() }
+                Button("Done") { inspectedCard = nil; close() }
                     .frame(minHeight: 44)
                     .tavernPlaque(tavern, kind: .secondary)
                     .accessibilityIdentifier("board.stack.done")
@@ -777,7 +780,8 @@ struct PlayerZoneMenu: View {
             }
             if swapOpponents.count > 1, let swap {
                 TavernOpponentSwap(opponents: swapOpponents, current: player.playerId,
-                                   label: { game?.playerLabel($0) ?? "Opponent" }, select: swap)
+                                   label: { game?.playerLabel($0) ?? "Opponent" }, select: swap,
+                                   withChoices: game.map { Set(ArenaTargetReach.of($0, targetable: GameBoardInteractionState.boardTargetableIds(for: $0)).hiddenOpponents) } ?? [])
             }
         } label: {
             if let customLabel { customLabel } else { defaultLabel }
@@ -860,6 +864,9 @@ struct PortraitStackLane: View {
     @Binding var inspectedCard: ZoneCard?
     var horizontal = false
     @Environment(\.tavernBoard) private var tavern
+    /// The Arena board's slips are glass rows with light text, not parchment.
+    @Environment(\.arenaBoard) private var arena
+    private var ink: Color { arena ? ArenaGlass.text : TavernPalette.ink }
 
     var body: some View {
         if tavern && TavernUIKit.available { tavernBody } else { classicBody }
@@ -921,14 +928,15 @@ struct PortraitStackLane: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(position == 0 ? "RESOLVES NEXT" : "THEN")
                     .font(.system(size: 10, weight: .heavy, design: .serif)).tracking(0.8)
-                    .foregroundStyle(position == 0 ? Color(red: 0.62, green: 0.20, blue: 0.08) : TavernPalette.ink.opacity(0.55))
+                    .foregroundStyle(position == 0 ? (arena ? Color(red: 0.98, green: 0.62, blue: 0.36) : Color(red: 0.62, green: 0.20, blue: 0.08))
+                                     : ink.opacity(0.55))
                 Text(object.displayName)
                     .font(.system(size: 17, weight: .bold, design: .serif))
-                    .foregroundStyle(TavernPalette.ink)
+                    .foregroundStyle(ink)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(sourceLine(object))
                     .font(.system(size: 12, design: .serif).italic())
-                    .foregroundStyle(TavernPalette.ink.opacity(0.72))
+                    .foregroundStyle(ink.opacity(0.72))
                 if let targets = object.targetIds, !targets.isEmpty {
                     Label {
                         Text(StackTargetPresentation.labels(for: targets, in: snapshot).joined(separator: ", "))
@@ -936,21 +944,22 @@ struct PortraitStackLane: View {
                         Image(systemName: "scope")
                     }
                     .font(.system(size: 13, weight: .semibold, design: .serif))
-                    .foregroundStyle(TavernPalette.ink)
+                    .foregroundStyle(ink)
                 }
                 if let rules = object.rulesText {
                     GameRulesText(source: rules,
                                   cardName: object.displaySourceCard?.card.name ?? object.sourceName,
                                   isHidden: object.displaySourceCard.map { !NativeCardArtworkPolicy.permitsLookup(card: $0) } ?? false)
                         .font(.system(size: 13, design: .serif))
-                        .foregroundStyle(TavernPalette.ink)
+                        .foregroundStyle(ink)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(12)
-        .background { TavernFill(material: .parchment).clipShape(RoundedRectangle(cornerRadius: 9)) }
-        .overlay { TavernBrassFrame(scale: 0.5) }
+        .background { if !arena { TavernFill(material: .parchment).clipShape(RoundedRectangle(cornerRadius: 9)) } }
+        .overlay { if !arena { TavernBrassFrame(scale: 0.5) } }
+        .modifier(ArenaGlassRowIf(active: arena, primary: position == 0))
         .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
         .accessibilityElement(children: .contain)
     }

@@ -1,21 +1,24 @@
 // Published release metadata. Bump iOS only after the new TestFlight build is verified live.
 export const sharedAppVersion = "0.1.1";
-const androidReleaseBuild = "31";
-const iosTestFlightBuild = "48";
+const androidReleaseBuild = "47";
+const iosTestFlightBuild = "69";
 
 // Keep platform build numbers independent; the TestFlight invitation URL is stable.
 export const releases = {
   android: {
     version: sharedAppVersion,
     build: androidReleaseBuild,
-    url: "https://github.com/ineedsomesleep5/MagicMobile/releases/download/android-v0.1.1-build.31/MagicMobile-Android-0.1.1-build31.apk",
-    notes: "https://github.com/ineedsomesleep5/MagicMobile/releases/tag/android-v0.1.1-build.31",
+    url: "https://github.com/ineedsomesleep5/MagicMobile/releases/download/android-v0.1.1-build.47/MagicMobile-Android-0.1.1-build47.apk",
   },
   ios: {
     version: sharedAppVersion,
     build: iosTestFlightBuild,
     url: "https://testflight.apple.com/join/2mSHE8rZ",
     status: `Build ${iosTestFlightBuild} is available now for Internal and External TestFlight testers, on iPhone and iPad.`,
+  },
+  // The browser game is linked from here but stays unlisted: the game itself carries noindex.
+  web: {
+    url: "https://magicmobile-web.vercel.app",
   },
 };
 

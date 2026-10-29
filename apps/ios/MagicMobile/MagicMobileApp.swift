@@ -78,6 +78,8 @@ final class MagicMobileAppDelegate: NSObject, UIApplicationDelegate {
             _ = NativeAssetDownloads.shared
             // Local crash and hang summaries for the report sheet; nothing is uploaded.
             OnDeviceCrashReporter.shared.start()
+            // The freeze log's watchdog (docs/FREEZE_LOG.md): a stuck main thread is saved before the phone ends the app.
+            MainThreadWatchdog.shared.start()
             artworkConsentObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in
                 MainActor.assumeIsolated {
                     if !MagicMobilePreferences.current.bool(forKey: NativeArtworkPreference.key) {
@@ -298,6 +300,9 @@ private struct StartingRollFixtureScreen: View {
                         dismissed = true
                     }
                 }
+                // As OnDeviceRootView does: the roll follows the board (on the Arena board it rolls on the board).
+                .environment(\.arenaBoard, BoardMode.resolved(UserDefaults.standard.string(forKey: BoardMode.key)
+                                                                ?? BoardMode.defaultValue) == .arena)
             }
         }
         .onAppear {
@@ -502,7 +507,7 @@ private struct VersusFixtureScreen: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            VersusIntroOverlay(you: .init(id: "you", name: "Caleb", commander: "Emmara, Soul of the Accord"),
+            VersusIntroOverlay(you: .init(id: "you", name: "Caleb", commander: "Emmara, Soul of the Accord", tier: .gold),
                                opponents: [.init(id: "ai", name: "Grave Danger", commander: "Gisa and Geralf")]) {
                 run += 1
             }

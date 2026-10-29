@@ -1,0 +1,197 @@
+{
+ "_doc": "The Arena board's tables (Caleb, 2026-10-20): bare Walnut Tavern plates without sockets, rendered by scripts/brand/tavern_table.py with a camera leaning over your side so the far rows foreshorten. landscape: --bare --pitch 22 --lens 35 --zoom 1.07; portrait: --bare --pitch 16 --lens 35 --zoom 1.0 --emblem-y 444 (the compass on the board's visual midline). The board's live layout is ArenaLayout.swift; only the mat and props are read here (the socket entries are required by the script but not drawn with --bare). Portrait's mat is wider than the screen (Caleb, 2026-10-20): the leaning camera narrows the far half, so the far edge is drawn just inside the screen and the side frames run off it. Install: scripts/brand/install_arena_assets.sh.",
+ "landscape": {
+  "screen": [
+   956,
+   440
+  ],
+  "opponentMedallion": {
+   "center": [
+    118,
+    76
+   ],
+   "radius": 30
+  },
+  "mat": [
+   34,
+   8,
+   922,
+   432
+  ],
+  "lifeMedallion": {
+   "center": [
+    118,
+    344
+   ],
+   "radius": 34
+  },
+  "passButton": {
+   "center": [
+    846,
+    344
+   ],
+   "radius": 48
+  },
+  "manaRail": {
+   "rect": [
+    391,
+    402.5,
+    563,
+    429.5
+   ],
+   "socketXs": [
+    407,
+    435,
+    463,
+    491,
+    519,
+    547
+   ],
+   "socketY": 416,
+   "socketRadius": 12.4
+  },
+  "props": {
+   "candle": {
+    "at": [
+     12,
+     40
+    ],
+    "width": 40
+   },
+   "tankard": {
+    "at": [
+     10,
+     236
+    ],
+    "width": 34,
+    "rotate": -20
+   },
+   "books": {
+    "at": [
+     950,
+     236
+    ],
+    "width": 56,
+    "rotate": 100
+   },
+   "coins": [
+    {
+     "at": [
+      12,
+      410
+     ],
+     "width": 24
+    },
+    {
+     "at": [
+      944,
+      410
+     ],
+     "width": 24
+    }
+   ],
+   "ivy": [
+    {
+     "at": [
+      28,
+      150
+     ],
+     "width": 40,
+     "rotate": 80
+    },
+    {
+     "at": [
+      28,
+      300
+     ],
+     "width": 36,
+     "rotate": 95
+    },
+    {
+     "at": [
+      928,
+      130
+     ],
+     "width": 40,
+     "rotate": -95
+    },
+    {
+     "at": [
+      928,
+      290
+     ],
+     "width": 36,
+     "rotate": -80
+    },
+    {
+     "at": [
+      330,
+      438
+     ],
+     "width": 40,
+     "rotate": -10
+    },
+    {
+     "at": [
+      620,
+      439
+     ],
+     "width": 38,
+     "rotate": 12
+    }
+   ]
+  }
+ },
+ "portrait": {
+  "screen": [
+   440,
+   956
+  ],
+  "opponentMedallion": {
+   "center": [
+    219.2,
+    95
+   ],
+   "radius": 31
+  },
+  "mat": [
+   -16,
+   6,
+   456,
+   796
+  ],
+  "lifeMedallion": {
+   "center": [
+    74,
+    882.6
+   ],
+   "radius": 35.5
+  },
+  "passButton": {
+   "center": [
+    366,
+    877
+   ],
+   "radius": 48
+  },
+  "manaRail": {
+   "rect": [
+    129,
+    831.5,
+    309.5,
+    862.8
+   ],
+   "socketXs": [
+    146.0,
+    175.4,
+    204.8,
+    234.7,
+    264.1,
+    293.5
+   ],
+   "socketY": 846.9,
+   "socketRadius": 12.9
+  },
+  "props": {}
+ }
+}

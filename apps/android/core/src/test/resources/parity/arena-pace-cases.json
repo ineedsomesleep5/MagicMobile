@@ -1,0 +1,1623 @@
+{
+  "about": "Arena pace (BoardFXPace.arena): events from one public transition, their schedule (event @delay +duration, seconds, three decimals) at the full and reduced levels, until when smart pass waits (smartPassHold, the latest end of an effect that holds it) and until when a later batch waits (holdsLater), and the board-wipe recap. Players 'me' (the viewer) and 'ai'. Shared cases: ParityGoldenTests.swift (iOS) and apps/web test/arenaPace.test.ts must meet every expectation; Android's board has no Arena pace yet (docs/WEB_PARITY.md). Expectations are written by apps/web/scripts/gen_arena_pace_cases.ts and confirmed by the iOS run.",
+  "scheduler": {
+    "sweepStep": 0.16,
+    "sweepSpread": 1.2,
+    "sweepMinimum": 3,
+    "maximumHold": 4,
+    "arenaStrikeSpacing": 0.38
+  },
+  "transitions": [
+    {
+      "name": "your spell drops onto the stack card and stays readable",
+      "viewer": "me",
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "bolt",
+            "player": "me",
+            "zone": "hand"
+          }
+        ]
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "bolt",
+            "player": "me",
+            "zone": "stack"
+          }
+        ],
+        "stack": [
+          {
+            "id": "s1",
+            "name": "Lightning Bolt",
+            "controller": "me",
+            "tint": "red",
+            "manaValue": 1
+          }
+        ]
+      },
+      "events": [
+        "cast s1 spell by me"
+      ],
+      "full": {
+        "plan": [
+          "cast s1 spell by me @0.000 +0.350"
+        ],
+        "smartPassHold": "0.350",
+        "holdsLater": "0.350"
+      },
+      "reduced": {
+        "plan": [
+          "cast s1 spell by me @0.000 +0.300"
+        ],
+        "smartPassHold": "0.300",
+        "holdsLater": "0.300"
+      }
+    },
+    {
+      "name": "an opponent's spell is revealed for 1.6 s; smart pass waits for it",
+      "viewer": "me",
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": []
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [],
+        "stack": [
+          {
+            "id": "s2",
+            "name": "Path to Exile",
+            "controller": "ai",
+            "tint": "white",
+            "manaValue": 1
+          }
+        ]
+      },
+      "events": [
+        "cast s2 spell by ai"
+      ],
+      "full": {
+        "plan": [
+          "cast s2 spell by ai @0.000 +1.600"
+        ],
+        "smartPassHold": "1.600",
+        "holdsLater": "1.600"
+      },
+      "reduced": {
+        "plan": [
+          "cast s2 spell by ai @0.000 +1.200"
+        ],
+        "smartPassHold": "1.200",
+        "holdsLater": "1.200"
+      }
+    },
+    {
+      "name": "an opponent's big spell keeps the Arena reveal",
+      "viewer": "me",
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": []
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [],
+        "stack": [
+          {
+            "id": "s3",
+            "name": "Blasphemous Act",
+            "controller": "ai",
+            "tint": "red",
+            "manaValue": 9
+          }
+        ]
+      },
+      "events": [
+        "cast s3 big by ai"
+      ],
+      "full": {
+        "plan": [
+          "cast s3 big by ai @0.000 +1.600"
+        ],
+        "smartPassHold": "1.600",
+        "holdsLater": "1.600"
+      },
+      "reduced": {
+        "plan": [
+          "cast s3 big by ai @0.000 +1.200"
+        ],
+        "smartPassHold": "1.200",
+        "holdsLater": "1.200"
+      }
+    },
+    {
+      "name": "an opponent's trigger reaches the stack in 0.5 s and holds nothing",
+      "viewer": "me",
+      "old": {
+        "step": "upkeep",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": []
+      },
+      "new": {
+        "step": "upkeep",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [],
+        "stack": [
+          {
+            "id": "t1",
+            "name": "Ability",
+            "controller": "ai",
+            "ability": true
+          }
+        ]
+      },
+      "events": [
+        "cast t1 ability by ai"
+      ],
+      "full": {
+        "plan": [
+          "cast t1 ability by ai @0.000 +0.500"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      },
+      "reduced": {
+        "plan": [
+          "cast t1 ability by ai @0.000 +0.400"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      }
+    },
+    {
+      "name": "your commander's cast is a 1 s moment; theirs a 1.6 s reveal",
+      "viewer": "me",
+      "commanders": [
+        "Chatterfang, Squirrel General",
+        "The Ur-Dragon"
+      ],
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": []
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [],
+        "stack": [
+          {
+            "id": "cmd2",
+            "name": "The Ur-Dragon",
+            "controller": "ai",
+            "tint": "multicolor",
+            "manaValue": 9
+          },
+          {
+            "id": "cmd1",
+            "name": "Chatterfang, Squirrel General",
+            "controller": "me",
+            "tint": "green",
+            "manaValue": 4
+          }
+        ]
+      },
+      "events": [
+        "cast cmd2 commander by ai",
+        "cast cmd1 commander by me"
+      ],
+      "full": {
+        "plan": [
+          "cast cmd2 commander by ai @0.000 +1.600",
+          "cast cmd1 commander by me @1.400 +1.000"
+        ],
+        "smartPassHold": "2.400",
+        "holdsLater": "2.400"
+      },
+      "reduced": {
+        "plan": [
+          "cast cmd2 commander by ai @0.000 +1.200",
+          "cast cmd1 commander by me @0.020 +0.600"
+        ],
+        "smartPassHold": "1.200",
+        "holdsLater": "1.200"
+      }
+    },
+    {
+      "name": "a resolved creature flies from the stack card in 0.6 s",
+      "viewer": "me",
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "bears",
+            "player": "me",
+            "zone": "stack",
+            "name": "Grizzly Bears"
+          }
+        ],
+        "stack": [
+          {
+            "id": "s4",
+            "name": "Grizzly Bears",
+            "controller": "me",
+            "tint": "green",
+            "manaValue": 2
+          }
+        ]
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "bears",
+            "player": "me",
+            "name": "Grizzly Bears",
+            "power": 2,
+            "toughness": 2
+          }
+        ]
+      },
+      "events": [
+        "entered bears stack plain"
+      ],
+      "full": {
+        "plan": [
+          "entered bears stack plain @0.000 +0.600"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      },
+      "reduced": {
+        "plan": [
+          "entered bears stack plain @0.000 +0.500"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      }
+    },
+    {
+      "name": "a creature cast and resolved between two polls is a showcase the pass waits for",
+      "viewer": "me",
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "ogre",
+            "player": "ai",
+            "zone": "hand",
+            "name": "Gray Ogre"
+          }
+        ]
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "ogre",
+            "player": "ai",
+            "name": "Gray Ogre",
+            "power": 2,
+            "toughness": 2
+          }
+        ]
+      },
+      "events": [
+        "entered ogre hand showcase"
+      ],
+      "full": {
+        "plan": [
+          "entered ogre hand showcase @0.000 +0.600"
+        ],
+        "smartPassHold": "0.600",
+        "holdsLater": "0.160"
+      },
+      "reduced": {
+        "plan": [
+          "entered ogre hand showcase @0.000 +0.500"
+        ],
+        "smartPassHold": "0.500",
+        "holdsLater": null
+      }
+    },
+    {
+      "name": "a land played and a token made arrive plainly",
+      "viewer": "me",
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "forest",
+            "player": "me",
+            "zone": "hand",
+            "name": "Forest",
+            "land": true
+          }
+        ]
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "forest",
+            "player": "me",
+            "name": "Forest",
+            "land": true
+          },
+          {
+            "id": "squirrel",
+            "player": "me",
+            "name": "Squirrel",
+            "token": true,
+            "power": 1,
+            "toughness": 1
+          }
+        ]
+      },
+      "events": [
+        "entered forest hand plain",
+        "entered squirrel nil plain"
+      ],
+      "full": {
+        "plan": [
+          "entered forest hand plain @0.000 +0.600",
+          "entered squirrel nil plain @0.070 +0.600"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      },
+      "reduced": {
+        "plan": [
+          "entered forest hand plain @0.000 +0.500",
+          "entered squirrel nil plain @0.020 +0.500"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      }
+    },
+    {
+      "name": "a board wipe leaves one card after another, 0.16 s apart",
+      "viewer": "me",
+      "spell": "Blasphemous Act",
+      "recap": "Blasphemous Act: 4 to the graveyard",
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "a1",
+            "player": "me",
+            "name": "Creature 1",
+            "power": 2,
+            "toughness": 2
+          },
+          {
+            "id": "a2",
+            "player": "ai",
+            "name": "Creature 2",
+            "power": 2,
+            "toughness": 2
+          },
+          {
+            "id": "a3",
+            "player": "me",
+            "name": "Creature 3",
+            "power": 2,
+            "toughness": 2
+          },
+          {
+            "id": "a4",
+            "player": "ai",
+            "name": "Creature 4",
+            "power": 2,
+            "toughness": 2
+          }
+        ]
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "a1",
+            "player": "me",
+            "zone": "graveyard",
+            "name": "Creature 1"
+          },
+          {
+            "id": "a2",
+            "player": "ai",
+            "zone": "graveyard",
+            "name": "Creature 2"
+          },
+          {
+            "id": "a3",
+            "player": "me",
+            "zone": "graveyard",
+            "name": "Creature 3"
+          },
+          {
+            "id": "a4",
+            "player": "ai",
+            "zone": "graveyard",
+            "name": "Creature 4"
+          }
+        ]
+      },
+      "events": [
+        "left a1 graveyard",
+        "left a2 graveyard",
+        "left a3 graveyard",
+        "left a4 graveyard"
+      ],
+      "full": {
+        "plan": [
+          "left a1 graveyard @0.000 +0.800",
+          "left a2 graveyard @0.160 +0.800",
+          "left a3 graveyard @0.320 +0.800",
+          "left a4 graveyard @0.480 +0.800"
+        ],
+        "smartPassHold": "1.280",
+        "holdsLater": "1.280"
+      },
+      "reduced": {
+        "plan": [
+          "left a1 graveyard @0.000 +0.700",
+          "left a2 graveyard @0.020 +0.700",
+          "left a3 graveyard @0.040 +0.700",
+          "left a4 graveyard @0.060 +0.700"
+        ],
+        "smartPassHold": "0.760",
+        "holdsLater": "0.760"
+      }
+    },
+    {
+      "name": "twelve leave: ten shown, spread over 1.2 s",
+      "viewer": "me",
+      "recap": "12 permanents left the battlefield: 9 to the graveyard, 3 exiled",
+      "old": {
+        "step": "end-turn",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "w01",
+            "player": "ai",
+            "name": "Soldier 1",
+            "token": true,
+            "power": 1,
+            "toughness": 1
+          },
+          {
+            "id": "w02",
+            "player": "ai",
+            "name": "Soldier 2",
+            "token": true,
+            "power": 1,
+            "toughness": 1
+          },
+          {
+            "id": "w03",
+            "player": "ai",
+            "name": "Soldier 3",
+            "token": true,
+            "power": 1,
+            "toughness": 1
+          },
+          {
+            "id": "w04",
+            "player": "ai",
+            "name": "Soldier 4",
+            "token": true,
+            "power": 1,
+            "toughness": 1
+          },
+          {
+            "id": "w05",
+            "player": "ai",
+            "name": "Soldier 5",
+            "token": true,
+            "power": 1,
+            "toughness": 1
+          },
+          {
+            "id": "w06",
+            "player": "ai",
+            "name": "Soldier 6",
+            "token": true,
+            "power": 1,
+            "toughness": 1
+          },
+          {
+            "id": "w07",
+            "player": "ai",
+            "name": "Soldier 7",
+            "token": true,
+            "power": 1,
+            "toughness": 1
+          },
+          {
+            "id": "w08",
+            "player": "ai",
+            "name": "Soldier 8",
+            "token": true,
+            "power": 1,
+            "toughness": 1
+          },
+          {
+            "id": "w09",
+            "player": "ai",
+            "name": "Soldier 9",
+            "token": true,
+            "power": 1,
+            "toughness": 1
+          },
+          {
+            "id": "w10",
+            "player": "ai",
+            "name": "Soldier 10",
+            "token": true,
+            "power": 1,
+            "toughness": 1
+          },
+          {
+            "id": "w11",
+            "player": "ai",
+            "name": "Soldier 11",
+            "token": true,
+            "power": 1,
+            "toughness": 1
+          },
+          {
+            "id": "w12",
+            "player": "ai",
+            "name": "Soldier 12",
+            "token": true,
+            "power": 1,
+            "toughness": 1
+          }
+        ]
+      },
+      "new": {
+        "step": "end-turn",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "w01",
+            "player": "ai",
+            "zone": "exile",
+            "name": "Soldier 1",
+            "token": true
+          },
+          {
+            "id": "w02",
+            "player": "ai",
+            "zone": "exile",
+            "name": "Soldier 2",
+            "token": true
+          },
+          {
+            "id": "w03",
+            "player": "ai",
+            "zone": "exile",
+            "name": "Soldier 3",
+            "token": true
+          },
+          {
+            "id": "w04",
+            "player": "ai",
+            "zone": "graveyard",
+            "name": "Soldier 4",
+            "token": true
+          },
+          {
+            "id": "w05",
+            "player": "ai",
+            "zone": "graveyard",
+            "name": "Soldier 5",
+            "token": true
+          },
+          {
+            "id": "w06",
+            "player": "ai",
+            "zone": "graveyard",
+            "name": "Soldier 6",
+            "token": true
+          },
+          {
+            "id": "w07",
+            "player": "ai",
+            "zone": "graveyard",
+            "name": "Soldier 7",
+            "token": true
+          },
+          {
+            "id": "w08",
+            "player": "ai",
+            "zone": "graveyard",
+            "name": "Soldier 8",
+            "token": true
+          },
+          {
+            "id": "w09",
+            "player": "ai",
+            "zone": "graveyard",
+            "name": "Soldier 9",
+            "token": true
+          },
+          {
+            "id": "w10",
+            "player": "ai",
+            "zone": "graveyard",
+            "name": "Soldier 10",
+            "token": true
+          },
+          {
+            "id": "w11",
+            "player": "ai",
+            "zone": "graveyard",
+            "name": "Soldier 11",
+            "token": true
+          },
+          {
+            "id": "w12",
+            "player": "ai",
+            "zone": "graveyard",
+            "name": "Soldier 12",
+            "token": true
+          }
+        ]
+      },
+      "events": [
+        "left w01 exile",
+        "left w02 exile",
+        "left w03 exile",
+        "left w04 graveyard",
+        "left w05 graveyard",
+        "left w06 graveyard",
+        "left w07 graveyard",
+        "left w08 graveyard",
+        "left w09 graveyard",
+        "left w10 graveyard",
+        "left w11 graveyard",
+        "left w12 graveyard"
+      ],
+      "full": {
+        "plan": [
+          "left w01 exile @0.000 +0.800",
+          "left w02 exile @0.133 +0.800",
+          "left w03 exile @0.267 +0.800",
+          "left w04 graveyard @0.400 +0.800",
+          "left w05 graveyard @0.533 +0.800",
+          "left w06 graveyard @0.667 +0.800",
+          "left w07 graveyard @0.800 +0.800",
+          "left w08 graveyard @0.933 +0.800",
+          "left w09 graveyard @1.067 +0.800",
+          "left w10 graveyard @1.200 +0.800"
+        ],
+        "smartPassHold": "2.000",
+        "holdsLater": "2.000"
+      },
+      "reduced": {
+        "plan": [
+          "left w01 exile @0.000 +0.700",
+          "left w02 exile @0.020 +0.700",
+          "left w03 exile @0.040 +0.700",
+          "left w04 graveyard @0.060 +0.700",
+          "left w05 graveyard @0.080 +0.700",
+          "left w06 graveyard @0.100 +0.700",
+          "left w07 graveyard @0.120 +0.700",
+          "left w08 graveyard @0.140 +0.700",
+          "left w09 graveyard @0.160 +0.700",
+          "left w10 graveyard @0.180 +0.700"
+        ],
+        "smartPassHold": "0.880",
+        "holdsLater": "0.880"
+      }
+    },
+    {
+      "name": "a mixed wipe names where they went; the reduced level drops the cascade",
+      "viewer": "me",
+      "spell": "Necromantic Selection",
+      "recap": "Necromantic Selection: 2 to the graveyard, 1 exiled, 1 returned or moved",
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "m1",
+            "player": "me",
+            "name": "Elf"
+          },
+          {
+            "id": "m2",
+            "player": "ai",
+            "name": "Goblin"
+          },
+          {
+            "id": "m3",
+            "player": "ai",
+            "name": "Orc"
+          },
+          {
+            "id": "m4",
+            "player": "me",
+            "name": "Bat"
+          }
+        ]
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "m1",
+            "player": "me",
+            "zone": "graveyard",
+            "name": "Elf"
+          },
+          {
+            "id": "m2",
+            "player": "ai",
+            "zone": "graveyard",
+            "name": "Goblin"
+          },
+          {
+            "id": "m3",
+            "player": "ai",
+            "zone": "exile",
+            "name": "Orc"
+          },
+          {
+            "id": "m4",
+            "player": "me",
+            "zone": "hand",
+            "name": "Bat"
+          }
+        ]
+      },
+      "events": [
+        "left m1 graveyard",
+        "left m2 graveyard",
+        "left m3 exile",
+        "left m4 hand"
+      ],
+      "full": {
+        "plan": [
+          "left m1 graveyard @0.000 +0.800",
+          "left m2 graveyard @0.160 +0.800",
+          "left m3 exile @0.320 +0.800",
+          "left m4 hand @0.480 +0.800"
+        ],
+        "smartPassHold": "1.280",
+        "holdsLater": "1.280"
+      },
+      "reduced": {
+        "plan": [
+          "left m1 graveyard @0.000 +0.700",
+          "left m2 graveyard @0.020 +0.700",
+          "left m3 exile @0.040 +0.700",
+          "left m4 hand @0.060 +0.700"
+        ],
+        "smartPassHold": "0.760",
+        "holdsLater": "0.760"
+      }
+    },
+    {
+      "name": "two leaving is no cascade",
+      "viewer": "me",
+      "recap": null,
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "p1",
+            "player": "me",
+            "name": "Elf"
+          },
+          {
+            "id": "p2",
+            "player": "ai",
+            "name": "Goblin"
+          }
+        ]
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "p1",
+            "player": "me",
+            "zone": "graveyard",
+            "name": "Elf"
+          },
+          {
+            "id": "p2",
+            "player": "ai",
+            "zone": "graveyard",
+            "name": "Goblin"
+          }
+        ]
+      },
+      "events": [
+        "left p1 graveyard",
+        "left p2 graveyard"
+      ],
+      "full": {
+        "plan": [
+          "left p1 graveyard @0.000 +0.800",
+          "left p2 graveyard @0.070 +0.800"
+        ],
+        "smartPassHold": "0.870",
+        "holdsLater": "0.870"
+      },
+      "reduced": {
+        "plan": [
+          "left p1 graveyard @0.000 +0.700",
+          "left p2 graveyard @0.020 +0.700"
+        ],
+        "smartPassHold": "0.720",
+        "holdsLater": "0.720"
+      }
+    },
+    {
+      "name": "attack marks drop in at once",
+      "viewer": "me",
+      "old": {
+        "step": "begin-combat",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "x1",
+            "player": "ai",
+            "name": "Raider"
+          },
+          {
+            "id": "x2",
+            "player": "ai",
+            "name": "Brute"
+          }
+        ]
+      },
+      "new": {
+        "step": "declare-attackers",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "x1",
+            "player": "ai",
+            "name": "Raider",
+            "attacking": true
+          },
+          {
+            "id": "x2",
+            "player": "ai",
+            "name": "Brute",
+            "attacking": true
+          }
+        ],
+        "defenders": {
+          "x1": "me",
+          "x2": "me"
+        }
+      },
+      "events": [
+        "attack x1",
+        "attack x2"
+      ],
+      "full": {
+        "plan": [
+          "attack x1 @0.000 +0.250",
+          "attack x2 @0.070 +0.250"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      },
+      "reduced": {
+        "plan": [
+          "attack x1 @0.000 +0.250",
+          "attack x2 @0.020 +0.250"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      }
+    },
+    {
+      "name": "a block mark takes 0.3 s",
+      "viewer": "me",
+      "old": {
+        "step": "declare-attackers",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "x1",
+            "player": "ai",
+            "name": "Raider",
+            "attacking": true
+          },
+          {
+            "id": "y1",
+            "player": "me",
+            "name": "Wall"
+          }
+        ],
+        "defenders": {
+          "x1": "me"
+        }
+      },
+      "new": {
+        "step": "declare-blockers",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "x1",
+            "player": "ai",
+            "name": "Raider",
+            "attacking": true
+          },
+          {
+            "id": "y1",
+            "player": "me",
+            "name": "Wall",
+            "blocking": [
+              "x1"
+            ]
+          }
+        ],
+        "defenders": {
+          "x1": "me"
+        },
+        "blocked": [
+          "x1"
+        ]
+      },
+      "events": [
+        "block y1 x1"
+      ],
+      "full": {
+        "plan": [
+          "block y1 x1 @0.000 +0.300"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      },
+      "reduced": {
+        "plan": [
+          "block y1 x1 @0.000 +0.300"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      }
+    },
+    {
+      "name": "strikes land one after another, 0.38 s apart, then life",
+      "viewer": "me",
+      "old": {
+        "step": "declare-blockers",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "x1",
+            "player": "ai",
+            "name": "Raider",
+            "attacking": true
+          },
+          {
+            "id": "x2",
+            "player": "ai",
+            "name": "Brute",
+            "attacking": true
+          }
+        ],
+        "defenders": {
+          "x1": "me",
+          "x2": "me"
+        }
+      },
+      "new": {
+        "step": "combat-damage",
+        "lives": {
+          "me": 35,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "x1",
+            "player": "ai",
+            "name": "Raider",
+            "attacking": true
+          },
+          {
+            "id": "x2",
+            "player": "ai",
+            "name": "Brute",
+            "attacking": true
+          }
+        ],
+        "defenders": {
+          "x1": "me",
+          "x2": "me"
+        }
+      },
+      "events": [
+        "strike x1 -> player:me regular",
+        "strike x2 -> player:me regular",
+        "life me -5"
+      ],
+      "full": {
+        "plan": [
+          "strike x1 -> player:me regular @0.000 +0.450",
+          "strike x2 -> player:me regular @0.380 +0.450",
+          "life me -5 @0.569 +1.000"
+        ],
+        "smartPassHold": "0.830",
+        "holdsLater": "0.569"
+      },
+      "reduced": {
+        "plan": [
+          "strike x1 -> player:me regular @0.000 +0.400",
+          "strike x2 -> player:me regular @0.020 +0.400",
+          "life me -5 @0.080 +0.800"
+        ],
+        "smartPassHold": "0.420",
+        "holdsLater": null
+      }
+    },
+    {
+      "name": "a blocked strike marks damage and kills the blocker",
+      "viewer": "me",
+      "old": {
+        "step": "declare-blockers",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "x1",
+            "player": "ai",
+            "name": "Raider",
+            "attacking": true,
+            "power": 3,
+            "toughness": 3
+          },
+          {
+            "id": "y1",
+            "player": "me",
+            "name": "Wall",
+            "blocking": [
+              "x1"
+            ],
+            "power": 0,
+            "toughness": 2
+          }
+        ],
+        "defenders": {
+          "x1": "me"
+        },
+        "blocked": [
+          "x1"
+        ]
+      },
+      "new": {
+        "step": "combat-damage",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "x1",
+            "player": "ai",
+            "name": "Raider",
+            "attacking": true,
+            "damage": 0,
+            "power": 3,
+            "toughness": 3
+          },
+          {
+            "id": "y1",
+            "player": "me",
+            "zone": "graveyard",
+            "name": "Wall"
+          }
+        ],
+        "defenders": {
+          "x1": "me"
+        },
+        "blocked": [
+          "x1"
+        ]
+      },
+      "events": [
+        "strike x1 -> card:y1 regular",
+        "left y1 graveyard"
+      ],
+      "full": {
+        "plan": [
+          "strike x1 -> card:y1 regular @0.000 +0.450",
+          "left y1 graveyard @0.189 +0.800"
+        ],
+        "smartPassHold": "0.989",
+        "holdsLater": "0.989"
+      },
+      "reduced": {
+        "plan": [
+          "strike x1 -> card:y1 regular @0.000 +0.400",
+          "left y1 graveyard @0.060 +0.700"
+        ],
+        "smartPassHold": "0.760",
+        "holdsLater": "0.760"
+      }
+    },
+    {
+      "name": "counters and a pump on one creature",
+      "viewer": "me",
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "h1",
+            "player": "me",
+            "name": "Hydra",
+            "power": 2,
+            "toughness": 2,
+            "counterKinds": {
+              "+1/+1": 1
+            }
+          },
+          {
+            "id": "w1",
+            "player": "ai",
+            "name": "Walker",
+            "counterKinds": {
+              "loyalty": 4
+            }
+          }
+        ]
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "h1",
+            "player": "me",
+            "name": "Hydra",
+            "power": 6,
+            "toughness": 6,
+            "counterKinds": {
+              "+1/+1": 3
+            }
+          },
+          {
+            "id": "w1",
+            "player": "ai",
+            "name": "Walker",
+            "counterKinds": {
+              "loyalty": 2
+            }
+          }
+        ]
+      },
+      "events": [
+        "counters h1 plusOne 2",
+        "stats h1 2/2",
+        "counters w1 loyalty -2"
+      ],
+      "full": {
+        "plan": [
+          "counters h1 plusOne 2 @0.000 +0.800",
+          "stats h1 2/2 @0.070 +0.800",
+          "counters w1 loyalty -2 @0.140 +0.800"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      },
+      "reduced": {
+        "plan": [
+          "counters h1 plusOne 2 @0.000 +0.600",
+          "stats h1 2/2 @0.020 +0.600",
+          "counters w1 loyalty -2 @0.040 +0.600"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      }
+    },
+    {
+      "name": "-1/-1 counters shrink without a stats moment",
+      "viewer": "me",
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "k1",
+            "player": "me",
+            "name": "Knight",
+            "power": 3,
+            "toughness": 3
+          }
+        ]
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "k1",
+            "player": "me",
+            "name": "Knight",
+            "power": 1,
+            "toughness": 1,
+            "counterKinds": {
+              "-1/-1": 2
+            }
+          }
+        ]
+      },
+      "events": [
+        "counters k1 minusOne 2"
+      ],
+      "full": {
+        "plan": [
+          "counters k1 minusOne 2 @0.000 +0.800"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      },
+      "reduced": {
+        "plan": [
+          "counters k1 minusOne 2 @0.000 +0.600"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      }
+    },
+    {
+      "name": "phasing, a transform and a steal",
+      "viewer": "me",
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "ph",
+            "player": "me",
+            "name": "Phaser"
+          },
+          {
+            "id": "tr",
+            "player": "ai",
+            "name": "Delver of Secrets",
+            "power": 1,
+            "toughness": 1
+          },
+          {
+            "id": "st",
+            "player": "me",
+            "name": "Chatterfang, Squirrel General"
+          }
+        ]
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "ph",
+            "player": "me",
+            "name": "Phaser",
+            "phasedOut": true
+          },
+          {
+            "id": "tr",
+            "player": "ai",
+            "name": "Insectile Aberration",
+            "power": 3,
+            "toughness": 2
+          },
+          {
+            "id": "st",
+            "player": "ai",
+            "name": "Chatterfang, Squirrel General"
+          }
+        ]
+      },
+      "events": [
+        "phased ph out",
+        "control st me -> ai",
+        "transformed tr Insectile Aberration"
+      ],
+      "full": {
+        "plan": [
+          "phased ph out @0.000 +0.900",
+          "control st me -> ai @0.160 +1.200",
+          "transformed tr Insectile Aberration @0.230 +0.800"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      },
+      "reduced": {
+        "plan": [
+          "phased ph out @0.000 +0.600",
+          "control st me -> ai @0.060 +0.700",
+          "transformed tr Insectile Aberration @0.080 +0.600"
+        ],
+        "smartPassHold": null,
+        "holdsLater": null
+      }
+    },
+    {
+      "name": "a later batch waits for the spell still being read",
+      "viewer": "me",
+      "hold": 1.2,
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "v1",
+            "player": "me",
+            "name": "Elf"
+          }
+        ]
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 37,
+          "ai": 40
+        },
+        "cards": [
+          {
+            "id": "v1",
+            "player": "me",
+            "zone": "exile",
+            "name": "Elf"
+          }
+        ]
+      },
+      "events": [
+        "left v1 exile",
+        "life me -3"
+      ],
+      "full": {
+        "plan": [
+          "left v1 exile @1.200 +0.800",
+          "life me -3 @2.000 +1.000"
+        ],
+        "smartPassHold": "2.000",
+        "holdsLater": "2.000"
+      },
+      "reduced": {
+        "plan": [
+          "left v1 exile @1.200 +0.700",
+          "life me -3 @1.900 +0.800"
+        ],
+        "smartPassHold": "1.900",
+        "holdsLater": "1.900"
+      }
+    },
+    {
+      "name": "a hold from earlier batches never exceeds 4 s",
+      "viewer": "me",
+      "hold": 6.5,
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": []
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [],
+        "stack": [
+          {
+            "id": "s9",
+            "name": "Counterspell",
+            "controller": "ai",
+            "tint": "blue",
+            "manaValue": 2
+          }
+        ]
+      },
+      "events": [
+        "cast s9 spell by ai"
+      ],
+      "full": {
+        "plan": [
+          "cast s9 spell by ai @4.000 +1.600"
+        ],
+        "smartPassHold": "5.600",
+        "holdsLater": "5.600"
+      },
+      "reduced": {
+        "plan": [
+          "cast s9 spell by ai @4.000 +1.200"
+        ],
+        "smartPassHold": "5.200",
+        "holdsLater": "5.200"
+      }
+    },
+    {
+      "name": "the Hearth pace for the same opponent spell",
+      "viewer": "me",
+      "pace": "hearth",
+      "old": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": []
+      },
+      "new": {
+        "step": "precombat-main",
+        "lives": {
+          "me": 40,
+          "ai": 40
+        },
+        "cards": [],
+        "stack": [
+          {
+            "id": "s2",
+            "name": "Path to Exile",
+            "controller": "ai",
+            "tint": "white",
+            "manaValue": 1
+          }
+        ]
+      },
+      "events": [
+        "cast s2 spell by ai"
+      ],
+      "full": {
+        "plan": [
+          "cast s2 spell by ai @0.000 +2.400"
+        ],
+        "smartPassHold": "2.400",
+        "holdsLater": "2.400"
+      },
+      "reduced": {
+        "plan": [
+          "cast s2 spell by ai @0.000 +1.500"
+        ],
+        "smartPassHold": "1.500",
+        "holdsLater": "1.500"
+      }
+    }
+  ]
+}

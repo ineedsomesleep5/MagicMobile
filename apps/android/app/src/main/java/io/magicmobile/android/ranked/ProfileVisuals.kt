@@ -61,6 +61,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import io.magicmobile.android.CardArtwork
 import io.magicmobile.android.game.Achievement
 import io.magicmobile.android.game.PlayMode
@@ -73,6 +74,8 @@ import io.magicmobile.android.game.RankOutcome
 import io.magicmobile.android.game.RankPosition
 import io.magicmobile.android.game.RankTier
 import io.magicmobile.android.ui.BrandTheme
+import io.magicmobile.android.menus.ArenaGlass
+import io.magicmobile.android.menus.ArenaMenuStyle
 import io.magicmobile.android.ui.FitText
 import io.magicmobile.android.ui.LaunchEnvironment
 import io.magicmobile.android.ui.MagicPalette
@@ -126,12 +129,12 @@ internal fun formatShortDate(millis: Long): String = shortDate.format(Instant.of
 fun ProfileSectionTitle(text: String, trailing: String? = null) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
         Text(text.uppercase(), Modifier.weight(1f).semantics { heading() }, color = TavernPalette.brass,
-            style = sf(11f, SfWeight.heavy, SfDesign.SERIF, tracking = 1.4f).copy(brush = brassBrush))
-        trailing?.let { Text(it, Modifier.alpha(0.7f), color = parchment, style = sf(11f, SfWeight.semibold, SfDesign.SERIF)) }
+            style = sf(11f, SfWeight.heavy, tracking = 1.4f).copy(brush = brassBrush))
+        trailing?.let { Text(it, Modifier.alpha(0.7f), color = parchment, style = ArenaMenuStyle.font(11f, SfWeight.semibold)) }
     }
 }
 
-/** Our own chip: leather with a thin brass rim, ember glass when chosen. Filters use it. */
+/** A filter chip in Arena's button look (ArenaChipFace): orange when chosen, dark glass otherwise. */
 @Composable
 fun ProfileChip(title: String, selected: Boolean, tag: String, onClick: () -> Unit, detail: String? = null) {
     Box(Modifier.defaultMinSize(minHeight = 44.dp).clickable(onClick = onClick)
@@ -139,15 +142,20 @@ fun ProfileChip(title: String, selected: Boolean, tag: String, onClick: () -> Un
             contentDescription = if (detail != null) "$title, $detail" else title
             role = Role.Button; this.selected = selected
         }.testTag(tag), contentAlignment = Alignment.Center) {
-        Row(Modifier.defaultMinSize(minHeight = 34.dp).tavernCapsuleRim(thin = true).padding(1.5.dp)
-            .tavernFill(if (selected) TavernMaterial.EMBER else TavernMaterial.LEATHER, CircleShape,
-                overlay = if (selected) Color.Transparent else Color.Black.copy(alpha = 0.2f))
-            .padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(title, color = if (selected) emberInk else parchment, style = sf(12f, SfWeight.heavy, SfDesign.SERIF), maxLines = 1)
-            detail?.let { Text(it, Modifier.alpha(0.7f), color = if (selected) emberInk else parchment, style = sf(11f, SfWeight.semibold, SfDesign.SERIF)) }
+        val ink = if (selected) Color.White else ArenaMenuStyle.text
+        Row(Modifier.arenaChipFace(selected), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, color = ink, style = ArenaMenuStyle.font(12f, SfWeight.heavy), maxLines = 1)
+            detail?.let { Text(it, Modifier.alpha(0.7f), color = ink, style = ArenaMenuStyle.font(11f, SfWeight.semibold).copy(fontFeatureSettings = "tnum")) }
         }
     }
 }
+
+/** A chip's pill in Arena's button look (ProfileVisuals.swift ArenaChipFace): orange in its warm rim when chosen, dark glass in the hairline otherwise. */
+fun Modifier.arenaChipFace(selected: Boolean): Modifier = this
+    .defaultMinSize(minHeight = 34.dp)
+    .background(if (selected) ArenaMenuStyle.orange else Brush.linearGradient(listOf(rgb(0.12, 0.125, 0.15).copy(alpha = 0.92f), rgb(0.12, 0.125, 0.15).copy(alpha = 0.92f))), CircleShape)
+    .then(if (selected) Modifier.border(1.dp, ArenaMenuStyle.orangeRim, CircleShape) else Modifier.border(1.dp, ArenaGlass.hairline, CircleShape))
+    .padding(horizontal = 14.dp)
 
 data class SegmentOption<T>(val value: T, val title: String, val icon: String, val tag: String)
 
@@ -159,12 +167,12 @@ fun <T> ProfileSegmented(options: List<SegmentOption<T>>, selection: T, tag: Str
         for (option in options) {
             val on = option.value == selection
             Column(Modifier.weight(1f).defaultMinSize(minHeight = 52.dp)
-                .then(if (on) Modifier.tavernFill(TavernMaterial.EMBER, RoundedCornerShape(9.dp)).border(1.dp, TavernPalette.brassLine, RoundedCornerShape(9.dp)) else Modifier)
+                .then(if (on) Modifier.background(ArenaMenuStyle.orange, RoundedCornerShape(9.dp)).border(1.dp, ArenaMenuStyle.orangeRim, RoundedCornerShape(9.dp)) else Modifier)
                 .clip(RoundedCornerShape(9.dp)).clickable { if (!on) onSelect(option.value) }
                 .semantics(mergeDescendants = true) { contentDescription = option.title; role = Role.Button; selected = on }.testTag(option.tag),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 SfImage(option.icon, if (on) emberInk else parchment.copy(alpha = 0.8f), 14.dp)
-                FitText(option.title, sf(12f, SfWeight.heavy, SfDesign.SERIF), color = if (on) emberInk else parchment.copy(alpha = 0.8f), minimumScale = 0.7f,
+                FitText(option.title, ArenaMenuStyle.font(12f, SfWeight.heavy), color = if (on) emberInk else parchment.copy(alpha = 0.8f), minimumScale = 0.7f,
                     textAlign = TextAlign.Center)
             }
         }
@@ -216,8 +224,8 @@ fun ProfileStatTile(title: String, value: String, modifier: Modifier = Modifier)
     Column(modifier.fillMaxWidth().defaultMinSize(minHeight = 58.dp).background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
         .border(1.dp, TavernPalette.brass.copy(alpha = 0.4f), RoundedCornerShape(8.dp)).padding(6.dp).semantics(mergeDescendants = true) {},
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        FitText(value, sf(21f, SfWeight.black, SfDesign.SERIF).copy(fontFeatureSettings = "tnum"), color = parchment, minimumScale = 0.6f)
-        FitText(title.uppercase(), sf(9f, SfWeight.heavy, SfDesign.SERIF, tracking = 1f), Modifier.alpha(0.7f), color = parchment, minimumScale = 0.7f)
+        FitText(value, ArenaMenuStyle.font(21f, SfWeight.black).copy(fontFeatureSettings = "tnum"), color = parchment, minimumScale = 0.6f)
+        FitText(title.uppercase(), sf(9f, SfWeight.heavy, tracking = 1f), Modifier.alpha(0.7f), color = parchment, minimumScale = 0.7f)
     }
 }
 
@@ -234,7 +242,7 @@ fun WeeklyBars(weeks: List<ProfileWeek>, barHeight: Dp = 104.dp) {
                 contentDescription = "Week of ${utcDayLong.format(Instant.ofEpochMilli(week.start))}: ${week.games} games, ${week.wins} wins"
             }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(if (week.games == 0) " " else "${week.games}", Modifier.alpha(0.85f), color = parchment,
-                    style = sf(11f, SfWeight.heavy, SfDesign.SERIF).copy(fontFeatureSettings = "tnum"))
+                    style = ArenaMenuStyle.font(11f, SfWeight.heavy).copy(fontFeatureSettings = "tnum"))
                 Box(Modifier.fillMaxWidth().height(barHeight).background(ProfilePalette.track, CircleShape).clip(CircleShape), contentAlignment = Alignment.BottomCenter) {
                     Column(Modifier.fillMaxSize()) {
                         Spacer(Modifier.weight(1f))
@@ -243,7 +251,7 @@ fun WeeklyBars(weeks: List<ProfileWeek>, barHeight: Dp = 104.dp) {
                         if (week.wins > 0) Box(Modifier.fillMaxWidth().height(barHeight * week.wins / peak).background(ProfilePalette.winBrush))
                     }
                 }
-                FitText(label, sf(9f, SfWeight.semibold, SfDesign.SERIF), Modifier.alpha(0.65f), color = parchment, minimumScale = 0.6f, textAlign = TextAlign.Center)
+                FitText(label, ArenaMenuStyle.font(9f, SfWeight.semibold), Modifier.alpha(0.65f), color = parchment, minimumScale = 0.6f, textAlign = TextAlign.Center)
             }
         }
     }
@@ -274,10 +282,15 @@ fun RankHistoryChart(points: List<ProfileRankPoint>, height: Dp = 150.dp) {
             for (tier in RankTier.entries) {
                 val start = tier.ordinal * perTier
                 val visibleLow = maxOf(low, start); val visibleHigh = if (tier == RankTier.MYTHIC) high else minOf(high, start + perTier)
-                if (start > low && start < high) drawLine(tier.tint.copy(alpha = 0.35f), Offset(left, y(start)), Offset(size.width - right, y(start)), 1.dp.toPx(),
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 4.dp.toPx())))
+                if (start > low && start < high) {
+                    drawLine(tier.tint.copy(alpha = 0.35f), Offset(left, y(start)), Offset(size.width - right, y(start)), 1.dp.toPx(),
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 4.dp.toPx())))
+                    // The line is where the tier starts: it carries the tier's name at its end (the judge, 2026-10-22).
+                    val name = measurer.measure(tier.label, ArenaMenuStyle.font(9f, SfWeight.bold).copy(color = tier.tint.copy(alpha = 0.85f)))
+                    drawText(name, topLeft = Offset(size.width - right - name.size.width, y(start) - 7.dp.toPx() - name.size.height / 2f))
+                }
                 if (visibleHigh - visibleLow >= 4) {
-                    val layout = measurer.measure(tier.label.take(1), sf(13f, SfWeight.black, SfDesign.SERIF).copy(color = tier.tint.copy(alpha = 0.9f)))
+                    val layout = measurer.measure(tier.label.take(1), ArenaMenuStyle.font(13f, SfWeight.black).copy(color = tier.tint.copy(alpha = 0.9f)))
                     drawText(layout, topLeft = Offset(10.dp.toPx() - layout.size.width / 2f, y((visibleLow + visibleHigh) / 2) - layout.size.height / 2f))
                 }
             }
@@ -297,9 +310,9 @@ fun RankHistoryChart(points: List<ProfileRankPoint>, height: Dp = 150.dp) {
             drawCircle(tier.tint, 6.dp.toPx(), center); drawCircle(Color.White.copy(alpha = 0.85f), 6.dp.toPx(), center, style = Stroke(1.5.dp.toPx()))
         }
         if (points.size > 1) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            val style = sf(10f, SfWeight.semibold, SfDesign.SERIF)
+            val style = ArenaMenuStyle.font(10f, SfWeight.semibold)
             Text(formatShortDate(points.first().date), Modifier.alpha(0.65f), color = parchment, style = style)
-            Text("${points.size} ranked games", Modifier.weight(1f).alpha(0.65f), color = parchment, style = style, textAlign = TextAlign.Center)
+            Spacer(Modifier.weight(1f))
             Text(formatShortDate(points.last().date), Modifier.alpha(0.65f), color = parchment, style = style)
         }
     }
@@ -337,9 +350,9 @@ fun ColorPie(shares: List<ProfileShare>, size: Dp = 112.dp) {
                 Row(Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = "${PlayerStats.colorName(share.id)}: ${share.games} games, ${share.wins} wins" },
                     horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     io.magicmobile.android.board.TavernAwareManaSymbol(share.id, 17.dp)
-                    Text(PlayerStats.colorName(share.id), Modifier.weight(1f), color = parchment, style = sf(13f, SfWeight.semibold, SfDesign.SERIF), maxLines = 1)
+                    Text(PlayerStats.colorName(share.id), Modifier.weight(1f), color = parchment, style = ArenaMenuStyle.font(13f, SfWeight.semibold), maxLines = 1)
                     Text("${Math.round(share.games.toDouble() / maxOf(1, total) * 100)}%", Modifier.alpha(0.85f), color = parchment,
-                        style = sf(12f, SfWeight.heavy, SfDesign.SERIF).copy(fontFeatureSettings = "tnum"))
+                        style = ArenaMenuStyle.font(12f, SfWeight.heavy).copy(fontFeatureSettings = "tnum"))
                 }
             }
         }
@@ -358,13 +371,13 @@ fun CommanderTile(share: ProfileShare, crown: Boolean, modifier: Modifier = Modi
         .clearAndSetSemantics { contentDescription = "${share.id}: ${share.games} games, ${share.wins} won" }) {
         CardArtwork(share.id, Modifier.fillMaxSize(), artOnly = true, placeholder = {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(share.id.take(1), color = parchment.copy(alpha = 0.25f), style = sf(40f, SfWeight.black, SfDesign.SERIF))
+                Text(share.id.take(1), color = parchment.copy(alpha = 0.25f), style = ArenaMenuStyle.font(40f, SfWeight.black))
             }
         })
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.85f))))
         Column(Modifier.align(Alignment.BottomStart).padding(7.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(share.id, color = parchment, style = sf(11f, SfWeight.heavy, SfDesign.SERIF), maxLines = 2)
-            FitText("${share.games} games · ${Math.round(share.winRate * 100)}% won", sf(9f, SfWeight.semibold, SfDesign.SERIF), color = ProfilePalette.win, minimumScale = 0.7f)
+            Text(share.id, color = parchment, style = ArenaMenuStyle.font(11f, SfWeight.heavy), maxLines = 2)
+            FitText("${share.games} games · ${Math.round(share.winRate * 100)}% won", ArenaMenuStyle.font(9f, SfWeight.semibold), color = ProfilePalette.win, minimumScale = 0.7f)
         }
         if (crown) SfImage("crown.fill", TavernPalette.brass, 13.dp, Modifier.align(Alignment.TopEnd).padding(7.dp))
     }
@@ -398,8 +411,8 @@ fun StreakRow(current: Int, best: Int) {
                     SfImage("flame.fill", if (value > 0) ProfilePalette.win else Color.Gray.copy(alpha = 0.5f), 20.dp)
                 }
                 Column {
-                    Text("$value", color = parchment, style = sf(22f, SfWeight.black, SfDesign.SERIF).copy(fontFeatureSettings = "tnum"))
-                    Text(title.uppercase(), Modifier.alpha(0.7f), color = parchment, style = sf(9f, SfWeight.heavy, SfDesign.SERIF, tracking = 1f))
+                    Text("$value", color = parchment, style = ArenaMenuStyle.font(22f, SfWeight.black).copy(fontFeatureSettings = "tnum"))
+                    Text(title.uppercase(), Modifier.alpha(0.7f), color = parchment, style = sf(9f, SfWeight.heavy, tracking = 1f))
                 }
             }
         }
@@ -437,7 +450,7 @@ fun TrophyShelf(unlocked: Set<Achievement>) {
                                 SfImage(achievementIcon(achievement), if (earned) rgb(0.30, 0.15, 0.04) else Color.Gray.copy(alpha = 0.55f), 18.dp)
                             }
                             Box(Modifier.height(24.dp).alpha(if (earned) 0.95f else 0.45f)) {
-                                FitText(achievement.title, sf(9f, SfWeight.heavy, SfDesign.SERIF), color = parchment, maxLines = 2, minimumScale = 0.7f, textAlign = TextAlign.Center)
+                                FitText(achievement.title, ArenaMenuStyle.font(9f, SfWeight.heavy), color = parchment, maxLines = 2, minimumScale = 0.7f, textAlign = TextAlign.Center)
                             }
                         }
                     }
@@ -448,7 +461,7 @@ fun TrophyShelf(unlocked: Set<Achievement>) {
             }
         }
         Text(chosen?.let { "${it.title}: ${it.detail}" } ?: "Tap a coin to read what it is for.", Modifier.fillMaxWidth().defaultMinSize(minHeight = 32.dp).alpha(if (chosen == null) 0.55f else 0.9f)
-            .testTag("profile.trophyNote"), color = parchment, style = sf(12f, SfWeight.semibold, SfDesign.SERIF))
+            .testTag("profile.trophyNote"), color = parchment, style = ArenaMenuStyle.font(12f, SfWeight.semibold))
     }
 }
 
@@ -468,11 +481,12 @@ fun ProfileGameCard(game: ProfileGame, tag: String, openPlayer: ((String) -> Uni
         RankOutcome.WIN -> Triple("W", "Won", rgb(0.25, 0.5, 0.2)); RankOutcome.LOSS -> Triple("L", "Lost", MagicPalette.oxblood); RankOutcome.DRAW -> Triple("D", "Drawn", rgb(0.35, 0.35, 0.35))
     }
     val deck = game.deckName.ifEmpty { game.commander ?: "" }
-    val delta = game.rankDelta?.takeIf { it != 0 }
-    val label = "$resultName against $opponentText, $deck, $modeText, ${formatShortDate(game.date)}" + (delta?.let { ", ${if (it > 0) "+" else ""}$it pips" } ?: "")
+    val delta = game.rankDelta?.takeIf { game.mode == PlayMode.RANKED }
+    val label = "$resultName against $opponentText, $deck, $modeText, ${formatShortDate(game.date)}" +
+        (game.rankNote?.let { ", $it" } ?: delta?.takeIf { it != 0 }?.let { ", ${if (it > 0) "+" else ""}$it pips" } ?: "")
     Column(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.32f), RoundedCornerShape(12.dp)).border(1.dp, TavernPalette.brass.copy(alpha = 0.45f), RoundedCornerShape(12.dp))) {
         Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 76.dp).clip(RoundedCornerShape(12.dp))
-            .clickable { if (onOpenDetail != null) onOpenDetail() else expanded = !expanded }
+            .clickable { expanded = !expanded }
             .padding(10.dp).semantics(mergeDescendants = true) { contentDescription = label; role = Role.Button }.testTag(tag),
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(58.dp).clip(RoundedCornerShape(9.dp)).background(Brush.verticalGradient(listOf(MagicPalette.iron, MagicPalette.leather)))
@@ -481,23 +495,33 @@ fun ProfileGameCard(game: ProfileGame, tag: String, openPlayer: ((String) -> Uni
                 if (game.commander != null) CardArtwork(game.commander!!, Modifier.fillMaxSize(), artOnly = true, placeholder = placeholder) else placeholder()
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("vs $opponentText", color = parchment, style = sf(15f, SfWeight.heavy, SfDesign.SERIF), maxLines = 1)
-                Text(deck.ifEmpty { "Deck" }, Modifier.alpha(0.8f), color = parchment, style = sf(12f, SfWeight.semibold, SfDesign.SERIF), maxLines = 1)
+                Text("vs $opponentText", color = parchment, style = ArenaMenuStyle.font(15f, SfWeight.heavy), maxLines = 1)
+                Text(deck.ifEmpty { "Deck" }, Modifier.alpha(0.8f), color = parchment, style = ArenaMenuStyle.font(12f, SfWeight.semibold), maxLines = 1)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     TavernTag(modeText.uppercase(), leather = true)
-                    Text(formatShortDate(game.date), Modifier.alpha(0.65f), color = parchment, style = sf(11f, SfWeight.regular, SfDesign.SERIF), maxLines = 1)
+                    // "Oct 26 · turn 9 · 24 min": what the record knows about the game.
+                    val facts = listOfNotNull(formatShortDate(game.date), game.turns?.let { "turn $it" },
+                        game.durationSeconds?.takeIf { it > 0 }?.let { "${maxOf(1, it / 60)} min" })
+                    Text(facts.joinToString(" · "), Modifier.alpha(0.65f), color = parchment, style = ArenaMenuStyle.font(11f, SfWeight.regular), maxLines = 1)
                 }
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Box(Modifier.size(34.dp).background(color, CircleShape).border(1.2.dp, TavernPalette.brass.copy(alpha = 0.8f), CircleShape), contentAlignment = Alignment.Center) {
-                    Text(letter, color = Color.White, style = sf(17f, SfWeight.black, SfDesign.SERIF))
+                    Text(letter, color = Color.White, style = ArenaMenuStyle.font(17f, SfWeight.black))
                 }
-                if (delta != null) Text(if (delta > 0) "+$delta" else "$delta", color = if (delta > 0) rgb(0.6, 0.95, 0.55) else rgb(1.0, 0.55, 0.45),
-                    style = sf(12f, SfWeight.heavy, SfDesign.SERIF).copy(fontFeatureSettings = "tnum"))
+                if (game.rankNote != null) Text("Not ranked", Modifier.alpha(0.6f), color = parchment, style = ArenaMenuStyle.font(11f, SfWeight.heavy))
+                else if (delta != null) {
+                    Text(if (delta > 0) "+$delta" else if (delta == 0) "±0" else "$delta",
+                        color = if (delta > 0) rgb(0.6, 0.95, 0.55) else if (delta == 0) parchment.copy(alpha = 0.7f) else rgb(1.0, 0.55, 0.45),
+                        style = ArenaMenuStyle.font(12f, SfWeight.heavy).copy(fontFeatureSettings = "tnum"))
+                    // A crushing loss (the AI kept 30 of its 40 life) costs two pips.
+                    if (delta <= -2 && game.outcome == RankOutcome.LOSS) Text("Crushing loss", Modifier.alpha(0.6f), color = parchment,
+                        style = ArenaMenuStyle.font(10f, SfWeight.heavy))
+                }
                 else if (detailed) SfImage("chart.bar.fill", BrandTheme.ember, 12.dp)
             }
         }
-        if (expanded && !detailed) Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (expanded) Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.fillMaxWidth().height(1.dp).background(TavernPalette.brass.copy(alpha = 0.35f)))
             for (opponent in game.opponents) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 opponent.commander?.let { commander ->
@@ -508,18 +532,26 @@ fun ProfileGameCard(game: ProfileGame, tag: String, openPlayer: ((String) -> Uni
                 Column(Modifier.weight(1f)) {
                     if (openPlayer != null && !opponent.isAI && !opponent.hidden) Text(opponent.name, Modifier.defaultMinSize(minHeight = 32.dp).clickable { openPlayer(opponent.name) }
                         .semantics { contentDescription = "${opponent.name}, opens their profile"; role = Role.Button }.testTag("$tag.opponent.${opponent.name}"),
-                        color = BrandTheme.ember, style = sf(13f, SfWeight.heavy, SfDesign.SERIF).copy(textDecoration = TextDecoration.Underline))
-                    else Text(opponent.name, color = parchment, style = sf(13f, SfWeight.heavy, SfDesign.SERIF))
-                    opponent.commander?.let { Text(it, Modifier.alpha(0.7f), color = parchment, style = sf(11f, SfWeight.regular, SfDesign.SERIF).copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), maxLines = 1) }
+                        color = BrandTheme.ember, style = ArenaMenuStyle.font(13f, SfWeight.heavy).copy(textDecoration = TextDecoration.Underline))
+                    else Text(opponent.name, color = parchment, style = ArenaMenuStyle.font(13f, SfWeight.heavy))
+                    opponent.commander?.let { Text(it, Modifier.alpha(0.7f), color = parchment, style = ArenaMenuStyle.font(11f, SfWeight.regular).copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), maxLines = 1) }
                 }
                 if (opponent.isAI) TavernTag("AI", leather = true)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                game.turns?.let { Text("$it turns", Modifier.alpha(0.7f), color = parchment, style = sf(11f, SfWeight.regular, SfDesign.SERIF)) }
-                Text(longDate.format(Instant.ofEpochMilli(game.date)), Modifier.alpha(0.7f), color = parchment, style = sf(11f, SfWeight.regular, SfDesign.SERIF))
+                game.turns?.let { Text("$it turns", Modifier.alpha(0.7f), color = parchment, style = ArenaMenuStyle.font(11f, SfWeight.regular)) }
+                Text(longDate.format(Instant.ofEpochMilli(game.date)), Modifier.alpha(0.7f), color = parchment, style = ArenaMenuStyle.font(11f, SfWeight.regular))
             }
             if (game.opponents.isEmpty()) Text("Opponents weren't recorded for this game.", Modifier.alpha(0.55f), color = parchment,
-                style = sf(11f, SfWeight.regular, SfDesign.SERIF).copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic))
+                style = ArenaMenuStyle.font(11f, SfWeight.regular).copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic))
+            game.rankLine?.let { Text(it, color = io.magicmobile.android.menus.ArenaMenuStyle.gold, style = ArenaMenuStyle.font(12f, SfWeight.semibold)) }
+            game.rankNote?.let { Text(it, Modifier.alpha(0.75f), color = parchment, style = ArenaMenuStyle.font(12f, SfWeight.semibold)) }
+            onOpenDetail?.let { open ->
+                io.magicmobile.android.menus.ArenaButton(open, kind = io.magicmobile.android.menus.ArenaButtonKind.SECONDARY, compact = true,
+                    identifier = tag.replace(".expand", ".review")) {
+                    Text("Game review", color = parchment, style = ArenaMenuStyle.font(13f, SfWeight.semibold))
+                }
+            }
         }
     }
 }
@@ -530,9 +562,9 @@ fun ProfileRankSummary(position: RankPosition, seasonName: String, wins: Int, lo
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
         RankBadge(position, 96.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(position.title, style = sf(22f, SfWeight.black, SfDesign.SERIF).copy(brush = Brush.verticalGradient(listOf(rgb(1.0, 0.9, 0.62), position.tier.tint))))
-            Text("Season $seasonName", Modifier.alpha(0.8f), color = parchment, style = sf(13f, SfWeight.semibold, SfDesign.SERIF))
-            Text("Ranked $wins–$losses · Peak ${peak.title}", color = parchment, style = sf(14f, SfWeight.regular, SfDesign.SERIF))
+            Text(position.title, style = ArenaMenuStyle.font(22f, SfWeight.black).copy(brush = Brush.verticalGradient(listOf(rgb(1.0, 0.9, 0.62), position.tier.tint))))
+            Text("Season $seasonName", Modifier.alpha(0.8f), color = parchment, style = ArenaMenuStyle.font(13f, SfWeight.semibold))
+            Text("Ranked $wins–$losses · Peak ${peak.title}", color = parchment, style = ArenaMenuStyle.font(14f, SfWeight.regular))
         }
     }
 }
@@ -544,7 +576,7 @@ fun ProfileEmptyNote(text: String, icon: String = "sparkles") {
         .border(1.dp, TavernPalette.brass.copy(alpha = 0.3f), RoundedCornerShape(10.dp)).padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         SfImage(icon, TavernPalette.brass, 16.dp)
-        Text(text, Modifier.weight(1f).alpha(0.75f), color = parchment, style = sf(13f, SfWeight.regular, SfDesign.SERIF))
+        Text(text, Modifier.weight(1f).alpha(0.75f), color = parchment, style = ArenaMenuStyle.font(13f, SfWeight.regular))
     }
 }
 
@@ -559,4 +591,38 @@ fun PersonGlyph(tint: Color, size: Dp) {
 fun ChipRow(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Row(modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).defaultMinSize(minHeight = 44.dp).padding(horizontal = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { content() }
+}
+
+/** The last ten results, newest first, as small gold, red and grey coins (iOS FormStrip). */
+@Composable
+fun FormStrip(results: List<RankOutcome>) {
+    Row(Modifier.semantics(mergeDescendants = true) {
+        contentDescription = "Last ${results.size} games: ${results.count { it == RankOutcome.WIN }} wins, ${results.count { it == RankOutcome.LOSS }} losses"
+    }, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        for (result in results) Box(Modifier.size(20.dp).background(when (result) {
+            RankOutcome.WIN -> ProfilePalette.win; RankOutcome.LOSS -> ProfilePalette.loss; RankOutcome.DRAW -> ProfilePalette.draw
+        }, CircleShape).clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
+            Text(when (result) { RankOutcome.WIN -> "W"; RankOutcome.LOSS -> "L"; RankOutcome.DRAW -> "D" },
+                color = if (result == RankOutcome.WIN) Color.Black.copy(alpha = 0.75f) else parchment, style = sf(10f, SfWeight.black, SfDesign.SERIF))
+        }
+    }
+}
+
+/** One line of a record: what (a mode, a tier, a commander), the record and the win rate's bar (iOS ProfileRecordLine). */
+@Composable
+fun ProfileRecordLine(title: String, line: io.magicmobile.android.game.ProfileInsights.Line, leading: @Composable () -> Unit) {
+    Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = "$title: ${line.wins} wins, ${line.losses} losses" },
+        horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(28.dp).clearAndSetSemantics {}, contentAlignment = Alignment.Center) { leading() }
+        Column(Modifier.weight(1f).clearAndSetSemantics {}, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f), color = parchment, style = ArenaMenuStyle.font(13.5f, SfWeight.bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${line.wins}–${line.losses}", color = io.magicmobile.android.menus.ArenaMenuStyle.gold,
+                    style = ArenaMenuStyle.font(13f, SfWeight.heavy).copy(fontFeatureSettings = "tnum"))
+            }
+            Box(Modifier.fillMaxWidth().height(5.dp).background(ProfilePalette.track, CircleShape)) {
+                Box(Modifier.fillMaxWidth(line.winRate.toFloat().coerceIn(0.03f, 1f)).height(5.dp).background(ProfilePalette.win, CircleShape))
+            }
+        }
+    }
 }

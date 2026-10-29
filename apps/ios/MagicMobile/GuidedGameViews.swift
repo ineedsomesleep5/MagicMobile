@@ -55,7 +55,7 @@ struct GuidedGameWelcomeView: View {
                         .font(.system(size: 26, weight: .bold))
                         .foregroundStyle(BrandTheme.brassGradient)
                         .frame(width: 60, height: 60)
-                        .background(TavernCoinBack())
+                        .background(Circle().fill(Color.black.opacity(0.55)).overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 1)))
                         .accessibilityHidden(true)
                     TavernPanelTitle(text: GuidedGameText.welcomeTitle)
                         .accessibilityAddTraits(.isHeader)
@@ -65,7 +65,7 @@ struct GuidedGameWelcomeView: View {
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                     VStack(spacing: 12) {
-                        Button(GuidedGameText.start, action: playGuided)
+                        Button(LessonText.start, action: playGuided)
                             .buttonStyle(TavernButtonStyle(kind: .primary, fullWidth: true))
                             .accessibilityIdentifier("guided.welcome.play")
                         Button(GuidedGameText.readHowToPlay, action: readHowToPlay)

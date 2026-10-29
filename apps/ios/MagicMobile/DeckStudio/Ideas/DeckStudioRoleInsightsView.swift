@@ -173,7 +173,7 @@ private struct DeckStudioRoleReviewSheet: View {
                 Button("Use automatic hints again") { if save(nil) { dismiss() } }
             }.binderLeaf("Review roles", leading: BinderLeafAction(title: "Cancel") { dismiss() },
                          trailing: BinderLeafAction(title: "Save") { if save(selected) { dismiss() } })
-        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        }.tint(DeckStudioPalette.accent).preferredColorScheme(.dark).grimoirePage(.loose)
     }
 }
 
@@ -207,6 +207,6 @@ private struct DeckStudioRoleTargetsSheet: View {
                 }
             }.binderLeaf("My target ranges", leading: BinderLeafAction(title: "Cancel") { dismiss() },
                          trailing: BinderLeafAction(title: "Save") { if save(targets) { dismiss() } })
-        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        }.tint(DeckStudioPalette.accent).preferredColorScheme(.dark).grimoirePage(.loose)
     }
 }

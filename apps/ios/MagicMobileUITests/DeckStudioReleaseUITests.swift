@@ -7,7 +7,7 @@ final class DeckStudioReleaseUITests: XCTestCase {
         let app = XCUIApplication()
         continueAfterFailure = false
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "-deckStudio.cards.layout.v1", "List", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "-deckStudio.cards.layout.v1", "List", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         defer { app.terminate(); XCUIDevice.shared.orientation = .portrait }
@@ -32,15 +32,14 @@ final class DeckStudioReleaseUITests: XCTestCase {
         let app = XCUIApplication()
         continueAfterFailure = false
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "-deckStudio.cards.layout.v1", "List", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "-deckStudio.cards.layout.v1", "List", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         defer { app.terminate(); XCUIDevice.shared.orientation = .portrait }
         XCTAssertTrue(app.buttons["menu.decks"].waitForExistence(timeout: 20))
         UITestHarness.settleFirstTouch(app)
         app.buttons["menu.decks"].tap()
-        XCTAssertTrue(app.buttons["deckStudio.create"].waitForExistence(timeout: 15))
-        app.buttons["deckStudio.create"].tap()
+        UITestHarness.revealCreateDeck(app).tap()
         // A new deck opens on the commander picker; this flow builds from an empty draft.
         let skip = app.buttons["deckStudio.commanderFirst.skip"]
         XCTAssertTrue(skip.waitForExistence(timeout: 10))

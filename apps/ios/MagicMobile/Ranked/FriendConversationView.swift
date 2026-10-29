@@ -35,7 +35,7 @@ struct FriendConversationView: View {
                     .padding(.top, 8)
                 if let online {
                     Text(online ? String(localized: "Online now") : String(localized: "Offline"))
-                        .font(.system(size: 12, weight: .semibold, design: .serif))
+                        .font(ArenaMenuStyle.font(12, .semibold))
                         .foregroundStyle(online ? LeaderboardOnlineDot.color : TavernPalette.parchment.opacity(0.6))
                         .padding(.top, 4)
                         .accessibilityIdentifier("conversation.presence")
@@ -81,7 +81,7 @@ struct FriendConversationView: View {
                         } label: {
                             Label(String(localized: "Earlier messages"), systemImage: "arrow.up.circle")
                         }
-                        .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                        .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
                         .disabled(loadingEarlier)
                         .padding(.bottom, 6)
                         .accessibilityIdentifier("conversation.earlier")
@@ -90,14 +90,14 @@ struct FriendConversationView: View {
                         SocialWaiting(text: String(localized: "Opening your messages…")).padding(.top, 40)
                     } else if let failure, messages.isEmpty {
                         Label(failure, systemImage: "wifi.exclamationmark")
-                            .font(.system(size: 14, weight: .semibold, design: .serif))
+                            .font(ArenaMenuStyle.font(14, .semibold))
                             .modifier(TavernLeatherCard())
                             .accessibilityIdentifier("conversation.error")
                     } else if messages.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "bubble.left.and.bubble.right.fill").font(.system(size: 30)).foregroundStyle(BrandTheme.brassGradient)
                             Text(String(localized: "Say hello to \(username). Messages stay between you two."))
-                                .font(.system(size: 14, design: .serif)).multilineTextAlignment(.center).opacity(0.8)
+                                .font(ArenaMenuStyle.font(14, .regular)).multilineTextAlignment(.center).opacity(0.8)
                         }
                         .padding(.top, 40)
                         .accessibilityIdentifier("conversation.empty")
@@ -105,7 +105,7 @@ struct FriendConversationView: View {
                     ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                         if index == 0 || startsNewDay(message, after: messages[index - 1]) {
                             Text(message.sentAt.formatted(.dateTime.weekday(.wide).month().day()))
-                                .font(.system(size: 11, weight: .heavy, design: .serif)).tracking(0.8).opacity(0.55)
+                                .font(ArenaMenuStyle.font(11, .heavy)).tracking(0.8).opacity(0.55)
                                 .padding(.top, 10)
                         }
                         bubble(message, isLastMine: message.fromMe && message.id == messages.last(where: \.fromMe)?.id)
@@ -129,25 +129,25 @@ struct FriendConversationView: View {
     private func bubble(_ message: FriendMessage, isLastMine: Bool) -> some View {
         VStack(alignment: message.fromMe ? .trailing : .leading, spacing: 2) {
             Text(FriendMessageRules.shown(message))
-                .font(.system(size: 15, design: .serif))
-                .foregroundStyle(message.fromMe ? Color(red: 0.25, green: 0.12, blue: 0.04) : TavernPalette.ink)
+                .font(ArenaMenuStyle.font(15, .regular))
+                .foregroundStyle(message.fromMe ? Color(red: 0.16, green: 0.08, blue: 0.03) : ArenaMenuStyle.text)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background {
                     if message.fromMe {
                         RoundedRectangle(cornerRadius: 14).fill(BrandTheme.brassGradient)
                     } else {
-                        TavernFill(material: .parchment).clipShape(RoundedRectangle(cornerRadius: 14))
+                        RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.1))
                     }
                 }
-                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.black.opacity(0.35), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(ArenaGlass.hairline, lineWidth: 0.8).opacity(message.fromMe ? 0 : 0.6))
                 .shadow(color: .black.opacity(0.4), radius: 3, y: 2)
                 .textSelection(.enabled)
             HStack(spacing: 4) {
                 Text(message.sentAt.formatted(date: .omitted, time: .shortened))
                 if isLastMine, message.read { Text("· " + String(localized: "Read")) }
             }
-            .font(.system(size: 10, design: .serif)).opacity(0.55)
+            .font(ArenaMenuStyle.font(10, .regular)).opacity(0.55)
         }
         .frame(maxWidth: .infinity, alignment: message.fromMe ? .trailing : .leading)
         .padding(message.fromMe ? .leading : .trailing, 48)
@@ -168,10 +168,10 @@ struct FriendConversationView: View {
                 HStack(spacing: 6) {
                     ForEach(Self.quickReplies, id: \.self) { reply in
                         Button { send(reply) } label: {
-                            Text(reply).font(.system(size: 12, weight: .heavy, design: .serif))
+                            Text(reply).font(ArenaMenuStyle.font(12, .heavy))
                                 .padding(.horizontal, 12).frame(minHeight: 36)
-                                .background(TavernFill(material: .leather).clipShape(Capsule()))
-                                .overlay(TavernCapsuleRim(thin: true))
+                                .background(Capsule().fill(Color.black.opacity(0.5)))
+                                .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 0.9).opacity(0.7))
                                 .contentShape(Capsule())
                         }
                         .buttonStyle(.plain)
@@ -182,7 +182,7 @@ struct FriendConversationView: View {
                 .padding(.horizontal, 16)
             }
             HStack(spacing: 8) {
-                TextField("", text: $draft, prompt: Text(String(localized: "Message \(username)")).foregroundStyle(TavernPalette.ink.opacity(0.5)), axis: .vertical)
+                TextField("", text: $draft, prompt: Text(String(localized: "Message \(username)")).foregroundStyle(ArenaMenuStyle.dim), axis: .vertical)
                     .lineLimit(1...4)
                     .focused($focused)
                     .submitLabel(.send)
@@ -191,10 +191,10 @@ struct FriendConversationView: View {
                     .accessibilityIdentifier("conversation.field")
                 Button { send(draft) } label: {
                     Image(systemName: "paperplane.fill").font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(Color(red: 1, green: 0.91, blue: 0.66))
+                        .foregroundStyle(Color.white)
                         .frame(width: 46, height: 46)
-                        .background { TavernFill(material: .ember).clipShape(Circle()).padding(2) }
-                        .overlay(Circle().strokeBorder(TavernPalette.brass, lineWidth: 2))
+                        .background { Circle().fill(ArenaMenuStyle.orange).padding(2) }
+                        .overlay { Circle().strokeBorder(ArenaMenuStyle.orangeRim, lineWidth: 1.5).padding(2) }
                 }
                 .buttonStyle(.plain)
                 .disabled(sending || FriendMessageRules.sanitize(draft) == nil)
@@ -204,8 +204,8 @@ struct FriendConversationView: View {
             .padding(.horizontal, 16)
         }
         .padding(.vertical, 10)
-        .background(TavernFill(material: .leather).overlay(LinearGradient(colors: [.black.opacity(0.25), .clear], startPoint: .top, endPoint: .bottom)).ignoresSafeArea(edges: .bottom))
-        .overlay(alignment: .top) { Rectangle().fill(TavernPalette.brass.opacity(0.5)).frame(height: 1) }
+        .background(LinearGradient(colors: [ArenaGlass.top, ArenaGlass.bottom], startPoint: .top, endPoint: .bottom).ignoresSafeArea(edges: .bottom))
+        .overlay(alignment: .top) { Rectangle().fill(ArenaGlass.hairline).frame(height: 1).opacity(0.6) }
     }
 
     private var menu: some View {
@@ -283,9 +283,15 @@ struct FriendMessagesList: View {
     var body: some View {
         let friends = account.friends.filter(\.isFriend)
         let rows = FriendMessageRules.ordered(friends: friends.map(\.username), conversations: conversations)
-        VStack(alignment: .leading, spacing: 10) {
-            ProfileSectionTitle(text: String(localized: "Messages"),
-                                trailing: account.unreadMessages > 0 ? String(localized: "\(account.unreadMessages) unread") : nil)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                ArenaCaps(text: String(localized: "Messages"))
+                Spacer(minLength: 6)
+                if account.unreadMessages > 0 {
+                    Text(String(localized: "\(account.unreadMessages) unread")).font(ArenaMenuStyle.font(11, .semibold)).foregroundStyle(ArenaMenuStyle.dim)
+                }
+            }
+            .padding(.top, 4)
             if !account.messagesAvailable {
                 ProfileEmptyNote(text: String(localized: "Messages arrive with the next server update."), systemImage: "hourglass")
             } else if friends.isEmpty {
@@ -302,7 +308,7 @@ struct FriendMessagesList: View {
                     } label: {
                         SocialRowCard {
                             SocialPlayerHeading(username: row.name, commander: nil, line: line(row.conversation),
-                                                online: friend?.online, rank: account.friendRanks[row.name])
+                                                online: friend?.online, rank: account.friendRanks[row.name], compact: true)
                         }
                         .overlay(alignment: .topTrailing) {
                             if let unread = row.conversation?.unread, unread > 0 {
@@ -310,7 +316,7 @@ struct FriendMessagesList: View {
                                     .font(.system(size: 11, weight: .black)).monospacedDigit()
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, 7).frame(minWidth: 22, minHeight: 22)
-                                    .background(TavernPalette.ember, in: Capsule())
+                                    .background(ArenaMenuStyle.ember, in: Capsule())
                                     .overlay(Capsule().strokeBorder(Color.black.opacity(0.4), lineWidth: 1))
                                     .offset(x: 4, y: -6)
                             }
@@ -325,7 +331,6 @@ struct FriendMessagesList: View {
                 }
             }
         }
-        .modifier(TavernLeatherCard())
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("messages.list")
         .task {
@@ -422,8 +427,8 @@ struct FriendMessageBanner: View {
         HStack(spacing: 10) {
             Image(systemName: "bubble.left.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(BrandTheme.brassGradient)
             VStack(alignment: .leading, spacing: 1) {
-                Text(name).font(.system(size: 13, weight: .black, design: .serif))
-                Text(text).font(.system(size: 12, design: .serif)).lineLimit(1).opacity(0.85)
+                Text(name).font(ArenaMenuStyle.font(13, .black))
+                Text(text).font(ArenaMenuStyle.font(12, .regular)).lineLimit(1).opacity(0.85)
             }
             Spacer(minLength: 4)
             Button(action: dismiss) {
@@ -434,8 +439,8 @@ struct FriendMessageBanner: View {
         }
         .foregroundStyle(TavernPalette.parchment)
         .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 6)
-        .background(TavernFill(material: .leather).clipShape(Capsule()))
-        .overlay(TavernCapsuleRim(thin: true))
+        .background(Capsule().fill(Color.black.opacity(0.5)))
+        .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
         .shadow(color: .black.opacity(0.6), radius: 8, y: 4)
         .frame(maxWidth: 420)
         .contentShape(Capsule())

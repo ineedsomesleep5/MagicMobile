@@ -1,0 +1,28 @@
+{
+ "comment": "The rule a trigger or ability choice shows (EngineDisplayText.abilityRule on iOS, Android and web): XMage's picker labels are \"N. \" plus the ability's rule, which some abilities give without their trigger or not at all, so the full line comes from the source card's rules. A fragment found in exactly one line shows that line; an empty label shows the card's only triggered line; otherwise the label without its number, capitalized; nothing when there is nothing.",
+ "cases": [
+  {"name": "{this} in the label is the source's name, so it finds the card's line", "label": "1. When {this} enters, create two 0/1 green Dinosaur Egg creature tokens.",
+   "rules": ["When Palani's Hatcher enters, create two 0/1 green Dinosaur Egg creature tokens.", "Other Dinosaurs you control have haste."],
+   "sourceName": "Palani's Hatcher", "expect": "When Palani's Hatcher enters, create two 0/1 green Dinosaur Egg creature tokens."},
+  {"name": "{this} with no line to find: the label, named", "label": "1. When {this} enters, search your library for a basic land card.",
+   "rules": [], "sourceName": "Topiary Stomper", "expect": "When Topiary Stomper enters, search your library for a basic land card."},
+  {"name": "effect-only label: the one line that holds it", "label": "2. it deals that much damage to any target that isn't a Dinosaur.",
+   "rules": ["Trample", "Whenever a Dinosaur you control is dealt damage, it deals that much damage to any target that isn't a Dinosaur."],
+   "expect": "Whenever a Dinosaur you control is dealt damage, it deals that much damage to any target that isn't a Dinosaur."},
+  {"name": "empty label: the card's only triggered line", "label": "2.",
+   "rules": ["Trample", "Whenever a Dinosaur you control is dealt damage, it deals that much damage to any target that isn't a Dinosaur."],
+   "expect": "Whenever a Dinosaur you control is dealt damage, it deals that much damage to any target that isn't a Dinosaur."},
+  {"name": "an ability word before the trigger counts", "label": "1.",
+   "rules": ["Flying", "Enrage — Whenever Ripjaw Raptor is dealt damage, draw a card."],
+   "expect": "Enrage — Whenever Ripjaw Raptor is dealt damage, draw a card."},
+  {"name": "a fragment in two lines stays the fragment", "label": "1. it fights up to one target creature you don't control.",
+   "rules": ["When Apex Altisaur enters, it fights up to one target creature you don't control.", "Enrage — Whenever Apex Altisaur is dealt damage, it fights up to one target creature you don't control."],
+   "expect": "It fights up to one target creature you don't control."},
+  {"name": "a full label keeps its line", "label": "3. Whenever Edgar Markov attacks, put a +1/+1 counter on each Vampire you control.",
+   "rules": ["Eminence — Whenever you cast another Vampire spell, if Edgar Markov is in the command zone or on the battlefield, create a 1/1 black Vampire creature token.", "First strike, haste", "Whenever Edgar Markov attacks, put a +1/+1 counter on each Vampire you control."],
+   "expect": "Whenever Edgar Markov attacks, put a +1/+1 counter on each Vampire you control."},
+  {"name": "no source rules: the label without its number", "label": "1. {T}: Add {G}.", "rules": [], "expect": "{T}: Add {G}."},
+  {"name": "empty label, two triggered lines: nothing to show", "label": "2.",
+   "rules": ["When this enters, draw a card.", "Whenever this attacks, scry 1."], "expect": null}
+ ]
+}

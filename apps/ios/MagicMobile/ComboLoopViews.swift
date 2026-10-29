@@ -7,15 +7,24 @@ struct ComboLoopOverlay: View {
     @ObservedObject var session: OnDeviceSession
     @State private var count = ComboLoop.pickerDefault
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The Arena board wears its glass here too, and shows a running loop as a slim bar.
+    @AppStorage(BoardMode.key) private var boardMode = BoardMode.defaultValue
+    private var arena: Bool { BoardMode.resolved(boardMode) == .arena }
 
     var body: some View {
+        content.environment(\.arenaBoard, arena)
+    }
+
+    private var content: some View {
         ZStack(alignment: .top) {
-            if let run = session.comboRun {
-                Color.black.opacity(0.35).ignoresSafeArea()
+            if let run = session.comboRun, let rounds = session.comboFinishing {
+                finishing(run, rounds: rounds)
+            } else if let run = session.comboRun {
+                Color.black.opacity(arena ? 0.001 : 0.35).ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture {}
                     .accessibilityHidden(true)
-                running(run).padding(.top, 70)
+                if arena { runningBar(run).padding(.top, 56) } else { running(run).padding(.top, 70) }
             } else if let round = session.comboOffer {
                 offer(round).padding(.top, 70).transition(.move(edge: .top).combined(with: .opacity))
             } else if let result = session.comboResult {
@@ -65,9 +74,22 @@ struct ComboLoopOverlay: View {
                 Button(String(localized: "Until I can't")) { start(.untilCant) }
                     .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
                     .accessibilityIdentifier("comboLoop.untilCant")
-                Button(String(localized: "Until they lose")) { start(.untilWin) }
-                    .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
-                    .accessibilityIdentifier("comboLoop.untilWin")
+                // Only when the rounds so far show it wins and no opponent can visibly answer; it then finishes at once.
+                let forecast = session.comboWinForecast
+                Button(forecast?.canFinish == true ? String(localized: "Until they lose · \(forecast!.rounds)") : String(localized: "Until they lose")) {
+                    start(.untilWin)
+                }
+                .buttonStyle(TavernButtonStyle(kind: forecast?.canFinish == true ? .primary : .secondary, compact: true))
+                .disabled(forecast?.canFinish != true)
+                .shadow(color: forecast?.canFinish == true ? TavernPalette.ember.opacity(0.8) : .clear, radius: 8)
+                .accessibilityIdentifier("comboLoop.untilWin")
+            }
+            if session.comboWinForecast?.canFinish != true {
+                Text(session.comboWinForecast == nil
+                     ? String(localized: "Until they lose needs a round that takes the same life (or poison) from every opponent.")
+                     : String(localized: "Until they lose waits while an opponent holds cards and an untapped land."))
+                    .font(.system(size: 11, design: .serif)).opacity(0.65).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("comboLoop.untilWin.reason")
             }
         }
         .foregroundStyle(TavernPalette.parchment)
@@ -105,8 +127,8 @@ struct ComboLoopOverlay: View {
         } label: {
             Image(systemName: symbol).font(.system(size: 14, weight: .black))
                 .frame(width: 40, height: 40)
-                .background(Circle().fill(TavernPalette.leather))
-                .overlay(Circle().strokeBorder(TavernPalette.brass.opacity(0.7), lineWidth: 1.5))
+                .background(Circle().fill(arena ? AnyShapeStyle(Color.white.opacity(0.1)) : AnyShapeStyle(TavernPalette.leather)))
+                .overlay(Circle().strokeBorder(TavernPalette.brass.opacity(0.7), lineWidth: arena ? 1 : 1.5))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -151,6 +173,60 @@ struct ComboLoopOverlay: View {
         .modifier(TavernPanelChrome(tavern: true, cornerRadius: 14))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("comboLoop.running")
+    }
+
+    /// The Arena board's running loop: one glass bar under the top edge (its rounds, progress and Stop), the board
+    /// left in view.
+    private func runningBar(_ run: OnDeviceSession.ComboRun) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 15, weight: .bold)).foregroundStyle(BrandTheme.brassGradient)
+                .rotationEffect(.degrees(reduceMotion ? 0 : Double(run.done) * 90))
+                .animation(.easeInOut(duration: 0.3), value: run.done)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title(run)).font(.system(size: 14, weight: .bold, design: .serif)).monospacedDigit().lineLimit(1)
+                if let line = run.lines.last {
+                    Text(line).font(.system(size: 11, design: .serif)).lineLimit(1).opacity(0.7)
+                }
+                if let target = run.mode.count {
+                    ProgressView(value: Double(run.done), total: Double(max(target, 1))).tint(TavernPalette.ember)
+                }
+            }
+            Spacer(minLength: 6)
+            Button(String(localized: "Stop")) { GameAudio.shared.play(.uiBack); session.stopComboLoop() }
+                .buttonStyle(ArenaPlaqueButtonStyle(kind: .secondary, fontSize: 14))
+                .frame(width: 80, height: 34)
+                .accessibilityIdentifier("comboLoop.stop")
+        }
+        .foregroundStyle(ArenaGlass.text)
+        .padding(.leading, 14).padding(.trailing, 8).padding(.vertical, 8)
+        .frame(maxWidth: 420)
+        .modifier(ArenaGlassPanel(cornerRadius: 18))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("comboLoop.running")
+    }
+
+    /// A loop that wins: it plays out behind a curtain, as fast as the rules allow, and the game ends.
+    private func finishing(_ run: OnDeviceSession.ComboRun, rounds: Int) -> some View {
+        ZStack {
+            Color.black.opacity(0.72).ignoresSafeArea().contentShape(Rectangle()).onTapGesture {}.accessibilityHidden(true)
+            VStack(spacing: 12) {
+                Image(systemName: "crown.fill").font(.system(size: 30, weight: .bold)).foregroundStyle(BrandTheme.brassGradient)
+                Text(String(localized: "Finishing the loop")).font(.system(size: 20, weight: .bold, design: .serif))
+                Text(String(localized: "Round \(min(run.done + 1, max(rounds, 1))) of \(max(rounds, 1))"))
+                    .font(.system(size: 14, design: .serif)).monospacedDigit().opacity(0.8)
+                ProgressView(value: Double(min(run.done, max(rounds, 1))), total: Double(max(rounds, 1))).tint(TavernPalette.ember)
+                    .frame(width: 220)
+                Button(String(localized: "Stop")) { GameAudio.shared.play(.uiBack); session.stopComboLoop() }
+                    .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                    .accessibilityIdentifier("comboLoop.stop")
+            }
+            .foregroundStyle(arena ? ArenaGlass.text : TavernPalette.parchment)
+            .padding(24)
+            .frame(maxWidth: 320)
+            .modifier(TavernPanelChrome(tavern: true, cornerRadius: 16))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("comboLoop.finishing")
+        }
     }
 
     private func title(_ run: OnDeviceSession.ComboRun) -> String {

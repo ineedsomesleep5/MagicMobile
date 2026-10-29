@@ -125,7 +125,7 @@ class GrimoireStage internal constructor(private val scope: CoroutineScope, inte
     }
     private val binderPages: List<Rect> get() = binderScreens.values.lastOrNull()?.values?.sortedBy { it.left } ?: emptyList()
 
-    internal val effect: PageEffect get() = if (LaunchEnvironment.reduceMotion) PageEffect.CROSSFADE else PageEffect.CURL
+    internal val effect: PageEffect get() = if (!curlEnabled || LaunchEnvironment.reduceMotion) PageEffect.CROSSFADE else PageEffect.CURL
 
     // The screens' own chapter turns, for the drag that turns them (grimoireSwipe registers them while on show).
     private class Swipe(val next: () -> Unit, val previous: () -> Unit)
@@ -271,7 +271,8 @@ class GrimoireStage internal constructor(private val scope: CoroutineScope, inte
      * spread, the right page curling over the spine onto the left for forward and the left onto the right for back.
      */
     fun turnPage(forward: Boolean, change: () -> Unit) {
-        if (silent) { change(); return }
+        // Arena's deck builder changes page in place (Caleb, 2026-10-22: Deck Studio follows Arena): no curl, no flip.
+        if (silent || !curlEnabled) { change(); return }
         val session = armed
         armed = null
         finishEarly()
@@ -319,6 +320,8 @@ class GrimoireStage internal constructor(private val scope: CoroutineScope, inte
 
     companion object {
         val motionEnabled: Boolean get() = !LaunchEnvironment.reduceMotion
+        /** The book's page curl, off since Deck Studio became Arena's deck builder: a page changes in place (GrimoireStage.swift). */
+        const val curlEnabled = false
     }
 }
 

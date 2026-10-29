@@ -28,9 +28,8 @@ changes only grammar and world will fail it.
 
 | Build | Grammar | Nav treatment | Hero device | Act-sequence shape | Close pattern | Signature move | World | Port |
 |---|---|---|---|---|---|---|---|---|
-
-*(empty: your first build has nothing to clear, so build whatever the interview
-points at. From the second onwards, this table is the constraint.)*
+| The opening hand (2026-09/10, superseded) | custom: opening hand | floating destination dock | layered 3D card hand over a two-line headline | dimensional open, quiet bridge, pinned peak, flow proof, flow close | platform desk with a picker | cards gather into the app | Walnut & Ember tavern | Vite + React + Three.js |
+| Hall and Cut (2026-10-24) | cutlist into gallery | loud full-width bar with the three screens; medallion index in the hall | one hard cut: a commander and one word | three short cuts, one long sideways pin, one held peak, full-bleed close, flow | the three screens on art, then rows | the bar's real D20 rolls for first | Arena | Vite + React + Three.js |
 
 ---
 
@@ -41,7 +40,9 @@ reusing: a grammar, a nav treatment, a close pattern, a signature move, an
 act-count-and-length band. The shared columns are what the next build inherits
 as a constraint, so writing them down is the whole point.
 
-Nothing is taken yet.
+- Opening-hand grammar, the floating destination dock, the cards-into-the-app signature (The opening hand).
+- The nav-bar die that leaves the bar for the peak, and the commander gallery walk with a colour-identity regrade
+  (Hall and Cut).
 
 ---
 

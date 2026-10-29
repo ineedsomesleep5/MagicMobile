@@ -142,6 +142,10 @@ struct BattlefieldRow: View {
     var arrangement: BattlefieldRowArrangement = .automatic
     var allowsManaUndo = false
     var manaPaymentActive = false
+    /// Where the tiles sit in the lane while they fit: centred, or (the Arena board's lands) from its leading edge.
+    var alignment: Alignment = .center
+    /// The Arena board sizes its rows itself (ArenaRowFit): this many rows, whatever the tile count.
+    var preferredRows: Int? = nil
     let runAction: (LegalAction) -> Void
     let runTargetAction: (ZoneCard) -> Void
     let runCombatCardAction: (ZoneCard) -> Bool
@@ -153,12 +157,15 @@ struct BattlefieldRow: View {
     @State private var layoutCache = BattlefieldRowLayoutCache()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.tavernBoard) private var tavern
+    /// The Arena board piles identical lands the reference's way: each copy peeks out from under the one on top.
+    @Environment(\.arenaBoard) private var arena
+    @Environment(\.cardFrames) private var cardFrames
 
     /// The row's groups, sizes and arrangement, recomputed only when an input changes.
     private var layout: BattlefieldRowLayout {
         layoutCache.layout(BattlefieldRowLayout.Input(
-            flipped: flipped, adaptsToDensity: adaptsToDensity, arrangement: arrangement, rowWidth: rowWidth,
-            cardWidth: cardWidth, cardHeight: cardHeight, availableHeight: availableHeight,
+            flipped: flipped, adaptsToDensity: adaptsToDensity, arrangement: arrangement, preferredRows: preferredRows,
+            rowWidth: rowWidth, cardWidth: cardWidth, cardHeight: cardHeight, availableHeight: availableHeight,
             expandedGroupIds: expandedGroupIds, chosenIds: chosenIds, targetableIds: targetableIds,
             combatHighlightIds: combatHighlightIds, cards: cards), make: makeLayout)
     }
@@ -168,7 +175,7 @@ struct BattlefieldRow: View {
         let rendered = groups.flatMap(displayGroups)
         let permanent = availableHeight.map { height in
             let proposed = arrangement.rows(rendered, flipped: flipped,
-                twoRows: arrangement == .landscapeResources || rendered.count > 5)
+                twoRows: preferredRows.map { $0 == 2 } ?? (arrangement == .landscapeResources || rendered.count > 5))
             return ArenaPermanentLayout(rowCounts: proposed.map(\.count), width: rowWidth,
                 height: height, maxCardWidth: cardWidth, ratio: cardHeight / max(cardWidth, 1))
         }
@@ -232,6 +239,23 @@ struct BattlefieldRow: View {
     /// From this many identical cards a group stays stacked while it can be chosen.
     static let stackThreshold = 8
 
+    /// Each tile's width in cards as the Arena board draws these cards, for ArenaRowFit: an attached Aura or Equipment
+    /// peeks out 0.3 of a card per layer, a pile of lands 0.12 per copy underneath, and piles open into single cards
+    /// while they are chosen from, as `isExpanded` opens them. A pile the player opened by hand scrolls like any overflow.
+    static func arenaTileUnits(_ cards: [ZoneCard], targetableIds: Set<String>, chosenIds: Set<String>,
+                               combatHighlightIds: Set<String>) -> [CGFloat] {
+        BattlefieldAttachments.groups(cards).flatMap { group -> [BattlefieldCardGroup] in
+            let choosing = group.cards.contains { targetableIds.contains($0.instanceId) || targetableIds.contains($0.id) } ||
+                requiresIndividualCombatCards(group, highlightedIDs: combatHighlightIds)
+            let expanded = !group.id.hasPrefix("attachment:") && group.count < stackThreshold && choosing
+            return displayGroups(group, expanded: expanded, chosenIds: chosenIds)
+        }.map { group in
+            if group.id.hasPrefix("attachment:") { return 1 + 0.3 * CGFloat(min(group.count - 1, 3)) }
+            if group.count > 1, group.representative.card.isLand { return 1 + 0.12 * CGFloat(min(group.count - 1, 5)) }
+            return 1
+        }
+    }
+
     /// The piles still open once a choice or combat has ended: the ones opened only to look.
     static func openAfterChoice(expanded: Set<String>, openedForChoice: Set<String>) -> Set<String> {
         expanded.subtracting(openedForChoice)
@@ -287,7 +311,7 @@ struct BattlefieldRow: View {
                         ScrollView(.horizontal, showsIndicators: rowContentWidth(arranged[row]) > rowWidth) {
                             rowTiles(arranged[row], tucked: row > 0)
                                 .padding(.horizontal, 8)
-                                .frame(minWidth: rowWidth, minHeight: ((availableHeight ?? 0) - 4) / 2)
+                                .frame(minWidth: rowWidth, minHeight: ((availableHeight ?? 0) - 4) / 2, alignment: alignment)
                                 .reportsBattlefieldRowOffset(row)
                         }
                         .scrollClipDisabled()
@@ -304,7 +328,7 @@ struct BattlefieldRow: View {
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, availableHeight == nil ? 0 : 8)
-                    .frame(minWidth: rowWidth, minHeight: availableHeight ?? max(cardHeight + 6, 44), alignment: .center)
+                    .frame(minWidth: rowWidth, minHeight: availableHeight ?? max(cardHeight + 6, 44), alignment: alignment)
                     .reportsBattlefieldRowOffset(0)
                 }
                 .scrollClipDisabled()
@@ -356,6 +380,48 @@ struct BattlefieldRow: View {
     /// above (Caleb, 2026-10-15), so there they sit inside the creature's top edge instead.
     @ViewBuilder
     private func attachmentGroupTile(_ group: BattlefieldCardGroup, tucked: Bool = false) -> some View {
+        if arena {
+            arenaAttachmentTile(group, tucked: tucked)
+        } else {
+            tabbedAttachmentTile(group, tucked: tucked)
+        }
+    }
+
+    /// The Arena board (the reference's): each Aura and Equipment is its own card tucked behind the creature, shifted
+    /// left and a little up so its name and left edge show, one step further per card; the row makes room for them on
+    /// the left. A tap on the visible edge acts on it, a hold reads it. Four or more show the rest as a count.
+    private func arenaAttachmentTile(_ group: BattlefieldCardGroup, tucked: Bool) -> some View {
+        let attachments = Array(group.cards.dropFirst())
+        let shown = Array(attachments.prefix(3))
+        let step = renderedCardHeight * (tucked ? 0.0 : 0.1)
+        let side = -renderedCardWidth * 0.3
+        return ZStack(alignment: .bottom) {
+            ForEach(Array(shown.enumerated().reversed()), id: \.element.id) { index, card in
+                battlefieldCardTile(card)
+                    .offset(x: side * CGFloat(index + 1), y: -step * CGFloat(index + 1))
+                    .accessibilityHint("Attached to \(group.representative.card.name). Tap to select; hold to inspect.")
+            }
+            battlefieldCardTile(group.representative)
+                .overlay(alignment: .topTrailing) {
+                    if attachments.count > shown.count {
+                        Text("+\(attachments.count - shown.count)")
+                            .font(.system(size: max(9, renderedCardWidth * 0.13), weight: .heavy, design: .serif))
+                            .foregroundStyle(TavernPalette.label)
+                            .padding(.horizontal, 4)
+                            .background(TavernPalette.leather, in: Capsule())
+                            .overlay(Capsule().strokeBorder(TavernPalette.brass, lineWidth: 1))
+                            .offset(x: 4, y: -step * CGFloat(shown.count) - 6)
+                            .allowsHitTesting(false)
+                    }
+                }
+        }
+        .frame(width: renderedCardWidth, height: renderedCardHeight, alignment: .bottom)
+        .padding(.leading, renderedCardWidth * 0.3 * CGFloat(shown.count))
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private func tabbedAttachmentTile(_ group: BattlefieldCardGroup, tucked: Bool) -> some View {
         let attachments = Array(group.cards.dropFirst())
         // Two tabs at most; the rest count on the top tab.
         let shown = Array(attachments.prefix(2))
@@ -409,20 +475,36 @@ struct BattlefieldRow: View {
         let targetable = !targetableIds.isDisjoint(with: groupIds)
         let combatHighlighted = !combatHighlightIds.isDisjoint(with: groupIds)
         let legal = group.cards.contains { legalAction(for: $0) != nil }
+        let ability = group.cards.contains(where: hasAbility)
+        let peeks = arena && card.card.isLand ? min(group.count - 1, 5) : 0
 
         ArenaBattlefieldCard(
             card: card,
             selected: false,
             legal: legal,
+            ability: ability,
             targetable: targetable || combatHighlighted,
             zoneName: title,
             width: renderedCardWidth,
             height: renderedCardHeight
         )
         .frame(width: renderedCardWidth, height: renderedCardHeight)
+        .background(alignment: .topLeading) {
+            if peeks > 0 {
+                ForEach(1...peeks, id: \.self) { layer in
+                    ArenaBattlefieldCard(card: group.cards[layer], zoneName: title, width: renderedCardWidth, height: renderedCardHeight)
+                        .frame(width: renderedCardWidth, height: renderedCardHeight)
+                        .offset(x: -CGFloat(layer) * renderedCardWidth * 0.12, y: CGFloat(layer) * 2)
+                        .zIndex(-Double(layer))
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+        .padding(.leading, CGFloat(peeks) * renderedCardWidth * 0.12)
         .background {
             // A big stack reads as a pile: two more frames peek out behind it (frame art only).
-            if tavern, group.count >= Self.stackThreshold, let frame = TavernFrameKind(card).image {
+            if tavern, cardFrames, group.count >= Self.stackThreshold, let frame = TavernFrameKind(card).image {
                 ForEach(0..<2, id: \.self) { layer in
                     Image(uiImage: frame).resizable()
                         .frame(width: renderedCardWidth, height: renderedCardHeight)
@@ -437,6 +519,7 @@ struct BattlefieldRow: View {
         .boardFXCardMotion(card.instanceId)
         .opacity(!targetableIds.isEmpty && !targetable ? 0.54 : 1)
         .overlay(alignment: .bottomLeading) {
+            if group.count > peeks + 1 {
             Text("×\(group.count)")
                 .font(.system(size: 10, weight: .black))
                 .foregroundStyle(.white)
@@ -446,6 +529,7 @@ struct BattlefieldRow: View {
                 .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.58), lineWidth: 1))
                 .padding(3)
                 .allowsHitTesting(false)
+            }
         }
         .onCardInteraction(tap: {
             if let next = nextChoosable(in: group) {
@@ -492,6 +576,7 @@ struct BattlefieldRow: View {
             card: card,
             selected: selectedCard?.id == card.id || isChosen(card),
             legal: action != nil,
+            ability: hasAbility(card),
             targetable: targetable || combatHighlighted,
             zoneName: title,
             width: renderedCardWidth,
@@ -560,6 +645,13 @@ struct BattlefieldRow: View {
         return contentWidth > rowWidth
     }
 
+    /// An activated ability other than mana that the engine offers for this permanent now.
+    private func hasAbility(_ card: ZoneCard) -> Bool {
+        !card.isPhasedOut && legalActions.contains {
+            $0.type == "activate_ability" && ($0.sourceInstanceId == card.instanceId || $0.cardInstanceId == card.instanceId)
+        }
+    }
+
     private func legalAction(for card: ZoneCard) -> LegalAction? {
         guard !card.isPhasedOut else { return nil }
         if allowsManaUndo, manaPaymentActive, card.tapped == true, let undo = manaUndoAction,
@@ -589,6 +681,7 @@ struct BattlefieldRowLayout {
         let flipped: Bool
         let adaptsToDensity: Bool
         let arrangement: BattlefieldRowArrangement
+        let preferredRows: Int?
         let rowWidth: CGFloat
         let cardWidth: CGFloat
         let cardHeight: CGFloat

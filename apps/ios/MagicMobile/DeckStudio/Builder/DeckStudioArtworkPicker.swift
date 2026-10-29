@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// Choosing the artwork of one card in a deck: every printing Scryfall lists for the card, as sleeves on
@@ -17,6 +18,10 @@ struct DeckStudioArtworkPicker: View {
     @State private var busy = false
     @State private var error: String?
     @State private var loaded = false
+    @State private var photo: PhotosPickerItem?
+    /// The player's own picture for this card (CustomCardArt), by revision.
+    @State private var custom: String?
+    @State private var customError: String?
 
     var body: some View {
         NavigationStack {
@@ -38,7 +43,7 @@ struct DeckStudioArtworkPicker: View {
             .background(GrimoirePaper())
             .binderLeaf("Choose artwork", trailing: BinderLeafAction(title: "Done", identifier: "deckStudio.artwork.done") { dismiss() })
         }
-        .foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        .foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.dark).grimoirePage(.loose)
         .task(id: remoteArtwork) { if remoteArtwork, !loaded { await load(next: 1) } }
         .accessibilityIdentifier("deckStudio.artwork.picker")
     }
@@ -46,15 +51,42 @@ struct DeckStudioArtworkPicker: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(name).font(.system(size: 22, weight: .bold, design: .serif)).fixedSize(horizontal: false, vertical: true)
-            Text(current.map { "Showing \($0.label)" } ?? "Showing the default artwork")
-                .font(.system(size: 14, weight: .semibold, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
+            Text(custom != nil ? "Showing your picture" : current.map { "Showing \($0.label)" } ?? "Showing the default artwork")
+                .font(ArenaMenuStyle.font(14, .semibold)).foregroundStyle(DeckStudioPalette.secondaryInk)
                 .accessibilityIdentifier("deckStudio.artwork.current")
             Text("The art you pick is saved with this card in this deck. It shows in the deck, on the board and in exports, and never changes the card's rules.")
-                .font(.system(size: 13, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk).fixedSize(horizontal: false, vertical: true)
+                .font(ArenaMenuStyle.font(13, .regular)).foregroundStyle(DeckStudioPalette.secondaryInk).fixedSize(horizontal: false, vertical: true)
             if current != nil {
                 Button("Use the default artwork") { choose(nil); dismiss() }
                     .buttonStyle(BinderPlaqueButtonStyle()).fixedSize(horizontal: true, vertical: false)
                     .accessibilityIdentifier("deckStudio.artwork.default")
+            }
+            // Your own picture fills this card's art box everywhere, on this device only; its rules stay the card's.
+            HStack(spacing: 10) {
+                PhotosPicker(selection: $photo, matching: .images) { Text(custom == nil ? "Use my own picture" : "Change my picture") }
+                    .buttonStyle(BinderPlaqueButtonStyle()).fixedSize(horizontal: true, vertical: false)
+                    .accessibilityIdentifier("deckStudio.artwork.custom")
+                if custom != nil {
+                    Button("Remove my picture") { CustomCardArt.shared.remove(forName: name); custom = nil }
+                        .buttonStyle(BinderPlaqueButtonStyle()).fixedSize(horizontal: true, vertical: false)
+                        .accessibilityIdentifier("deckStudio.artwork.customRemove")
+                }
+            }
+            if let customError { Text(customError).font(ArenaMenuStyle.font(13, .regular)).foregroundStyle(MagicPalette.warningAmber) }
+        }
+        .onAppear { custom = CustomCardArt.shared.revision(forName: name) }
+        .onChange(of: photo) { _, item in
+            guard let item else { return }
+            Task {
+                do {
+                    guard let data = try await item.loadTransferable(type: Data.self) else { return }
+                    let name = name
+                    try await Task.detached(priority: .userInitiated) { try CustomCardArt.shared.save(data, forName: name) }.value
+                    custom = CustomCardArt.shared.revision(forName: name); customError = nil
+                } catch {
+                    customError = "That picture couldn't be used. Try another."
+                }
+                photo = nil
             }
         }
     }
@@ -66,7 +98,7 @@ struct DeckStudioArtworkPicker: View {
                 .buttonStyle(BinderPlaqueButtonStyle()).fixedSize(horizontal: true, vertical: false)
         }
         if printings.isEmpty, busy {
-            Text("Looking up printings…").font(.system(size: 14, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
+            Text("Looking up printings…").font(ArenaMenuStyle.font(14, .regular)).foregroundStyle(DeckStudioPalette.secondaryInk)
         }
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 12, alignment: .top)], alignment: .leading, spacing: 14) {
             ForEach(printings) { tile($0) }
@@ -101,8 +133,8 @@ struct DeckStudioArtworkPicker: View {
                         }
                     }
                     .shadow(color: .black.opacity(0.3), radius: 3, y: 2)
-                Text(printing?.label ?? item.set.uppercased()).font(.system(size: 12, weight: .heavy, design: .serif))
-                Text(item.caption).font(.system(size: 10, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
+                Text(printing?.label ?? item.set.uppercased()).font(ArenaMenuStyle.font(12, .heavy))
+                Text(item.caption).font(ArenaMenuStyle.font(10, .regular)).foregroundStyle(DeckStudioPalette.secondaryInk)
                     .lineLimit(2).multilineTextAlignment(.center)
             }
         }

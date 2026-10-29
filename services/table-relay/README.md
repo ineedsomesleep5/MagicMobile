@@ -21,6 +21,11 @@ Cloudflare counts approximately (cached per location, eventually consistent), so
 against floods rather than an exact quota: in a burst from one address against the deployed relay
 on September 26, 2026, the first 429 came after 22 tables.
 
+The web app opens tables from a browser, so `/v1/tables` answers CORS for its origins only (`WEB_ORIGINS` in
+`src/index.js`: the hosted site and the local dev and preview ports): `OPTIONS` is the preflight (204), and the `POST`
+answer carries `Access-Control-Allow-Origin` for those origins. Phones send no `Origin` and get no CORS headers. A new web
+origin must be added there and the relay redeployed.
+
 `GET /v1/tables/{code}/socket?name=…` upgrades to a WebSocket (text frames, JSON). A phone says
 who it is with WebSocket subprotocols, so no secret appears in a URL or a request log:
 
@@ -39,7 +44,7 @@ matching the Game Center lobby's rule that the first sorted peer hosts.
 
 While the table is still filling, the host may send `{"t":"remove","id":peer}` to turn a joiner
 away. That phone gets the `removed` error and its socket closes; the others get a roster without
-it (never `gone`, which ends a table), and the next phone to join takes the freed seat number.
+it (never `gone`, which the apps read as that player leaving), and the next phone to join takes the freed seat number.
 Once the table is full every phone has opened the match room, so the relay ignores `remove`, as it
 does one from any phone but the host. A removed phone cannot resume its seat.
 
@@ -48,7 +53,8 @@ Relay → phone:
 - `{"t":"welcome","you":id,"token":…,"code":…,"seats":n,"peers":[{"id","name","connected"}],"full":bool}`
 - `{"t":"roster","peers":[…],"full":bool}` whenever someone joins, drops or returns
 - `{"t":"msg","from":id,"d":"<packet JSON text>","p":{"id","i","n"}?}`; `p` marks one part of a split packet
-- `{"t":"gone","id":…}` a player left or did not return in time
+- `{"t":"gone","id":…}` a player left or did not return in time (once a game is on, the host concedes a guest's seat and
+  the others play on; the host gone ends the table: PROTOCOL.md, Players who leave)
 - `{"t":"error","error":code,"message":…}` then the socket closes (`no_table`, `table_full`,
   `host_missing`, `host_left`, `not_host`, `host_taken`, `resume_failed`, `removed`, `too_large`, `peer_backlog`)
 - `{"t":"pong"}` answers `{"t":"ping"}` without waking the table

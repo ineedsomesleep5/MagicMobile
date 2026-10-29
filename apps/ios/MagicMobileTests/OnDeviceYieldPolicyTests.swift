@@ -215,6 +215,67 @@ final class OnDeviceYieldPolicyTests: XCTestCase {
         XCTAssertNil(OnDeviceSmartPass.passPrompt(value("PRECOMBAT_MAIN", empty: true, mine: nil, response: false), settings: settings))
     }
 
+    /// Caleb, 2026-10-27: Zur's attack trigger resolved before Gogo could copy it. Your own trigger stops when an
+    /// ability of yours could answer it, and still resolves with only a counterspell in hand.
+    func testOwnTriggerStopsForAnAbilityThatCanUseIt() {
+        var v = situation(hasPlay: true, step: "DECLARE_ATTACKERS", emptyStack: false)
+        v.topStackIsMine = true; v.hasResponse = true
+        let settings = OnDeviceSmartPass.Settings()
+        XCTAssertNotNil(OnDeviceSmartPass.passPrompt(v, settings: settings), "a counterspell alone doesn't stop your trigger")
+        v.hasAbilityResponse = true
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(v, settings: settings), "Gogo gets the chance to copy it")
+        typealias J = MagicMobileOnDevice.JSONValue
+        func view(_ rows: [J]) -> J { .object(["canPlayObjects": .object(["objects": .object(["c1": .object(["other": .array(rows)])])])]) }
+        let gogo: J = .object(["spellAbility": .bool(false), "manaAbility": .bool(false), "respondsToStack": .bool(true)])
+        let counterspell: J = .object(["spellAbility": .bool(true), "manaAbility": .bool(false), "respondsToStack": .bool(true)])
+        XCTAssertTrue(OnDeviceSmartPass.hasAbilityResponse(view([counterspell, gogo])))
+        XCTAssertFalse(OnDeviceSmartPass.hasAbilityResponse(view([counterspell])), "spells don't count")
+        XCTAssertFalse(OnDeviceSmartPass.hasAbilityResponse(view([.object(["spellAbility": .bool(false)])])), "only an explicit flag counts")
+        XCTAssertFalse(OnDeviceSmartPass.hasAbilityResponse(view([.object(["spellAbility": .bool(false), "manaAbility": .bool(true), "respondsToStack": .bool(true)])])))
+    }
+
+    /// Caleb, 2026-10-21: an opponent's board wipe resolved before he could read it. Their removal or sweeper stops for
+    /// you, answer or not, unless you turn Stop for Removal off; a skip that passes responses stops for it too.
+    func testSmartPassStopsForAnOpponentsRemovalEvenWithoutAnAnswer() {
+        var v = situation(hasPlay: false, step: "PRECOMBAT_MAIN", myTurn: false, emptyStack: false)
+        v.topStackIsMine = false; v.hasResponse = false; v.threatensMe = true
+        let settings = OnDeviceSmartPass.Settings()
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(v, settings: settings), "a sweeper waits for you")
+        var off = settings; off.stopForThreats = false
+        XCTAssertNotNil(OnDeviceSmartPass.passPrompt(v, settings: off), "unless you turned the stop off")
+        v.threatensMe = false
+        XCTAssertNotNil(OnDeviceSmartPass.passPrompt(v, settings: settings), "a harmless spell still passes")
+        var policy = OnDeviceYieldPolicy()
+        XCTAssertTrue(policy.start(context(), now: 0, mode: .endTurnSkippingResponses))
+        var value = context(); value.emptyStack = false; value.threatToMe = true
+        XCTAssertEqual(policy.evaluate(value, now: 1), .stop(.threat))
+    }
+
+    func testThreatsAreTargetsOnYourThingsAndUntargetedSweepers() throws {
+        func snapshot(_ stack: [String: Any], battlefield: [[String: Any]] = [["instanceId": "mine-1", "card": ["name": "Bear", "typeLine": "Creature"]]]) throws -> GameSnapshot {
+            func zones(_ field: [[String: Any]]) -> [String: Any] {
+                ["library": [], "hand": [], "battlefield": field, "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 1, "libraryCount": 50]
+            }
+            let players: [[String: Any]] = [["playerId": "a", "displayName": "You", "life": 40, "poison": 0, "commanderTax": 0, "zones": zones(battlefield)],
+                                            ["playerId": "b", "displayName": "AI", "life": 40, "poison": 0, "commanderTax": 0, "zones": zones([])]]
+            let xmage: [String: Any] = ["schemaVersion": 1, "gameId": "match", "bridgeRevision": 1, "callbackCoverage": [], "players": [],
+                                        "stack": [stack], "combat": [], "exileZones": [], "revealed": [], "lookedAt": [], "companion": [],
+                                        "playableObjects": [], "panels": ["stack": true, "command": true, "graveyard": true, "exile": true, "revealed": false, "lookedAt": false, "search": false]]
+            let json: [String: Any] = ["id": "match", "phase": "PRECOMBAT_MAIN", "turn": 3, "activePlayerId": "b", "viewerPlayerId": "a",
+                                       "priorityPlayerId": "a", "players": players, "log": [], "xmage": xmage]
+            return try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
+        }
+        func spell(_ text: String, controller: String = "b", targets: [String] = [], type: String = "SPELL") -> [String: Any] {
+            ["id": "s1", "objectId": "s1", "objectType": type, "name": "Spell", "rulesText": text, "controllerId": controller, "targetIds": targets]
+        }
+        XCTAssertTrue(OnDeviceSmartPass.threatensViewer(try snapshot(spell("Destroy all creatures, then return a creature card put into a graveyard this way."))))
+        XCTAssertTrue(OnDeviceSmartPass.threatensViewer(try snapshot(spell("Destroy target creature.", targets: ["mine-1"]))))
+        XCTAssertTrue(OnDeviceSmartPass.threatensViewer(try snapshot(spell("Each opponent sacrifices a creature."))))
+        XCTAssertFalse(OnDeviceSmartPass.threatensViewer(try snapshot(spell("Draw two cards."))), "nothing of yours touched")
+        XCTAssertFalse(OnDeviceSmartPass.threatensViewer(try snapshot(spell("Destroy all creatures.", controller: "a"))), "your own spell")
+        XCTAssertFalse(OnDeviceSmartPass.threatensViewer(try snapshot(spell("Destroy all creatures."), battlefield: [])), "you have nothing to lose")
+    }
+
     func testSmartPassReadsEngineControllersAndResponseFlags() {
         typealias J = MagicMobileOnDevice.JSONValue
         let root: J = .object(["stackOrder": .array([.string("s2"), .string("s1")]),

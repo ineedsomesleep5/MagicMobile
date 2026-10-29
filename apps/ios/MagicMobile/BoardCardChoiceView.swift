@@ -3,8 +3,10 @@ import SwiftUI
 /// One UUID per native PICK_TARGET response. XMage owns subsequent selection,
 /// deselection and ordering prompts; the UI never invents a batch response.
 struct BoardCardChoiceView: View {
+    @Environment(\.arenaSafeArea) private var safeArea
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.tavernBoard) private var tavern
+    @Environment(\.arenaBoard) private var arena
     let snapshot: GameSnapshot
     let prompt: PromptEnvelopeV2
     let pendingActionId: String?
@@ -19,6 +21,8 @@ struct BoardCardChoiceView: View {
     @FocusState private var searchFocused: Bool
     @State private var inspected: ZoneCard?
     @State private var promptTextHeight: CGFloat = 0
+    /// The Arena browser's "View Battlefield": the browser steps aside while it's on.
+    @State private var peeking = false
 
     private struct PromptTextHeightKey: PreferenceKey {
         static let defaultValue: CGFloat = 0
@@ -88,8 +92,14 @@ struct BoardCardChoiceView: View {
         GeometryReader { geometry in
             let layout = metrics(for: geometry.size)
             ZStack {
-                Color.black.opacity(0.58).ignoresSafeArea().accessibilityHidden(true)
-                chooserPanel(layout)
+                // The Arena board's own browser over the table; typing a search in a short landscape screen keeps the
+                // compact panel, which leaves room for the keyboard.
+                if arena && !layout.keyboardCompact {
+                    arenaStage(geometry.size)
+                } else {
+                    Color.black.opacity(0.58).ignoresSafeArea().accessibilityHidden(true)
+                    chooserPanel(layout)
+                }
                 if let inspected { inspectionOverlay(inspected) }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
@@ -392,6 +402,9 @@ struct BoardCardChoiceView: View {
                     .frame(maxWidth: .infinity)
                     .padding(5)
                     .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                    // Gold arrows in the Arena's hairline rows, not the system's blue.
+                    .overlay { if arena { RoundedRectangle(cornerRadius: 6).strokeBorder(ArenaGlass.hairline, lineWidth: 0.8) } }
+                    .tint(arena ? Color(red: 0.98, green: 0.84, blue: 0.52) : nil)
                 }
             }
         }
@@ -408,11 +421,12 @@ struct BoardCardChoiceView: View {
         let isSelected = selectedID == target.id
         let isMarked = isSelected || chosenIDs.contains(target.id)
         let traits: AccessibilityTraits = isSelected ? .isSelected : []
-        let background: Color = isSelected ? Color.purple.opacity(0.25) : Color.white.opacity(0.06)
+        let accent = arena ? Color(red: 0.98, green: 0.84, blue: 0.52) : Color.purple
+        let background: Color = isSelected ? accent.opacity(0.25) : Color.white.opacity(0.06)
         return Button { toggleSelection(target.id) } label: {
             HStack(spacing: 10) {
                 Image(systemName: isMarked ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(target.label).fixedSize(horizontal: false, vertical: true)
                     if isMarked { Text(selectionState(target.id)).font(.caption) }
@@ -422,6 +436,8 @@ struct BoardCardChoiceView: View {
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .padding(.horizontal, 10)
             .background(background, in: RoundedRectangle(cornerRadius: 8))
+            .overlay { if arena { RoundedRectangle(cornerRadius: 8).strokeBorder(ArenaGlass.hairline, lineWidth: 0.8) } }
+            .foregroundStyle(arena ? ArenaGlass.text : .primary)
         }
         .buttonStyle(.plain)
         .disabled(pendingActionId != nil)
@@ -600,3 +616,345 @@ private struct ConfirmChrome: ViewModifier {
         }
     }
 }
+
+// MARK: - The Arena browser
+
+/// Card choices on the Arena board, the reference game's way (Caleb, 2026-10-20): the table dims, a title names the
+/// effect (Scry, Surveil, Search your library…) over one line of instructions, the cards lie in the middle (scry and
+/// surveil in two zones, a tap moving a card across), the effect's source stands on the right, and an orange Done
+/// answers. "View Battlefield" steps the browser aside. Answers are the same one-at-a-time native answers as the
+/// panel's (CardChoicePlan).
+extension BoardCardChoiceView {
+    private enum ArenaZones { case scry, surveil, piles }
+
+    private var arenaZones: ArenaZones? {
+        guard let kind = draftKind else { return nil }
+        if kind == .scry { return .scry }
+        if kind == .selection, prompt.message.lowercased().contains("surveil") { return .surveil }
+        // Fact or Fiction, Liliana: the cards you pick make the first pile, the rest the second.
+        if kind == .selection, prompt.message.lowercased().contains("first pile") { return .piles }
+        return nil
+    }
+
+    private var arenaTitle: String {
+        let text = prompt.message.lowercased()
+        switch draftKind {
+        case .scry: return "Scry"
+        case .topOrder: return "Order the top of your library"
+        case .bottomOrder: return "Order the bottom of your library"
+        default: break
+        }
+        if text.contains("surveil") { return "Surveil" }
+        if text.contains("first pile") { return "Separate into two piles" }
+        if text.contains("discard") { return "Discard" }
+        if text.contains("search") || text.contains("from your library") { return "Search your library" }
+        if text.contains("graveyard") { return "Choose from a graveyard" }
+        if text.contains("exile") { return "Choose a card to exile" }
+        return draftKind == .selection ? "Choose cards" : "Choose a card"
+    }
+
+    /// XMage's own words under the title, only when they add to it (what to search for, how many). Scry, surveil, piles
+    /// and ordering say nothing more: the wells and the order badges show it (Caleb's copy rule, the judge 2026-10-22).
+    private var arenaInstruction: String? {
+        guard arenaZones == nil, draftKind != .topOrder, draftKind != .bottomOrder else { return nil }
+        let message = PromptDisplayText.clean(CardChoicePlan.context(prompt))
+        let words = message.trimmingCharacters(in: CharacterSet(charactersIn: ". ")).lowercased()
+        return words.isEmpty || words == arenaTitle.lowercased() ? nil : message
+    }
+
+    private func arenaCardWidth(_ size: CGSize) -> CGFloat {
+        if size.width > size.height {
+            // The title starts under the opponent's medallion (safeArea.top(50)), so that much more is reserved.
+            let reserved: CGFloat = 192 + (cards.count > 6 ? 46 : 0) + (targets.isEmpty ? 0 : 56) + (arenaZones != nil ? 30 : 0)
+            return max(74, min(150, (size.height - reserved) / 1.4))
+        }
+        return arenaZones != nil ? min(112, (size.width - 72) / 3.2) : min(124, (size.width - 64) / 3)
+    }
+
+    /// Cards XMage lets you pick come first, as in the reference.
+    private var arenaCards: [ZoneCard] {
+        filteredCards.filter(\.isPromptSelectable) + filteredCards.filter { !$0.isPromptSelectable }
+    }
+
+    @ViewBuilder
+    func arenaStage(_ size: CGSize) -> some View {
+        let landscape = size.width > size.height
+        let width = arenaCardWidth(size)
+        let source = snapshot.stackTopFirst.first
+        ZStack {
+            Color.black.opacity(peeking ? 0 : 0.74).ignoresSafeArea()
+                .allowsHitTesting(!peeking)
+                .accessibilityHidden(true)
+            VStack(spacing: landscape ? 6 : 10) {
+                VStack(spacing: 4) {
+                    Text(arenaTitle)
+                        .font(.system(size: landscape ? 24 : 26, weight: .bold, design: .serif))
+                        .foregroundStyle(ArenaGlass.text)
+                        .shadow(color: .black, radius: 2)
+                        .accessibilityIdentifier("board.choice.title")
+                    if let arenaInstruction {
+                    Text(arenaInstruction)
+                        .font(ArenaMenuStyle.font(13, .medium))
+                        .foregroundStyle(ArenaGlass.text.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .padding(.horizontal, 24)
+                        .accessibilityIdentifier("board.choice.header")
+                    }
+                }
+                if cards.count > 6 {
+                    TextField("Name, type or rules text", text: $search)
+                        .focused($searchFocused)
+                        .submitLabel(.done)
+                        .onSubmit { searchFocused = false }
+                        .modifier(TavernFieldChrome(tavern: true))
+                        .frame(maxWidth: 360)
+                        .accessibilityIdentifier("board.choice.search")
+                }
+                Group {
+                    if let zones = arenaZones {
+                        arenaZoneWells(zones, width: width, landscape: landscape,
+                                       available: size.width - 40 - (landscape && source != nil ? 150 : 0))
+                    } else {
+                        arenaCardRow(width: width, landscape: landscape)
+                    }
+                }
+                .frame(maxHeight: .infinity)
+                if !targets.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) { ForEach(targets) { target in targetRow(target).frame(width: 220) } }
+                            .padding(.horizontal, 24)
+                    }
+                    .frame(maxHeight: 56)
+                }
+                arenaFooter
+            }
+            .padding(.top, safeArea.top(landscape ? 50 : 96))
+            .padding(.horizontal, landscape ? safeArea.side : 0)
+            .padding(.bottom, landscape ? 8 : 26)
+            .padding(.trailing, landscape && source != nil ? 150 : 0)
+            .opacity(peeking ? 0 : 1)
+            .allowsHitTesting(!peeking)
+            if landscape, let source, !peeking {
+                arenaSource(source)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                    .padding(.trailing, 14)
+            }
+            Button(peeking ? "Back to the choice" : "View Battlefield") { peeking.toggle() }
+                .font(.system(size: 12, weight: .bold, design: .serif))
+                .foregroundStyle(ArenaGlass.text)
+                .padding(.horizontal, 14).frame(height: 32)
+                .background(Capsule().fill(Color.black.opacity(0.55)))
+                .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("board.choice.viewBattlefield")
+                // Clear of the gear in landscape; padded before it is placed, so it never widens the layer.
+                .padding(.top, landscape ? 4 : 50)
+                .padding(.trailing, landscape ? 120 : 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Card choice dialog")
+        .accessibilityIdentifier("board.choice.dialog")
+        .accessibilityAddTraits(.isModal)
+    }
+
+    /// The spell or ability making you choose, as the reference shows it beside its browsers.
+    private func arenaSource(_ object: XmageStackObject) -> some View {
+        let size = CGSize(width: 124, height: 172)
+        return Group {
+            if ArenaStackCard.isAbility(object) || object.displaySourceCard == nil {
+                ArenaAbilityCard(source: object.displaySourceCard, name: object.displaySourceCard == nil ? object.displayName : nil,
+                                 text: object.rulesText ?? object.displayName, size: size)
+            } else if let card = object.displaySourceCard {
+                CardTile(card: card, selected: false, zoneName: "Stack", width: size.width, height: size.height, imageVariant: .inspection)
+                    .allowsHitTesting(false)
+            }
+        }
+        .shadow(color: .black.opacity(0.6), radius: 8, y: 4)
+        .onCardInteraction(tap: { if let card = object.displaySourceCard { inspected = card } },
+                           inspect: { if let card = object.displaySourceCard { inspected = card } },
+                           release: { inspected = nil })
+        .accessibilityLabel("Source: \(object.displayName)")
+    }
+
+    @ViewBuilder
+    private func arenaCardRow(width: CGFloat, landscape: Bool) -> some View {
+        if landscape {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 14) {
+                    ForEach(arenaCards) { card in arenaCard(card, width: width) }
+                }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 16)
+            }
+            .accessibilityIdentifier("board.choice.cards")
+        } else {
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(width), spacing: 12), count: 3), spacing: 18) {
+                    ForEach(arenaCards) { card in arenaCard(card, width: width) }
+                }
+                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity)
+            }
+            .accessibilityIdentifier("board.choice.cards")
+        }
+        if filteredCards.isEmpty && !search.isEmpty { emptySearch.frame(maxWidth: 360) }
+    }
+
+    /// Scry's Bottom and Top, surveil's Library and Graveyard: two wells side by side (stacked in portrait).
+    private func arenaZoneWells(_ zones: ArenaZones, width: CGFloat, landscape: Bool, available: CGFloat) -> some View {
+        let rest = selectableIDs.filter { !draftIDs.contains($0) }
+        let left: (title: String, ids: [String], top: Bool)
+        let right: (title: String, ids: [String], top: Bool)
+        switch zones {
+        case .scry: left = ("Bottom", draftIDs, false); right = ("Top", topIDs, true)
+        case .surveil: left = ("Graveyard", draftIDs, false); right = ("Library", rest, true)
+        case .piles: left = ("Pile 1", draftIDs, false); right = ("Pile 2", rest, true)
+        }
+        // Side by side, each well as wide as its cards (an empty one keeps room for one), the cards shrinking so all fit.
+        let slots = CGFloat(max(1, left.ids.count) + max(1, right.ids.count))
+        let fitted = landscape ? max(64, min(width, (available - 14 - 4 * 10) / slots - 10)) : width
+        let layout = landscape ? AnyLayout(HStackLayout(alignment: .top, spacing: 14)) : AnyLayout(VStackLayout(spacing: 12))
+        return layout {
+            arenaWell(left.title, ids: left.ids, top: left.top, zones: zones, width: fitted, fill: !landscape)
+            arenaWell(right.title, ids: right.ids, top: right.top, zones: zones, width: fitted, fill: !landscape)
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private func arenaWell(_ title: String, ids: [String], top: Bool, zones: ArenaZones, width: CGFloat, fill: Bool) -> some View {
+        VStack(spacing: 6) {
+            Text(title.uppercased())
+                .font(ArenaMenuStyle.font(13, .heavy)).tracking(1.2)
+                .foregroundStyle(Color(red: 0.98, green: 0.84, blue: 0.52))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 10) {
+                    ForEach(ids, id: \.self) { id in
+                        if let card = cards.first(where: { $0.id == id }) {
+                            VStack(spacing: 4) {
+                                arenaCard(card, width: width, number: zones == .scry && ids.count > 1 ? (ids.firstIndex(of: id) ?? 0) + 1 : nil)
+                                if zones == .scry && ids.count > 1 { arenaMoveArrows(id, ids: ids, top: top) }
+                            }
+                        }
+                    }
+                    if ids.isEmpty {
+                        // An empty well keeps its size; it says nothing (the card goes where you tap it).
+                        Color.clear
+                            .frame(width: width, height: width * 1.4 + (zones == .scry ? 34 : 0))
+                    }
+                }
+                .padding(10)
+                .frame(minWidth: fill ? nil : width + 20)
+            }
+            .frame(maxWidth: fill ? .infinity : CGFloat(max(1, ids.count)) * (width + 10) + 10)
+            .background(RoundedRectangle(cornerRadius: 14).fill(Color.black.opacity(0.35)))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(ArenaGlass.hairline, lineWidth: 0.8).opacity(0.7))
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
+        .accessibilityIdentifier("board.choice.zone.\(title.lowercased())")
+    }
+
+    private func arenaMoveArrows(_ id: String, ids: [String], top: Bool) -> some View {
+        let index = ids.firstIndex(of: id) ?? 0
+        return HStack(spacing: 0) {
+            Button("Move earlier", systemImage: "chevron.left") { move(id, by: -1, top: top) }
+                .disabled(index == 0 || pendingActionId != nil)
+            Button("Move later", systemImage: "chevron.right") { move(id, by: 1, top: top) }
+                .disabled(index == ids.count - 1 || pendingActionId != nil)
+        }
+        .labelStyle(.iconOnly)
+        .font(.system(size: 13, weight: .black))
+        .tint(Color(red: 0.98, green: 0.84, blue: 0.52))
+        .frame(height: 30)
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+    }
+
+    private func arenaCard(_ card: ZoneCard, width: CGFloat, number: Int? = nil) -> some View {
+        let selectable = card.isPromptSelectable
+        let picked = draftIDs.contains(card.id) || selectedID == card.id
+        // Zones already say where a card goes; elsewhere a picked card rises in a gold glow with its order on a coin.
+        let marked = arenaZones == nil && picked
+        let order = arenaZones == nil && draftActive ? draftIDs.firstIndex(of: card.id).map { $0 + 1 } : number
+        return VStack(spacing: 5) {
+            CardTile(card: card, selected: false, legal: false, zoneName: "Choice", width: width, height: width * 1.4)
+                .overlay {
+                    RoundedRectangle(cornerRadius: width * 0.06)
+                        .strokeBorder(marked ? Color(red: 1, green: 0.82, blue: 0.4) : Color.white.opacity(selectable ? 0.35 : 0),
+                                      lineWidth: marked ? 3 : 1)
+                        .shadow(color: marked ? Color(red: 1, green: 0.75, blue: 0.3) : .clear, radius: 8)
+                }
+                .overlay(alignment: .top) {
+                    if let order { ArenaCountBadge(count: order, size: 28).offset(y: -14) }
+                    else if marked && !draftActive { Image(systemName: "checkmark.circle.fill").font(.system(size: 24))
+                        .foregroundStyle(Color(red: 1, green: 0.82, blue: 0.4)).background(Circle().fill(.black)).offset(y: -12) }
+                }
+                .opacity(selectable ? 1 : 0.42)
+                .offset(y: marked ? -10 : 0)
+                .shadow(color: .black.opacity(0.6), radius: 6, y: 4)
+                .animation(.spring(response: 0.25, dampingFraction: 0.8), value: marked)
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .onCardInteraction(tap: { toggleSelection(card.id) }, inspect: { inspected = card },
+                           release: { if inspected?.id == card.id { inspected = nil } })
+        .accessibilityLabel(Text(verbatim: "\(card.card.name), \(selectable ? "legal choice" : "not a legal choice")"))
+        .accessibilityValue(Text(verbatim: selectionState(card.id)))
+        .accessibilityAddTraits(picked ? .isSelected : [])
+        .accessibilityAction { toggleSelection(card.id) }
+        .accessibilityAction(named: Text("Inspect card")) { inspected = card }
+        .accessibilityIdentifier("board.choice.card.\(card.id)")
+    }
+
+    private var arenaCount: String? {
+        guard draftKind == .selection, let bounds = CardChoicePlan.selectionBounds(prompt.message) else { return nil }
+        if CardChoicePlan.isUnbounded(bounds) { return "\(draftIDs.count) chosen" }
+        return bounds.0 == bounds.1 ? "\(draftIDs.count) of \(bounds.1)" : "\(draftIDs.count) · choose \(bounds.0)–\(bounds.1)"
+    }
+
+    private var arenaFooter: some View {
+        HStack(spacing: 12) {
+            if draftKind == .selection, let bounds = CardChoicePlan.selectionBounds(prompt.message) {
+                if bounds.1 >= selectableIDs.count, draftIDs.count < selectableIDs.count, selectableIDs.count > 1, arenaZones == nil {
+                    Button("Select all") { draftIDs = selectableIDs }
+                        .buttonStyle(ArenaPlaqueButtonStyle(kind: .secondary, fontSize: 14))
+                        .frame(width: 120, height: 40)
+                        .accessibilityIdentifier("board.choice.selectAll")
+                }
+                if !draftIDs.isEmpty, arenaZones == nil {
+                    Button("Clear") { draftIDs = [] }
+                        .buttonStyle(ArenaPlaqueButtonStyle(kind: .secondary, fontSize: 14))
+                        .frame(width: 100, height: 40)
+                        .accessibilityIdentifier("board.choice.clearSelection")
+                }
+            }
+            ForEach(draftActive ? [] : completionActions) { action in
+                // XMage's "Done" here finishes without a card.
+                Button(action.label.lowercased() == "done" ? "Choose none" : action.label) { runAction(action) }
+                    .buttonStyle(ArenaPlaqueButtonStyle(kind: .secondary, fontSize: 15))
+                    .frame(width: 130, height: 40)
+                    .disabled(pendingActionId != nil)
+                    .accessibilityIdentifier("board.choice.done")
+            }
+            Button(action: confirmSelection) {
+                VStack(spacing: 0) {
+                    Text(draftActive || selected != nil ? "Done" : targets.isEmpty ? "Choose a card" : "Choose one")
+                    if let arenaCount { Text(arenaCount.uppercased()).font(.system(size: 8, weight: .heavy, design: .serif)).opacity(0.85) }
+                }
+            }
+            .buttonStyle(ArenaPlaqueButtonStyle(kind: .primary, fontSize: 16))
+            .frame(width: 170, height: 42)
+            .disabled((!draftActive && selected == nil) || pendingActionId != nil ||
+                      (draftKind == .selection && !draftCountIsValid) ||
+                      (draftKind == .topOrder || draftKind == .bottomOrder) && draftIDs.count != selectableIDs.count)
+            .accessibilityValue(Text(verbatim: selected?.label ?? "No selection"))
+            .accessibilityIdentifier("board.choice.confirm")
+            if pendingActionId != nil {
+                ProgressView().tint(ArenaGlass.text)
+            }
+        }
+    }
+}
+
