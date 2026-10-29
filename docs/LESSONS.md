@@ -21,6 +21,15 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-28 (Claude, Galaxy S23 Ultra report): on a 3-button phone the Back/Home/Recents bar stayed on screen during
+  games; the board only kept clear of it. **Rule:** a game hides every system bar (`HideStatusBarWhileShown` hides
+  `systemBars()`, swipe shows them for a moment), so the board runs edge to edge on 3-button phones as on gesture ones;
+  Android's one-time "Viewing full screen" notice is the system's. The hand's hold-to-magnify and slide both work on
+  the emulator with 3-button navigation at 420 and 480 dpi: to test by adb, the resting hand's touch strip ends about
+  40 dp above the rail (log `rect` from `ArenaHandTouch` if unsure), `input swipe x y x+2 y 2500` run in the
+  background is a hold (screenshot mid-swipe), and a swipe that moves from its first frame is a scrub, never a hold.
+  Where: `board/LandscapeBoard.kt`.
+
 - 2026-10-27 (Claude, stack tab): in `board/ArenaBoardViews.kt` the imported `testTag` is the semantics property
   (`androidx.compose.ui.semantics.testTag`), so `Modifier.testTag(...)` there fails to compile ("cannot be invoked as a
   function"). **Rule:** set it inside `.semantics { testTag = ... }` in that file. Where: `ArenaStackTab`.
