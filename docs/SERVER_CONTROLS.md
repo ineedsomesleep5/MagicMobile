@@ -38,7 +38,8 @@ Edge Functions → Secrets). Then `voiceChat: true` in the switches turns the mi
 
 ## Ranked
 
-- **AI difficulty per tier**: `ranked_ai_tuning` (deck Power band and mistake % by division); docs/DECK_POWER.md has the SQL.
+- **AI difficulty per tier**: `ranked_ai_tuning` (deck Power band, mistake % by division, and `ai_skill`: null keeps the
+  ladder's skill, Diamond is 6 since 2026-10-29); docs/DECK_POWER.md has the SQL.
   Apps from TestFlight 63 / Android 41 and the web follow it.
 - **Ladder rules** (pips per win and loss, the crushing-loss threshold, tier floors), **seasons** (`mm_season_for`), the
   **ranked AI win check** (turn minimums) and **rate limits** are SQL functions: a migration changes them for everyone.

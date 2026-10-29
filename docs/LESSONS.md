@@ -1089,3 +1089,9 @@ contradicting one.
   `recordVideo` starts about 2 s late and the first card art can flash a placeholder. Warm the simulator with one run
   first. (4) Real AI games title the roll "You rolls" (`MultiplayerD20View` appends "rolls" to the seat name "You"). The
   scripts and sync tool live in the private repo ineedsomesleep5/magicmobile-promo (`capture/`). (4) is fixed on PR 247.
+- 2026-10-29 (Claude, Diamond retune): the live `ranked_ai_tuning` rows were hand-set by SQL and no longer match the
+  migrations that created them (live Gold 6–7, Plat 6.75–7.75, Diamond 7.5–8.5), so a tuning migration must set
+  absolute values, never add to what a migration file says. Read the live table first (read-only) before writing one.
+  Deck Power now counts games against people too (`docs/cloud/ranked-results/`, anonymised): the export goes stale, so
+  rerun the SQL in docs/DECK_POWER.md "Power v3" and `deck_power.py rate --write` before trusting a new rating. Where:
+  supabase/migrations/20261029220000_ranked_diamond_retune.sql, scripts/ranked/deck_power.py.
