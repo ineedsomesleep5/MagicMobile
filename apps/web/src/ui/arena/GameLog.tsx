@@ -23,7 +23,7 @@ const ICONS: Record<LogIcon, ReactNode> = {
 };
 const FORWARD = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 4l8 6-8 6zM10 4l8 6-8 6z" /></svg>;
 
-/** One message as styled spans: players in teal, cards in gold italics, a disclosed card a link that reads it. */
+/** One message as styled spans: players in teal, cards in gold italics, a disclosed card a link that reads it. RulesText trims, so each span's edge spaces are kept here. */
 function LogText({ message, inspect }: { message: string; inspect: (reference: CardReference) => void }) {
   const presentation = new GameLogPresentation(message);
   return (
@@ -33,7 +33,7 @@ function LogText({ message, inspect }: { message: string; inspect: (reference: C
         const card = span.card;
         return card
           ? <button key={index} type="button" className={`${className} link`} onClick={(e) => { e.stopPropagation(); inspect(card); }}>{span.text}</button>
-          : <span key={index} className={className}><RulesText text={span.text} /></span>;
+          : <span key={index} className={className}>{/^\s/.test(span.text) && " "}<RulesText text={span.text} />{/\S\s$/.test(span.text) && " "}</span>;
       })}
     </span>
   );

@@ -421,7 +421,7 @@
 .abrowse .bfoot .aplaque { position: relative; min-width: 140px; height: 40px; padding: 0 22px; font-size: 15px; }
 .abrowse .bfoot .aplaque.primary { min-width: 170px; height: 42px; font-size: 16px; }
 /* the question stage's answers (PanelActionButtonStyle, Arena plaques): the orange pill goes ahead, Arena's blue declines; words only */
-.bstage .answers .aplaque { position: relative; min-width: 140px; height: 46px; padding: 0 22px; font-size: 17px; }
+.bstage .answers .aplaque { position: relative; min-width: 140px; min-height: 46px; max-width: 100%; padding: 10px 24px; font-size: 17px; line-height: 1.2; white-space: normal; text-wrap: balance; }
 .abrowse .bsource { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); }
 /* the question stage (ArenaQuestionStage): headline, its card, answers, all in the middle */
 .bstage { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: var(--atop, 50px) 24px 0; }
