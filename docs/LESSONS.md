@@ -210,6 +210,10 @@ contradicting one.
   tier's variety from the live bands with the recent window applied. Also, engine-heavy commanders (Korvold,
   Muldrotha, Kinnan Optimized) rate far below their formula because the AI cannot pilot them.
   Where: docs/cloud/reports/power-5.md, `AIDeckPool.pick`.
+- 2026-10-30 (Claude, deck review): Gradle does not track `ai-decks.json` as a `:core:test` input, because
+  `RankedParityTest` reads it straight from the iOS resources. After a ratings change `:core:test` reports success
+  from the old result in seconds. **Rule:** add `:core:cleanTest` and check the timestamp in the result XML. A piped
+  `heavy.sh ... | tail` also exits 0 when Gradle fails, so read `BUILD`. Where: `RankedParityTest.kt`.
 - 2026-10-30 (Claude, power 5): the cloud session's background commands stop at 2 hours, so a 1,008-game calibration
   batch (about 3.2 h on 4 workers) was cut off at 619 games. Rerunning the same `ai_calibration.py run` command
   resumed it and replayed the interrupted game. A game that stops in the engine again on replay stays in the CSV as
