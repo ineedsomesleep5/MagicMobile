@@ -62,7 +62,6 @@
 		1CC47A197455A972FEDAED12 /* OnDeviceAppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608026E3694B102F64D58954 /* OnDeviceAppConfiguration.swift */; };
 		1ECE348736C7A77E3AFAD63F /* d20-table-portrait.glb in Resources */ = {isa = PBXBuildFile; fileRef = 0043C407D959D328AAEC061B /* d20-table-portrait.glb */; };
 		202CD75310AC9A1AC383C44C /* RankBadgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C44CBE8A50D05944BA9E2ED5 /* RankBadgeView.swift */; };
-		B8D2F6E35CA014B2E7F30521 /* AwardViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C1E5D24B9F03A1D6E2F410 /* AwardViews.swift */; };
 		21269569794F06AAB3815571 /* DeckStudioPlaytestStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49FED4AF9E62808A6FB79605 /* DeckStudioPlaytestStore.swift */; };
 		23F08D3028443E6C6DD8E4CF /* RankCeremonyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0CC72F335BF135375487C /* RankCeremonyView.swift */; };
 		240C7DBB293B484600198943 /* lesson-stack.json in Resources */ = {isa = PBXBuildFile; fileRef = 2D8D9067C4879864C60B48D4 /* lesson-stack.json */; };
@@ -90,11 +89,13 @@
 		32DF840B2C47CB527A80B803 /* MultiplayerD20View.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC59DF6DAF645D3903444F08 /* MultiplayerD20View.swift */; };
 		333807A96F660DA1568A5F96 /* lesson-combat.json in Resources */ = {isa = PBXBuildFile; fileRef = 47E7D0518F79D4F055DFCBA1 /* lesson-combat.json */; };
 		3347F6EB5B82012A60F2EB94 /* creature-horror-3.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 7BEB3BACBB61F8B8EC0A2881 /* creature-horror-3.m4a */; };
+		34242D351E0EB836CD2C6FC8 /* AwardViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AED2804F4BCF3E56F1CDC014 /* AwardViews.swift */; };
 		343360D959B4445D892C2A5E /* OnDeviceStartingPlayerChoiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF2BF576C58D03A13D3B9371 /* OnDeviceStartingPlayerChoiceTests.swift */; };
 		3572FD7B141D4D878F1F52F9 /* turn-you.m4a in Resources */ = {isa = PBXBuildFile; fileRef = F1D2EE9C5145A605159B46EA /* turn-you.m4a */; };
 		361E17FFCB5AD3DCFBE3127A /* DeckStudioCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71FA1327EADF12DC5FCC75CE /* DeckStudioCoreTests.swift */; };
 		368AD89A9518B786A6B28B02 /* IndependentAIDecksUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F694053142C046421A7F480 /* IndependentAIDecksUITests.swift */; };
 		36A362A0B9D2BCB9AD31423E /* block.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 6DCBB862150FF8889AA6A8D7 /* block.m4a */; };
+		37A5150379B8D713CCB4B277 /* Award.swift in Sources */ = {isa = PBXBuildFile; fileRef = F839A6F55284552D59CECB83 /* Award.swift */; };
 		37C071A75B8E6D539B5BA8F3 /* OnDeviceBackendRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D2F9E6D492AE9BD7D6EA16 /* OnDeviceBackendRegistration.swift */; };
 		387D601BE5D21F931C05A596 /* HowToPlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DCFECDBEB73D66939CFBB6D /* HowToPlayView.swift */; };
 		38A7F40E6DD44441FA1F78A5 /* ai-decks.json in Resources */ = {isa = PBXBuildFile; fileRef = F9C1C8BA1FBA059403F52107 /* ai-decks.json */; };
@@ -731,6 +732,7 @@
 		ADA635ADA555D5641F3EEA92 /* FriendChallengeViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FriendChallengeViews.swift; sourceTree = "<group>"; };
 		ADA936262E9D0B0749874951 /* ui-back.caf */ = {isa = PBXFileReference; path = "ui-back.caf"; sourceTree = "<group>"; };
 		AE9933418B1367EA0C4B300E /* DeckStudioOrganization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioOrganization.swift; sourceTree = "<group>"; };
+		AED2804F4BCF3E56F1CDC014 /* AwardViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AwardViews.swift; sourceTree = "<group>"; };
 		AF04C728E3FDD4D863CF1E8F /* menu-play.m4a */ = {isa = PBXFileReference; path = "menu-play.m4a"; sourceTree = "<group>"; };
 		AF1EBE420EEB2107980858CC /* lesson-first-spells.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "lesson-first-spells.json"; sourceTree = "<group>"; };
 		AF2BF576C58D03A13D3B9371 /* OnDeviceStartingPlayerChoiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceStartingPlayerChoiceTests.swift; sourceTree = "<group>"; };
@@ -780,7 +782,6 @@
 		C2FABE59463A648F8AA7287D /* BrandUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandUI.swift; sourceTree = "<group>"; };
 		C358DDEAF223DDACA7E05097 /* GameAudioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameAudioTests.swift; sourceTree = "<group>"; };
 		C44CBE8A50D05944BA9E2ED5 /* RankBadgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankBadgeView.swift; sourceTree = "<group>"; };
-		A7C1E5D24B9F03A1D6E2F410 /* AwardViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AwardViews.swift; sourceTree = "<group>"; };
 		C485AA82423C4526EAA7114F /* StartingRollTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartingRollTableView.swift; sourceTree = "<group>"; };
 		C48BE8F02216AE61A7F982CD /* DeckStudioPlaySelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioPlaySelection.swift; sourceTree = "<group>"; };
 		C4BBB00054743C8266F5341E /* Build19LogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Build19LogicTests.swift; sourceTree = "<group>"; };
@@ -863,6 +864,7 @@
 		F58ACFE60AAFC2451274921B /* creature-wizard-1.m4a */ = {isa = PBXFileReference; path = "creature-wizard-1.m4a"; sourceTree = "<group>"; };
 		F675833239E93937C36ABD7C /* BattlefieldAdaptiveSizingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BattlefieldAdaptiveSizingTests.swift; sourceTree = "<group>"; };
 		F820BC26CBDF3740830EFC95 /* RankLadder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankLadder.swift; sourceTree = "<group>"; };
+		F839A6F55284552D59CECB83 /* Award.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Award.swift; sourceTree = "<group>"; };
 		F9AD099BE0D0997A027D58EE /* response-alert.m4a */ = {isa = PBXFileReference; path = "response-alert.m4a"; sourceTree = "<group>"; };
 		F9C1C8BA1FBA059403F52107 /* ai-decks.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "ai-decks.json"; sourceTree = "<group>"; };
 		F9C7F1985BCD3636167CFE7F /* OnDeviceDeckResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceDeckResolver.swift; sourceTree = "<group>"; };
@@ -1349,6 +1351,8 @@
 			children = (
 				E9613A6EF338027A5A1EAF77 /* AccountSignInCard.swift */,
 				3572CF391B01366995DFCEF2 /* AIDeckPool.swift */,
+				F839A6F55284552D59CECB83 /* Award.swift */,
+				AED2804F4BCF3E56F1CDC014 /* AwardViews.swift */,
 				12F457964FEFD80DA6348A99 /* CommanderBrackets.swift */,
 				4A8AB3E92C8E6BBBE67EFE6A /* FriendChallenges.swift */,
 				ADA635ADA555D5641F3EEA92 /* FriendChallengeViews.swift */,
@@ -1363,7 +1367,6 @@
 				FE964032473EE8439A0DB89F /* ProfileVisuals.swift */,
 				816467D39B7879657F44ADEC /* PublicProfileView.swift */,
 				C44CBE8A50D05944BA9E2ED5 /* RankBadgeView.swift */,
-				A7C1E5D24B9F03A1D6E2F410 /* AwardViews.swift */,
 				69D0CC72F335BF135375487C /* RankCeremonyView.swift */,
 				24B313DBA0FBE71B848BA598 /* RankedHallViews.swift */,
 				23C22985C4B2F42475E6F272 /* RankedQueue.swift */,
@@ -1820,6 +1823,8 @@
 				1069F3D1BAA49962B4419335 /* ArenaPanels.swift in Sources */,
 				53CE06D4214B551148D128BA /* ArenaPlayPanel.swift in Sources */,
 				58858BA2BD88347EEF714C81 /* ArenaVoiceViews.swift in Sources */,
+				37A5150379B8D713CCB4B277 /* Award.swift in Sources */,
+				34242D351E0EB836CD2C6FC8 /* AwardViews.swift in Sources */,
 				CA5EFC25898ACFEDEA8D650C /* BattlefieldAdaptiveSizing.swift in Sources */,
 				287E5F55CA27719D6983FF70 /* BattlefieldRow.swift in Sources */,
 				D2B46EEE34E03522188A8F54 /* BattlefieldViewportMetrics.swift in Sources */,
@@ -1984,7 +1989,6 @@
 				F85438C40C05270AA997FC8A /* PromptCommandBuilder.swift in Sources */,
 				81ECA8FA322072BB981F7170 /* PublicProfileView.swift in Sources */,
 				202CD75310AC9A1AC383C44C /* RankBadgeView.swift in Sources */,
-				B8D2F6E35CA014B2E7F30521 /* AwardViews.swift in Sources */,
 				23F08D3028443E6C6DD8E4CF /* RankCeremonyView.swift in Sources */,
 				C2690FFE91E816974951A924 /* RankLadder.swift in Sources */,
 				EB581076FE4FF192F0B8571D /* RankedHallViews.swift in Sources */,
