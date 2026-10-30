@@ -337,6 +337,15 @@ type AnswerKind = "primary" | "secondary" | "cool" | "danger";
 export const questionAnswerKind = (label: string): AnswerKind =>
   ["no", "cancel", "decline", "mulligan"].includes(label.trim().toLowerCase()) ? "cool" : "primary";
 
+/**
+ * An answer as the question stage's pill says it: no "(source: Force of Negation [c1f])", and a cast's cost in its own
+ * words, since the headline already asks about alternative costs. Display only: the answer sent stays the choice's id.
+ */
+export const answerLabel = (label: string) =>
+  clean(EngineDisplayText.label(label)).replace(/\s*\(source: [^)]*\)$/i, "")
+    .replace(/^cast with no alternative cost:\s*(?=\{)/i, "Pay ")
+    .replace(/^cast with alternative cost:\s*(.)/i, (_, first: string) => first.toUpperCase());
+
 /** "Don't ask again" on the Arena board (RememberChoiceToggle): a gold diamond and light words, no system check box. */
 function RememberToggle({ on, set, title }: { on: boolean; set: (on: boolean) => void; title: string }) {
   return (
@@ -384,7 +393,7 @@ function QuestionStage({ snapshot, envelope, send, sendAction, pending, height, 
             </>
           ) : (envelope.choices ?? []).map((choice) => (
             <button key={choice.id} type="button" className={`aplaque ${questionAnswerKind(EngineDisplayText.label(choice.label))}`} disabled={pending}
-              onClick={() => send({ type: "resolve_choice", choiceIds: [choice.id] }, choice.label)}><RulesText text={EngineDisplayText.label(choice.label)} /></button>
+              onClick={() => send({ type: "resolve_choice", choiceIds: [choice.id] }, choice.label)}><span><RulesText text={answerLabel(choice.label)} /></span></button>
           ))}
           {plaques(promptAnswers(snapshot, "answer_yes_no", "resolve_choice"), sendAction, pending, questionAnswerKind)}
         </div>

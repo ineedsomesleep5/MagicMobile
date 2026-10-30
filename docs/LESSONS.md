@@ -1102,3 +1102,8 @@ contradicting one.
   Deck Power now counts games against people too (`docs/cloud/ranked-results/`, anonymised): the export goes stale, so
   rerun the SQL in docs/DECK_POWER.md "Power v3" and `deck_power.py rate --write` before trusting a new rating. Where:
   supabase/migrations/20261029220000_ranked_diamond_retune.sql, scripts/ranked/deck_power.py.
+
+- 2026-10-30 (Claude, web question stage and log): `.aplaque` is `display: grid`, so a label of text plus `RulesText`
+  symbols needs one wrapping `<span>`, or each piece becomes its own row (mana symbols stacked down a pill). Question
+  pills now wrap; other pills keep `nowrap`. `EngineDisplayText.text` trims, so running a log span through `RulesText`
+  ate the spaces between spans ("CalebFplaysPlains"): `LogText` puts the edge spaces back.

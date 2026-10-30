@@ -5,7 +5,7 @@ import type { GameSnapshot } from "../src/core/models";
 import { startingPlayerHeading } from "../src/core/models";
 import { OnDeviceStartingRoll, rollPlates } from "../src/core/startingRoll";
 import {
-  affordableX, amountValues, browserKind, choiceOptions, clampAmount, colorSymbol, headline, lethalDamage, questionAnswerKind, splitName, stepAmount,
+  affordableX, amountValues, answerLabel, browserKind, choiceOptions, clampAmount, colorSymbol, headline, lethalDamage, questionAnswerKind, splitName, stepAmount,
 } from "../src/ui/arena/Browsers";
 
 const prompt = (extra: Partial<PromptEnvelopeV2>): PromptEnvelopeV2 =>
@@ -65,6 +65,12 @@ describe("arena question headline", () => {
   it("keeps one long sentence whole as the title", () => {
     const long = "Do you want to pay the additional cost to put a +1/+1 counter on each creature you control until end of turn";
     expect(headline(long, "Cathars' Crusade", false)).toEqual({ title: long });
+  });
+  it("words a cast's cost choices for the pills, without the source or its id", () => {
+    expect(answerLabel("Cast with alternative cost: Exile a blue card from your hand (source: Force of Negation [c1f])")).toBe("Exile a blue card from your hand");
+    expect(answerLabel("Cast with no alternative cost: {1}{U}{U}")).toBe("Pay {1}{U}{U}");
+    expect(answerLabel("Cast with no alternative cost: nothing")).toBe("Cast with no alternative cost: nothing");
+    expect(answerLabel("Yes")).toBe("Yes");
   });
   it("declines in Arena's blue and takes everything else in orange", () => {
     expect(["No", "Cancel", "decline", " Mulligan "].map(questionAnswerKind)).toEqual(["cool", "cool", "cool", "cool"]);
