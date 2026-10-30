@@ -209,6 +209,21 @@
    }
   },
   {
+   "id": "ai-kinnan-bonder-prodigy-upgraded",
+   "bracket": 3,
+   "power": 7.7,
+   "powerRange": [
+    2.4,
+    10.0
+   ],
+   "formulaPower": 7.22,
+   "games": 0,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
    "id": "ai-gishath-suns-avatar-core",
    "bracket": 2,
    "power": 7.5,
@@ -221,6 +236,21 @@
    "humanRecord": {
     "aiWins": 2,
     "aiLosses": 6
+   }
+  },
+  {
+   "id": "ai-kinnan-bonder-prodigy-optimized",
+   "bracket": 4,
+   "power": 7.4,
+   "powerRange": [
+    2.1,
+    10.0
+   ],
+   "formulaPower": 6.93,
+   "games": 0,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
    }
   },
   {
@@ -254,6 +284,36 @@
    }
   },
   {
+   "id": "ai-prosper-tome-bound-upgraded",
+   "bracket": 3,
+   "power": 7.0,
+   "powerRange": [
+    1.7,
+    10.0
+   ],
+   "formulaPower": 6.62,
+   "games": 0,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
+   "id": "ai-korvold-fae-cursed-king-optimized",
+   "bracket": 4,
+   "power": 7.0,
+   "powerRange": [
+    1.7,
+    10.0
+   ],
+   "formulaPower": 6.55,
+   "games": 0,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
    "id": "ai-old-gnawbone-core",
    "bracket": 2,
    "power": 6.9,
@@ -266,6 +326,51 @@
    "humanRecord": {
     "aiWins": 7,
     "aiLosses": 16
+   }
+  },
+  {
+   "id": "ai-teysa-karlov-core",
+   "bracket": 2,
+   "power": 6.8,
+   "powerRange": [
+    1.5,
+    10.0
+   ],
+   "formulaPower": 6.38,
+   "games": 0,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
+   "id": "ai-tergrid-god-of-fright-optimized",
+   "bracket": 4,
+   "power": 6.8,
+   "powerRange": [
+    1.5,
+    10.0
+   ],
+   "formulaPower": 6.37,
+   "games": 0,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
+   "id": "ai-isshin-two-heavens-as-one-core",
+   "bracket": 2,
+   "power": 6.7,
+   "powerRange": [
+    1.5,
+    10.0
+   ],
+   "formulaPower": 6.35,
+   "games": 0,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
    }
   },
   {
@@ -311,6 +416,21 @@
    "humanRecord": {
     "aiWins": 7,
     "aiLosses": 17
+   }
+  },
+  {
+   "id": "ai-atraxa-praetors-voice-upgraded",
+   "bracket": 3,
+   "power": 6.6,
+   "powerRange": [
+    1.3,
+    10.0
+   ],
+   "formulaPower": 6.22,
+   "games": 0,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
    }
   },
   {
@@ -374,6 +494,51 @@
    }
   },
   {
+   "id": "ai-sythis-harvests-hand-core",
+   "bracket": 2,
+   "power": 6.4,
+   "powerRange": [
+    1.1,
+    10.0
+   ],
+   "formulaPower": 6.06,
+   "games": 0,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
+   "id": "ai-rafiq-of-the-many-upgraded",
+   "bracket": 3,
+   "power": 6.3,
+   "powerRange": [
+    1.0,
+    10.0
+   ],
+   "formulaPower": 5.95,
+   "games": 0,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
+   "id": "ai-omnath-locus-of-creation-optimized",
+   "bracket": 4,
+   "power": 6.2,
+   "powerRange": [
+    1.0,
+    10.0
+   ],
+   "formulaPower": 5.84,
+   "games": 0,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
    "id": "ai-gishath-suns-avatar-optimized",
    "bracket": 4,
    "power": 6.1,
@@ -419,6 +584,21 @@
    }
   },
   {
+   "id": "ai-lord-windgrace-core",
+   "bracket": 2,
+   "power": 6.1,
+   "powerRange": [
+    1.0,
+    10.0
+   ],
+   "formulaPower": 5.78,
+   "games": 0,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
    "id": "ai-winota-joiner-of-forces-optimized",
    "bracket": 4,
    "power": 6.0,
@@ -428,6 +608,36 @@
    ],
    "formulaPower": 6.79,
    "games": 48,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
+   "id": "ai-muldrotha-the-gravetide-upgraded",
+   "bracket": 3,
+   "power": 5.9,
+   "powerRange": [
+    1.0,
+    10.0
+   ],
+   "formulaPower": 5.58,
+   "games": 0,
+   "humanRecord": {
+    "aiWins": 0,
+    "aiLosses": 0
+   }
+  },
+  {
+   "id": "ai-arcades-the-strategist-core",
+   "bracket": 2,
+   "power": 5.8,
+   "powerRange": [
+    1.0,
+    10.0
+   ],
+   "formulaPower": 5.47,
+   "games": 0,
    "humanRecord": {
     "aiWins": 0,
     "aiLosses": 0

@@ -198,6 +198,12 @@ contradicting one.
   whether answers are still owed (then wait 30 s, not 5), and an unchanged prompt gets 2 s before the plan stops; real
   rejections still stop it through the command failure. Never change layout or posture under a live gesture.
   Where: `ArenaBoardModel` handPosture (all three), `CardChoicePlan`, the boards' card-choice drivers.
+- 2026-10-29 (Claude, AI decks): `build_ai_decks.py` rebuilt every deck from EDHREC on each run, and EDHREC's average
+  decks drift, so adding commanders would have silently changed the measured decks; and a bracket combo that includes
+  the commander (Kinnan + Basalt Monolith) made it try to swap out the commander forever. **Rule:** the builder now
+  keeps every deck already in `ai-decks.json` (`--rebuild` to redo them) and swaps a combo's other card. Pick AI
+  commanders whose plan works with one opponent (Caleb: Y'shtola is good, but not 1v1).
+  Where: `scripts/ranked/build_ai_decks.py`, `docs/cloud/power-high-decks.md`.
 - 2026-10-24 (Claude, deck Power): C3's precon round robin is not the only deck-strength data. Every calibration CSV
   in `docs/cloud/c3-results` and `c4-results` schedules both deck assignments per pair, so together they are 2,986
   skill-balanced games on the eleven Core decks, and they reorder the precons: Draconic Destruction wins 62% against

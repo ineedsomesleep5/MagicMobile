@@ -149,7 +149,7 @@ class RankedParityTest {
     }
 
     @Test fun aiDecksAreHundredsAtTheirBrackets() {
-        assertEquals(43, bracketDecks.size)
+        assertEquals(57, bracketDecks.size)
         val basics = setOf("Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes")
         for (deck in bracketDecks) {
             assertEquals(deck.id, 100, deck.deck.entries.sumOf { it.quantity })
