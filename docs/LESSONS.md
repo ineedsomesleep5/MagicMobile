@@ -204,6 +204,12 @@ contradicting one.
   keeps every deck already in `ai-decks.json` (`--rebuild` to redo them) and swaps a combo's other card. Pick AI
   commanders whose plan works with one opponent (Caleb: Y'shtola is good, but not 1v1).
   Where: `scripts/ranked/build_ai_decks.py`, `docs/cloud/power-high-decks.md`.
+- 2026-10-30 (Claude, deck review): `deck_power.py ladder` shows the ladder bands in `deck-power-weights.json`, not what
+  players get. Live Ranked takes its target from `ranked_ai_tuning`, and the picker skips the player's last 4 decks
+  before taking the nearest 3, so a tier rotates through about 7 to 14 decks, not 3 per division. **Rule:** judge a
+  tier's variety from the live bands with the recent window applied. Also, engine-heavy commanders (Korvold,
+  Muldrotha, Kinnan Optimized) rate far below their formula because the AI cannot pilot them.
+  Where: docs/cloud/reports/power-5.md, `AIDeckPool.pick`.
 - 2026-10-30 (Claude, power 5): the cloud session's background commands stop at 2 hours, so a 1,008-game calibration
   batch (about 3.2 h on 4 workers) was cut off at 619 games. Rerunning the same `ai_calibration.py run` command
   resumed it and replayed the interrupted game. A game that stops in the engine again on replay stays in the CSV as

@@ -153,3 +153,20 @@ its target.
   stalls and the engine-stopped game 269 were not investigated.
 - No native, iOS, Android or phone runs: JVM engine on the cloud CPU only, AI against AI, not against a person.
   Searches stop on a clock, so a rerun agrees statistically, not move for move.
+
+## Addendum: what live Ranked brings (review, 2026-10-30)
+
+The pool tables above use the ladder bands in `deck-power-weights.json`. Live Ranked takes its target from
+`ranked_ai_tuning` (Platinum 6.75–7.75, Diamond 8–9, Mythic 8.75–9.75), and the picker drops a player's last 4 decks
+before it takes the nearest 3. Simulated over 4,000 games per division with those rules (decks seen in at least 1% of
+games; no commander of the player's own excluded):
+
+| Tier | Now: decks (commanders) | With these ratings: decks (commanders) | New decks that reach it |
+|---|---|---|---|
+| Platinum | 13 (10) | 14 (11) | Isshin, Sythis, Kinnan Upgraded |
+| Diamond | 12 (8) | 14 (11) | Kinnan Upgraded, Sythis, Tergrid |
+| Mythic | 7 (6) | 7 (6) | Tergrid (replaces Lathliss) |
+
+So "Mythic gains nothing" holds only for the ladder bands. Teysa, Korvold, Muldrotha, Rafiq, Arcades, Windgrace and
+Prosper rate too low for these tiers and land in Bronze to Gold, which still adds variety there. Each new deck's Power
+rests on 72 games, so its range stays wide; games against people will move them.
