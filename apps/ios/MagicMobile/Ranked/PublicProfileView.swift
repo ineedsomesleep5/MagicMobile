@@ -126,6 +126,12 @@ struct PublicProfileView: View {
         } else {
             actions(profile)
         }
+        if !profile.awards.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                ProfileSectionTitle(text: String(localized: "Awards"))
+                AwardShelf(awards: profile.awards, size: 56)
+            }.modifier(TavernLeatherCard()).accessibilityIdentifier("publicProfile.awards")
+        }
         rankCard(profile)
         recordCard(profile)
         weeksCard(profile)

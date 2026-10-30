@@ -1132,3 +1132,14 @@ contradicting one.
   symbols needs one wrapping `<span>`, or each piece becomes its own row (mana symbols stacked down a pill). Question
   pills now wrap; other pills keep `nowrap`. `EngineDisplayText.text` trims, so running a log span through `RulesText`
   ate the spaces between spans ("CalebFplaysPlains"): `LogText` puts the edge spaces back.
+
+## Awards (2026-10-30)
+
+- A server-driven feature's app side has to carry everything it will ever need: art by URL with a drawn fallback, tint, rarity and the ceremony all shipped at once, so later awards are rows. The rules are data too, but a new rule `kind` still needs a migration.
+- `ranked_profiles.title` is written by every app's publish, so a server title can't simply be set. A `before` trigger (`mm_awards_title`) wins over what the app sends, which also put it on leaderboards and old apps with no client change.
+- Award rules run in a trigger on `ranked_standings`. It catches every error, so a bad rule row can't stop a ranked result; the dry run proved it with a broken rule.
+- Dry-run a migration on the live database with an explicit `begin`, no commit, and a final `raise exception` carrying the results as JSON. Check afterwards that nothing stayed.
+- `codex exec -i file "prompt"` treats the prompt as a second image and stops with "No prompt provided". Put `-i` after the prompt.
+- The Board type-check gate fails at 200 ms, and a line can sit on that limit with no change in its file (NativeGameView's preview `.task`, 200-221 ms). Don't shorten a closure in a modifier chain to one line: a multi-statement closure is solved on its own, a one-line closure is solved with the whole chain, and that took the gate from 220 ms to 8 s. Keep the closure's statements and move the slow line into a method.
+- One Swift file can be type-checked in about 20 seconds with no build: `swiftc -frontend -typecheck -primary-file <file>` plus every other source, `-warn-long-expression-type-checking=200`, a `-plugin-path` for the SwiftUI macros (`Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins`), `-I` to a stub `AgoraRtcKit` module and to `MagicMobileOnDevice` emitted with a module map for `CMagicEngine`. It catches compile errors. Its timings come from the Mac's Xcode, which can differ from CI's: 27.2 here and 27.0 there disagreed about which line was slow.
+- A screenshot from the browser pane can catch a CSS animation mid-way because the page is throttled. Check `getAnimations()` before calling a dim result a bug.

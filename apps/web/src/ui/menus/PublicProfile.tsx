@@ -10,6 +10,7 @@
  * Left out for now: the Challenge button (friend challenges need hosting from the browser; a later phase).
  */
 import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { AwardShelf } from "./AwardViews";
 import { type PlayerAccount, PlayerFriend, ProfileVisibility, type PublicProfile as Profile, PublicProfile as ProfileRules } from "../../core/account";
 import { colorName } from "../../core/playerRecord";
 import { percent, ProfileGame, type ProfileRankPoint, type ProfileShare, ProfileSummary, type ProfileWeek, rankChartRange } from "../../core/profileSummary";
@@ -164,6 +165,7 @@ export function PublicProfile({ account, username, onClose, message, join }: {
           {ProfileRules.isSelf(profile)
             ? <SocialEmpty glyph="sparkles" id="publicProfile.selfNote" text={`This is how other players see your profile. It is ${ProfileVisibility.title(profile.visibility).toLowerCase()}.`} />
             : actions(profile)}
+          {profile.awards.length > 0 && <Card id="publicProfile.awards"><SectionTitle text="Awards" /><AwardShelf awards={profile.awards} size={56} /></Card>}
           <RankCard profile={profile} />
           <RecordCard profile={profile} />
           <Card>

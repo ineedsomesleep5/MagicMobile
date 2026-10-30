@@ -493,6 +493,7 @@ struct OnDeviceRootView: View {
             do { try await Task.sleep(for: .seconds(GameResumeText.noticeSeconds)) } catch { return }
             setup.multiplayer?.tableNotice = nil
         }
+        .modifier(AwardCeremonyHost(account: account, busy: activeGame || showSetup || lobby != nil || ceremony != nil))
         .environment(\.nativeTurnControl, turnControl)
         .arenaPanel(isPresented: $showDiagnostics, fitsContent: true) { diagnosticSheet }
         .background {

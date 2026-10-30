@@ -1620,6 +1620,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                     }
                 }
                 ceremony?.let { change -> io.magicmobile.android.ranked.RankCeremonyOverlay(change) { ceremony = null } }
+                io.magicmobile.android.ranked.AwardCeremonyHost(vm.account, accountReady, !menuIsFree || lobby != null || ceremony != null)
 
                 // The versus intro plays first, over the opaque starting roll that follows it.
                 if (activeGame) versusIntro?.let { (you, opponents) ->

@@ -216,6 +216,8 @@ export interface PublicProfile {
   games: ProfileGame[];
   /** Finished seasons at their peak, newest first (mm_public_profile `seasons`). */
   seasons: SeasonBadge[];
+  /** Best first (mm_public_profile `awards`). */
+  awards: Award[];
 }
 
 export const PublicProfile = {
@@ -232,7 +234,7 @@ export const PublicProfile = {
     const visibility = ProfileVisibility.parse(root.visibility) ?? "public";
     const relation = str(root.relation) ?? "none";
     if (root.restricted === true) {
-      return { username, restricted: true, visibility, relation, summary: ProfileSummary.fromGames([], now), games: [], seasons: [] };
+      return { username, restricted: true, visibility, relation, summary: ProfileSummary.fromGames([], now), games: [], seasons: [], awards: [] };
     }
     let rank: PublicProfileRank | undefined;
     const r = root.rank;
@@ -287,9 +289,49 @@ export const PublicProfile = {
     return {
       username, restricted: false, visibility, relation,
       ...(online !== undefined ? { online } : {}), ...(title !== undefined ? { title } : {}),
-      ...(favoriteCommander !== undefined ? { favoriteCommander } : {}), ...(rank ? { rank } : {}), summary, games, seasons,
+      ...(favoriteCommander !== undefined ? { favoriteCommander } : {}), ...(rank ? { rank } : {}), summary, games, seasons, awards: Award.parse(root.awards),
     };
   },
+} as const;
+
+/**
+ * An award on a profile (mm_my_awards, mm_public_profile `awards`; Caleb, 2026-10-30): a medal that lives on the server,
+ * art included, so a new one needs no deploy (docs/SERVER_CONTROLS.md). iOS's AwardViews.swift and Android's Award match it.
+ */
+export interface Award {
+  id: string;
+  name: string;
+  detail: string;
+  /** The medal's art; without it, or if it can't load, a star medal in `tint`. */
+  imageUrl?: string;
+  /** "#RRGGBB". */
+  tint: string;
+  /** 1 plain, 2 a soft glow, 3 a strong glow and a gold ring. */
+  rarity: number;
+  note?: string;
+  awardedAt?: number;
+  /** False until the player's app has shown it, which it does with a ceremony. */
+  seen: boolean;
+}
+
+export const Award = {
+  gold: "#FFCC5C",
+  /** The rows from the server; one without an id or a name is skipped. */
+  parse(value: J | undefined): Award[] {
+    return (arr(value) ?? []).filter(isObject).flatMap((row): Award[] => {
+      const id = str(row.id), name = str(row.name);
+      if (!id || !name) return [];
+      const imageUrl = str(row.imageUrl), tint = str(row.tint), note = str(row.note), at = Date.parse(str(row.awardedAt) ?? "");
+      return [{
+        id, name, detail: str(row.description) ?? "", tint: tint && /^#[0-9a-f]{6}$/i.test(tint) ? tint : Award.gold,
+        rarity: Math.min(Math.max(num(row.rarity) ?? 1, 1), 3), seen: bool(row.seen) ?? true,
+        ...(imageUrl?.startsWith("https://") ? { imageUrl } : {}), ...(note ? { note } : {}), ...(Number.isNaN(at) ? {} : { awardedAt: at }),
+      }];
+    });
+  },
+  /** The award's note and the day it was earned. */
+  caption: (award: Award) => [award.note, award.awardedAt === undefined ? undefined
+    : new Date(award.awardedAt).toLocaleDateString(undefined, { dateStyle: "medium" })].filter(Boolean).join(" · "),
 } as const;
 
 /** What opening another player's profile came to. */
@@ -746,6 +788,8 @@ export interface AccountState {
   phase: AccountPhase;
   username?: string;
   friends: PlayerFriend[];
+  /** This player's awards, best first (mm_my_awards). */
+  awards: Award[];
   blocked: string[];
   /** Friends' ranked standings by username (mm_friend_ranks), for their badges. */
   friendRanks: Record<string, RankPosition>;
@@ -771,7 +815,7 @@ export interface AccountState {
 }
 
 const initialState = (): AccountState => ({
-  phase: "idle", friends: [], blocked: [], friendRanks: {}, visibility: "public", visibilityKnown: false, searchAvailable: true,
+  phase: "idle", friends: [], awards: [], blocked: [], friendRanks: {}, visibility: "public", visibilityKnown: false, searchAvailable: true,
   profilesAvailable: true, unreadMessages: 0, messagesAvailable: true, linkedIdentities: [], isSigningIn: false, incomingCount: 0,
   onlineFriendCount: 0,
 });
@@ -909,7 +953,7 @@ export class PlayerAccount {
   async signOut(): Promise<void> {
     this.api.forgetSession();
     this.set({
-      username: undefined, friends: [], blocked: [], friendRanks: {}, linkedIdentities: [], unreadMessages: 0, visibility: "public",
+      username: undefined, friends: [], awards: [], blocked: [], friendRanks: {}, linkedIdentities: [], unreadMessages: 0, visibility: "public",
       visibilityKnown: false, phase: "idle",
     });
     await this.start();
@@ -1178,6 +1222,18 @@ export class PlayerAccount {
     try { appConfig.store(await this.api.rpc("mm_app_config", { p_platform: "web", p_build: 0 })); } catch { /* the last copy stays */ }
   }
 
+  /** Quiet about a server without awards: the profile just shows none. */
+  async refreshAwards(): Promise<void> {
+    if (this.state.phase !== "ready") return;
+    try { this.set({ awards: Award.parse(await this.api.rpc("mm_my_awards")) }); } catch { /* keeps what it had */ }
+  }
+
+  /** Its ceremony has played, here and on the player's other devices. */
+  markAwardSeen(award: Award): void {
+    this.set({ awards: this.state.awards.map((a) => (a.id === award.id ? { ...a, seen: true } : a)) });
+    void this.api.rpc("mm_awards_seen", { p_ids: [award.id] }).catch(() => undefined);
+  }
+
   /** A voice chat token for one seat of one game (the agora-token function; VoiceRoom). */
   async voiceToken(channel: string, account: string): Promise<{ appId: string; token: string }> {
     const reply = await this.api.invoke("agora-token", { channel, account });
@@ -1241,7 +1297,7 @@ export class PlayerAccount {
     try {
       await this.api.rpc("mm_delete_account");
       this.api.forgetSession();
-      this.set({ username: undefined, friends: [], blocked: [], hosting: undefined, phase: "idle" });
+      this.set({ username: undefined, friends: [], awards: [], blocked: [], hosting: undefined, phase: "idle" });
       return true;
     } catch (error) {
       this.fail(error);

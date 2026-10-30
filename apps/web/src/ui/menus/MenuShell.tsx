@@ -32,6 +32,7 @@ import { gameAudio } from "../audio";
 import { GameScreen } from "../GameScreen";
 import { storage } from "../storage";
 import { AccountSignInCard, PrivacyCard } from "./AccountCards";
+import { AwardCeremony } from "./AwardViews";
 import { NameGate } from "./NameGate";
 import { account, challenges, completeGoogleSignIn, connectRecord, rankedQueue, useAccount, useWatched } from "./accountSession";
 import type { VoiceTokenSource } from "../../table/voiceRoom";
@@ -170,7 +171,8 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   }, [cardArtSync, syncCardArt]);
   const accountReady = player.state.phase === "ready";
   // The server's settings for the web (appConfig): the menu's notice, name fixes, feature switches.
-  useEffect(() => { if (accountReady) void player.refreshAppConfig(); }, [accountReady, player]);
+  useEffect(() => { if (accountReady) { void player.refreshAppConfig(); void player.refreshAwards(); } }, [accountReady, player]);
+  const newAward = player.state.awards.find((award) => !award.seen);
   const appNotice = useSyncExternalStore(appConfig.subscribe, () => appConfig.shownNotice());
   useEffect(() => {
     if (!accountReady) return;
@@ -738,6 +740,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
     <div className="mroot" style={{ zoom }}>
       <MetalDefs />
       <NameGate />
+      {newAward && <AwardCeremony key={newAward.id} award={newAward} isNew onClose={() => player.markAwardSeen(newAward)} />}
       <RoomBackdrop dim={studio ? 0.72 : playPanel ? 0 : page === "home" ? (covered ? 0.55 : 0) : page === "decks" ? 0.72 : 0.55} still={covered || playPanel} />
       <div className="mpage" style={{ opacity: playPanel || studio ? 0 : 1 }}>
         {page === "custom" && (
@@ -757,7 +760,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
           leaderboard={() => setLeaderboard(true)} profile={() => selectTab("profile")} />}
         {page === "ranked" && leaderboard && <Leaderboard account={player} onBack={() => setLeaderboard(false)}
           openProfile={(username) => setSocial({ kind: "profile", username })} />}
-        {page === "profile" && <ProfilePage record={record} remote={remoteGames} playerName={player.state.username ?? (name.trim() || "Player")}
+        {page === "profile" && <ProfilePage awards={player.state.awards} record={record} remote={remoteGames} playerName={player.state.username ?? (name.trim() || "Player")}
           deckCommanders={pool.all.map((d) => d.commander)} onChange={() => { setRecordVersion((v) => v + 1); server.publish(); }}
           account={<><AccountSignInCard /><PrivacyCard /></>} />}
       </div>

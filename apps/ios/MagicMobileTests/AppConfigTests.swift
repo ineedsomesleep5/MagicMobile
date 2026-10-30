@@ -50,4 +50,23 @@ final class AppConfigTests: XCTestCase {
         XCTAssertEqual(resolver.canonicalCardName("Bolt of Lightning (Archidekt)"), "Lightning Bolt")
         XCTAssertNil(resolver.canonicalCardName("Nothing Here"))
     }
+
+    func testAwardsParseWhatTheServerSends() {
+        let rows: [[String: Any]] = [
+            ["id": "first-mythic", "name": "First to Mythic", "description": "The first.", "imageUrl": "https://example.com/a.png",
+             "tint": "#FF7338", "rarity": 3, "note": "Season 1", "awardedAt": "2026-10-30T17:55:30.075436+00:00", "seen": false],
+            ["id": "plain", "name": "Plain", "imageUrl": "http://example.com/a.png", "tint": "orange", "rarity": 9],
+            ["id": "", "name": "No id"], ["id": "no-name"],
+        ]
+        let awards = Award.parse(rows)
+        XCTAssertEqual(awards.map(\.id), ["first-mythic", "plain"])
+        XCTAssertEqual(awards[0].imageURL?.absoluteString, "https://example.com/a.png")
+        XCTAssertEqual(awards[0].rarity, 3)
+        XCTAssertFalse(awards[0].seen)
+        XCTAssertNotNil(awards[0].awardedAt)
+        XCTAssertNil(awards[1].imageURL, "art only over https")
+        XCTAssertEqual(awards[1].tint, Award.gold)
+        XCTAssertEqual(awards[1].rarity, 3)
+        XCTAssertTrue(awards[1].seen, "a profile's awards carry no seen flag")
+    }
 }

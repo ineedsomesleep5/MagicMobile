@@ -306,6 +306,8 @@ struct PublicProfile: Equatable, Sendable {
     var games: [ProfileGame]
     /// Finished seasons at their peak, newest first (mm_public_profile `seasons`).
     var seasons: [SeasonBadge] = []
+    /// Best first (mm_public_profile `awards`).
+    var awards: [Award] = []
 
     var isSelf: Bool { relation == "self" }
     var isFriend: Bool { relation == "friend" }
@@ -371,7 +373,7 @@ struct PublicProfile: Equatable, Sendable {
         return PublicProfile(username: username, restricted: false, visibility: visibility, relation: relation,
                              online: root["online"] as? Bool, title: root["title"] as? String,
                              favoriteCommander: root["favoriteCommander"] as? String, rank: rank, summary: summary, games: games,
-                             seasons: seasons)
+                             seasons: seasons, awards: Award.parse(root["awards"] as? [[String: Any]] ?? []))
     }
 
     /// "2026-10-05" as Monday 00:00 UTC.

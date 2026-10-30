@@ -182,12 +182,48 @@ data class ProfileSummary(
     }
 }
 
+/**
+ * An award on a profile (mm_my_awards, mm_public_profile `awards`; Caleb, 2026-10-30): a medal that lives on the server,
+ * art included, so a new one needs no build (docs/SERVER_CONTROLS.md). AwardViews.swift's Award and the web's match it.
+ */
+data class Award(
+    val id: String, val name: String, val detail: String,
+    /** The medal's art; without it, or until it loads, a star medal in [tint]. */
+    val imageUrl: String?,
+    /** 0xRRGGBB. */
+    val tint: Int,
+    /** 1 plain, 2 a soft glow, 3 a strong glow and a gold ring. */
+    val rarity: Int, val note: String?, val awardedAt: Long?,
+    /** False until the player's app has shown it, which it does with a ceremony. */
+    val seen: Boolean = true,
+) {
+    companion object {
+        const val GOLD = 0xFFCC5C
+
+        /** The rows from the server; one without an id or a name is skipped. */
+        fun parse(rows: JsonElement?): List<Award> = (rows as? JsonArray).orEmpty().mapNotNull { row ->
+            val fields = row as? JsonObject ?: return@mapNotNull null
+            fun text(key: String) = (fields[key] as? JsonPrimitive)?.takeIf { it !is JsonNull && it.isString }?.contentOrNull
+            val id = text("id")?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            val name = text("name")?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            Award(id, name, text("description") ?: "", text("imageUrl")?.takeIf { it.startsWith("https://") }, color(text("tint")),
+                ((fields["rarity"] as? JsonPrimitive)?.intOrNull ?: 1).coerceIn(1, 3), text("note"), text("awardedAt")?.let(PublicProfile::timestamp),
+                (fields["seen"] as? JsonPrimitive)?.booleanOrNull ?: true)
+        }
+
+        /** "#RRGGBB"; anything else is gold. */
+        fun color(hex: String?): Int = hex?.takeIf { it.length == 7 && it[0] == '#' }?.drop(1)?.toIntOrNull(16) ?: GOLD
+    }
+}
+
 /** Another player's profile, as mm_public_profile returns it. */
 data class PublicProfile(
     val username: String, val restricted: Boolean, val visibility: ProfileVisibility, val relation: String, val online: Boolean?,
     val title: String?, val favoriteCommander: String?, val rank: Rank?, val summary: ProfileSummary, val games: List<ProfileGame>,
     /** Finished seasons at their peak, newest first (mm_public_profile `seasons`). */
     val seasons: List<SeasonBadge> = emptyList(),
+    /** Best first (mm_public_profile `awards`). */
+    val awards: List<Award> = emptyList(),
 ) {
     data class Rank(val season: String, val step: Int, val pips: Int, val peakStep: Int, val wins: Int, val losses: Int) {
         /** This season's place, or null when it is from an earlier season. */
@@ -244,7 +280,7 @@ data class PublicProfile(
                 if (season == null || peak == null) null else SeasonBadge(season, RankPosition.ofPoints(peak))
             }
             return PublicProfile(username, false, visibility, relation, root["online"].flag(), root["title"].text(), root["favoriteCommander"].text(),
-                rank, summary, games, seasons)
+                rank, summary, games, seasons, Award.parse(root["awards"]))
         }
 
         /** PostgREST timestamps: "2026-10-05T12:30:00+00:00", with or without fractions. */
