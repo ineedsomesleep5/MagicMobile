@@ -1340,7 +1340,11 @@ struct NativeGameView: View {
             }
             .onChange(of: isLogOpen) { _, open in GameAudio.shared.play(open ? .pageFlip : .uiClose) }
             #if DEBUG
-            .task(id: snapshot.source) { await openPreviewLog(source: snapshot.source) }
+            // Visual QA: MAGICMOBILE_PREVIEW_OPEN_LOG=<seconds> opens a design preview's log after that delay.
+            .task(id: snapshot.source) {
+                guard snapshot.source == "design-preview" else { return }
+                await openPreviewLog()
+            }
             #endif
             .onChange(of: isGameMenuOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
             .onChange(of: isLandscapeStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
@@ -1366,10 +1370,8 @@ struct NativeGameView: View {
     }
 
     #if DEBUG
-    /// Visual QA: MAGICMOBILE_PREVIEW_OPEN_LOG=<seconds> opens a design preview's log after that delay.
-    private func openPreviewLog(source: String?) async {
-        guard source == "design-preview",
-              let delay = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_OPEN_LOG"].flatMap(Double.init) else { return }
+    private func openPreviewLog() async {
+        guard let delay = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_OPEN_LOG"].flatMap(Double.init) else { return }
         try? await Task.sleep(for: .seconds(delay))
         isLogOpen = true
     }
