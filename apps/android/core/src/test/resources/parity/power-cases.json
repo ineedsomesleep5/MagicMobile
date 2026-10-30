@@ -1,6 +1,8 @@
 {
  "comment": "Deck Power picking (docs/DECK_POWER.md). AIDeckPool.pick(targetPower:) on iOS, Android and web: decks with a Power and a bracket at most maxBracket (none: any), never your commander while others remain, not a recent deck while others remain, then the `closest` decks nearest the target (ties by id), and `roll` picks among them (clamped). Ranked targets: a tier's band split in four divisions (IV low, I high); Mythic aims at the middle of its band. RankedParityTests.swift, RankedParityTest.kt and aiDeckPool.test.ts check this file.",
  "closest": 3,
+ "rankedClosest": [3, 3, 3, 3, 3, 5],
+ "closestByTier": [{"tier": 0, "expect": 3}, {"tier": 4, "expect": 3}, {"tier": 5, "expect": 5}, {"tier": 9, "expect": 3}],
  "rankedTiers": [[3, 4], [4, 5], [5, 6], [6, 7], [7, 8], [8, 9]],
  "decks": [
   {"id": "a1", "commander": "A", "bracket": 2, "power": 3.2},

@@ -18,4 +18,11 @@ class AppConfigTest {
         assertNull(AppConfig.parse("""{"notice": null, "nameFixes": {}, "switches": {}}""")!!.notice)
         assertNull(AppConfig.parse("[1, 2]"))
     }
+
+    @Test fun aDeckFileIsReadOnlyWhenComplete() {
+        val sha = "a".repeat(64)
+        val config = AppConfig.parse("""{"aiDecks": {"good": {"revision": 2, "url": "https://example.com/a.json", "sha256": "$sha"}, "http": {"revision": 2, "url": "http://example.com/a.json", "sha256": "$sha"}, "short": {"revision": 2, "url": "https://example.com/a.json", "sha256": "abc"}}}""")!!
+        assertEquals(setOf("good"), config.deckFiles.keys)
+        assertEquals(2, config.deckFiles["good"]?.revision)
+    }
 }

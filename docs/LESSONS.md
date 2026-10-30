@@ -204,6 +204,10 @@ contradicting one.
   keeps every deck already in `ai-decks.json` (`--rebuild` to redo them) and swaps a combo's other card. Pick AI
   commanders whose plan works with one opponent (Caleb: Y'shtola is good, but not 1v1).
   Where: `scripts/ranked/build_ai_decks.py`, `docs/cloud/power-high-decks.md`.
+- 2026-10-30 (Claude, deck updates): Android's `InputStream.readNBytes` needs API 33, and `runCatching` hides the
+  `NoSuchMethodError`, so a download on an older phone would fail silently. Use `readBytes` with a Content-Length check.
+  The AI deck file now updates from the server: a revision is only newer than the file the app shipped with, so a
+  later app build can't be downgraded by an old offer. Where: `AIDeckDownloads.kt`, docs/SERVER_CONTROLS.md.
 - 2026-10-30 (Claude, deck review): `deck_power.py ladder` shows the ladder bands in `deck-power-weights.json`, not what
   players get. Live Ranked takes its target from `ranked_ai_tuning`, and the picker skips the player's last 4 decks
   before taking the nearest 3, so a tier rotates through about 7 to 14 decks, not 3 per division. **Rule:** judge a

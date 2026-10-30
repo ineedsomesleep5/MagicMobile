@@ -472,13 +472,15 @@ def ship_power(rated: list[dict], config: dict):
     """The apps' copy: a `power` block in ai-decks.json (bundled on iOS, Android and web), read by AIDeckPool.
 
     Ranked aims each division at its tier's band (IV low, I high; Mythic the middle of its band) and allows the tier's
-    bracket or lower; Quick Match's levels set a Power and an AI skill. Every app picks among the `closest` decks."""
+    bracket or lower; Quick Match's levels set a Power and an AI skill. Every app picks among the `closest` decks, or
+    a tier's own number in `rankedClosest` (Mythic, which has the fewest decks near its target)."""
     path = RESOURCES / 'ai-decks.json'
     data = json.loads(path.read_text())
     lad = config['ladder']
     data['power'] = {
         'source': 'scripts/ranked/deck_power.py rate --write (docs/DECK_POWER.md)',
         'closest': lad['closest'],
+        'rankedClosest': [t.get('closest', lad['closest']) for t in lad['tiers']],
         'rankedTiers': [t['power'] for t in lad['tiers']],
         'quickMatch': {q['name'].lower(): {'power': sum(q['power']) / 2, 'skill': q['skill']} for q in lad['quickMatch']},
         'decks': {d['id']: d['power'] for d in sorted(rated, key=lambda d: d['id'])},
@@ -489,7 +491,6 @@ def ship_power(rated: list[dict], config: dict):
 
 def ladder(rated: list[dict], config: dict) -> str:
     """Which decks each Ranked division and Quick Match level would bring: the nearest few allowed decks to the target."""
-    few = config['ladder']['closest']
     lines = ['| Tier | Division | Target | Max bracket | Nearest allowed decks (Power) | Gap |', '|---|---|---|---|---|---|']
     for tier in config['ladder']['tiers']:
         low, high = tier['power']
@@ -497,7 +498,7 @@ def ladder(rated: list[dict], config: dict) -> str:
         for step, division in enumerate(divisions):
             target = low + (high - low) * (step + 0.5) / len(divisions)
             allowed = sorted((r for r in rated if r['bracket'] <= tier['maxBracket']), key=lambda r: abs(r['power'] - target))
-            near = allowed[:few]
+            near = allowed[:tier.get('closest', config['ladder']['closest'])]
             gap = abs(near[0]['power'] - target)
             lines.append(f"| {tier['name']} | {division} | {target:.2f} | {tier['maxBracket']} | " +
                          ', '.join(f"{r['id'].removeprefix('ai-')} {r['power']:.1f}" for r in near) +

@@ -605,7 +605,9 @@ final class PlayerAccount: ObservableObject {
     func refreshAppConfig() async {
         guard phase == .ready else { return }
         let build = Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") ?? 0
-        if let data = try? await api.rpc("mm_app_config", ["p_platform": "ios", "p_build": build]) { AppConfigStore.shared.store(data) }
+        guard let data = try? await api.rpc("mm_app_config", ["p_platform": "ios", "p_build": build]) else { return }
+        AppConfigStore.shared.store(data)
+        if let config = AppConfig.parse(data) { Task.detached(priority: .utility) { await AIDeckUpdates.refresh(config) } }
     }
 
     func recordGame(_ match: MatchRecord) async -> GameUploadResult {

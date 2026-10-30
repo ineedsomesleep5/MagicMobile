@@ -356,12 +356,15 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
         return appId to token
     }
 
-    suspend fun refreshAppConfig() {
-        if (phase != Phase.READY) return
-        runCatching {
+    /** The server's reply, or null when there was none. */
+    suspend fun refreshAppConfig(): io.magicmobile.android.game.AppConfig? {
+        if (phase != Phase.READY) return null
+        val reply = runCatching {
             api.rpc("mm_app_config", mapOf("p_platform" to JsonPrimitive("android"),
                 "p_build" to JsonPrimitive(io.magicmobile.android.BuildConfig.RELEASE_BUILD)))
-        }.getOrNull()?.let(io.magicmobile.android.ui.AppConfigStore::store)
+        }.getOrNull() ?: return null
+        io.magicmobile.android.ui.AppConfigStore.store(reply)
+        return io.magicmobile.android.game.AppConfig.parse(reply)
     }
 
     /** Sends one finished game. Never throws: the caller keeps what could not be sent and tries again later. */

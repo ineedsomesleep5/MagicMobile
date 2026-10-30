@@ -1640,8 +1640,10 @@ struct OnDeviceRootView: View {
         // The server's ticket can name the Power instead (ranked_ai_tuning), when the game starts.
         let recent = profileRecord.recentAIDecks
         let pickByPower = { (target: Double) -> AIDeck? in
-            AIDeckPool.power == nil ? nil : AIDeckPool.pick(targetPower: target, maxBracket: position.tier.maxDeckBracket,
-                                                            avoidingCommander: deck.commander?.cardName, recent: recent)
+            AIDeckPool.power.flatMap { power in
+                AIDeckPool.pick(targetPower: target, maxBracket: position.tier.maxDeckBracket, avoidingCommander: deck.commander?.cardName,
+                                recent: recent, closest: power.closest(tier: position.tier.rawValue))
+            }
         }
         let byPower = AIDeckPool.power.flatMap { power in
             pickByPower(AIDeckPool.rankedTarget(tier: position.tier.rawValue, division: position.division, tiers: power.rankedTiers))

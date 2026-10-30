@@ -39,6 +39,10 @@ final class RankedParityTests: XCTestCase {
             XCTAssertEqual(pick?.id, item["expect"] as? String, item["name"] as? String ?? "")
         }
         let tiers = try XCTUnwrap(cases["rankedTiers"] as? [[Double]])
+        let power = DeckPowerData(closest: closest, rankedClosest: cases["rankedClosest"] as? [Int], rankedTiers: tiers, quickMatch: [:], decks: [:])
+        for item in try XCTUnwrap(cases["closestByTier"] as? [[String: Any]]) {
+            XCTAssertEqual(power.closest(tier: try XCTUnwrap(item["tier"] as? Int)), item["expect"] as? Int, "\(item)")
+        }
         for item in try XCTUnwrap(cases["targets"] as? [[String: Any]]) {
             XCTAssertEqual(AIDeckPool.rankedTarget(tier: try XCTUnwrap(item["tier"] as? Int), division: try XCTUnwrap(item["division"] as? Int),
                                                    tiers: tiers), try XCTUnwrap(item["expect"] as? Double), accuracy: 1e-9, "\(item)")
@@ -454,5 +458,44 @@ final class FriendChallengeTests: XCTestCase {
         XCTAssertEqual(fake.declined, [Self.id])
         await coordinator.refreshIncoming()
         XCTAssertTrue(coordinator.incoming.isEmpty, "A declined challenge never comes back while the server catches up")
+    }
+
+    private func deckFile(revision: Int? = 2, catalogue: String = "c1", ids: [String] = ["ai-a", "ai-b"], cards: Int = 99, commanders: Int = 1,
+                          tiers: Int = 6) throws -> Data {
+        let entries: [[String: Any]] = (0..<commanders).map { ["name": "Commander \($0)", "quantity": 1, "section": "commander"] }
+            + [["name": "Swamp", "quantity": cards, "section": "deck"]]
+        let decks: [[String: Any]] = ids.map { ["id": $0, "name": $0, "subtitle": "", "colors": "B", "commander": "Commander 0", "bracket": 2, "entries": entries] }
+        var file: [String: Any] = ["schemaVersion": 1, "catalogueHash": catalogue, "decks": decks,
+                                   "power": ["closest": 3, "rankedTiers": Array(repeating: [1.0, 2.0], count: tiers), "decks": [String: Double](),
+                                             "quickMatch": ["easy": ["power": 3.0, "skill": 2], "medium": ["power": 5.0, "skill": 3], "hard": ["power": 7.0, "skill": 5]]] as [String: Any]]
+        if let revision { file["revision"] = revision }
+        return try JSONSerialization.data(withJSONObject: file)
+    }
+
+    /// A newer deck file is used only when it is whole and suits this app (RankedParityTest.kt).
+    func testANewerDeckFileMustBeWholeAndForThisCatalogue() throws {
+        let bundled = try deckFile(revision: 1)
+        XCTAssertTrue(AIDeckUpdates.isUsable(try deckFile(), bundled: bundled))
+        XCTAssertTrue(AIDeckUpdates.isUsable(try deckFile(ids: ["ai-a", "ai-b", "ai-c"]), bundled: bundled))
+        XCTAssertFalse(AIDeckUpdates.isUsable(try deckFile(revision: 1), bundled: bundled), "not newer")
+        XCTAssertFalse(AIDeckUpdates.isUsable(try deckFile(revision: nil), bundled: bundled), "no revision")
+        XCTAssertFalse(AIDeckUpdates.isUsable(try deckFile(catalogue: "c2"), bundled: bundled), "another catalogue")
+        XCTAssertFalse(AIDeckUpdates.isUsable(try deckFile(ids: ["ai-a"]), bundled: bundled), "lost a deck")
+        XCTAssertFalse(AIDeckUpdates.isUsable(try deckFile(ids: ["ai-a", "ai-b", "ai-a"]), bundled: bundled), "repeated deck")
+        XCTAssertFalse(AIDeckUpdates.isUsable(try deckFile(ids: ["ai-a", "ai-b", "x"]), bundled: bundled), "not an AI deck ID")
+        XCTAssertFalse(AIDeckUpdates.isUsable(try deckFile(cards: 98), bundled: bundled), "99 cards")
+        XCTAssertFalse(AIDeckUpdates.isUsable(try deckFile(commanders: 0), bundled: bundled), "no commander")
+        XCTAssertFalse(AIDeckUpdates.isUsable(try deckFile(tiers: 5), bundled: bundled), "tiers missing")
+        XCTAssertFalse(AIDeckUpdates.isUsable(Data("{}".utf8), bundled: bundled), "not a deck file")
+    }
+
+    func testTheServerDecidesWhichDeckFileIsKept() throws {
+        let offered = AppConfig.DeckFile(revision: 3, url: try XCTUnwrap(URL(string: "https://example.com/a.json")), sha256: "")
+        XCTAssertEqual(AIDeckUpdates.step(for: offered, installedRevision: nil, bundledRevision: 1), .download(offered))
+        XCTAssertEqual(AIDeckUpdates.step(for: offered, installedRevision: 2, bundledRevision: 1), .download(offered))
+        XCTAssertEqual(AIDeckUpdates.step(for: offered, installedRevision: 3, bundledRevision: 1), .keep)
+        XCTAssertEqual(AIDeckUpdates.step(for: offered, installedRevision: 2, bundledRevision: 3), .remove, "the app has caught up")
+        XCTAssertEqual(AIDeckUpdates.step(for: nil, installedRevision: 2, bundledRevision: 1), .remove)
+        XCTAssertEqual(AIDeckUpdates.step(for: nil, installedRevision: nil, bundledRevision: 1), .keep)
     }
 }

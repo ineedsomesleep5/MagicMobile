@@ -17,6 +17,13 @@ final class AppConfigTests: XCTestCase {
         XCTAssertNil(AppConfig.parse(data("[1, 2]")))
     }
 
+    func testADeckFileIsReadOnlyWhenComplete() throws {
+        let sha = String(repeating: "a", count: 64)
+        let config = try XCTUnwrap(AppConfig.parse(data(#"{"aiDecks": {"good": {"revision": 2, "url": "https://example.com/a.json", "sha256": "\#(sha)"}, "http": {"revision": 2, "url": "http://example.com/a.json", "sha256": "\#(sha)"}, "short": {"revision": 2, "url": "https://example.com/a.json", "sha256": "abc"}}}"#)))
+        XCTAssertEqual(Array(config.deckFiles.keys), ["good"])
+        XCTAssertEqual(config.deckFiles["good"]?.revision, 2)
+    }
+
     func testTheStoreKeepsTheLastCopyAndRemembersAClosedNotice() throws {
         let suite = "AppConfigTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

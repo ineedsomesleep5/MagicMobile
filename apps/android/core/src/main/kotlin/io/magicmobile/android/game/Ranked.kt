@@ -327,7 +327,12 @@ data class QuickLevel(val power: Double, val skill: Int)
 
 /** ai-decks.json's `power` block (DeckPowerData in AIDeckPool.swift): each deck's Power, Ranked's bands, Quick Match's levels. */
 data class DeckPowerData(val closest: Int, val rankedTiers: List<Pair<Double, Double>>, val quickMatch: Map<String, QuickLevel>,
-                         val decks: Map<String, Double>)
+                         val decks: Map<String, Double>,
+                         /** How many decks each tier picks among, Bronze to Mythic; [closest] for a tier it leaves out. */
+                         val rankedClosest: List<Int>? = null) {
+    /** How many of the nearest decks a tier picks among. */
+    fun closest(tier: Int): Int = rankedClosest?.getOrNull(tier) ?: closest
+}
 
 object AIDeckPool {
     /** The `power` block of ai-decks.json, or null when the file has none. */
@@ -336,7 +341,8 @@ object AIDeckPool {
         return DeckPowerData(block["closest"]!!.jsonPrimitive.int,
             block["rankedTiers"]!!.jsonArray.map { val band = it.jsonArray; band[0].jsonPrimitive.double to band[1].jsonPrimitive.double },
             block["quickMatch"]!!.jsonObject.mapValues { (_, v) -> QuickLevel(v.jsonObject["power"]!!.jsonPrimitive.double, v.jsonObject["skill"]!!.jsonPrimitive.int) },
-            block["decks"]!!.jsonObject.mapValues { (_, v) -> v.jsonPrimitive.double })
+            block["decks"]!!.jsonObject.mapValues { (_, v) -> v.jsonPrimitive.double },
+            block["rankedClosest"]?.jsonArray?.map { it.jsonPrimitive.int })
     }
 
     /**
@@ -411,6 +417,48 @@ object AIDeckPool {
         if (fresh.isNotEmpty()) candidates = fresh
         if (candidates.isEmpty()) return null
         return candidates[roll(candidates.size).coerceIn(0, candidates.size - 1)]
+    }
+}
+
+/**
+ * A newer ai-decks.json than the app's own, so AI decks and their Power change without a build (AIDeckUpdates in
+ * AIDeckPool.swift; docs/SERVER_CONTROLS.md). The server names a file for this card catalogue; the phone checks it, keeps
+ * it, and plays with it from the next launch. A missing or bad file leaves the app's own, and the server naming none goes
+ * back to it.
+ */
+object AIDeckUpdates {
+    const val MAX_BYTES = 5_000_000
+
+    sealed interface Step {
+        data object Keep : Step
+        data object Remove : Step
+        data class Download(val file: AppConfig.DeckFile) : Step
+    }
+
+    private fun header(file: String) = Json.parseToJsonElement(file).jsonObject
+
+    fun catalogue(file: String): String = header(file)["catalogueHash"]!!.jsonPrimitive.content
+    fun revision(file: String): Int = header(file)["revision"]?.jsonPrimitive?.int ?: 0
+
+    /**
+     * Saved games and deck choices name decks by ID, so a newer file keeps every deck of the app's own (to retire one, drop
+     * its Power). The publish script checks the card names against the catalogue.
+     */
+    fun isUsable(file: String, bundled: String): Boolean = runCatching {
+        val power = AIDeckPool.parsePower(file) ?: return false
+        val decks = AIDeckPool.parse(file)
+        val ids = decks.map { it.id }
+        header(file)["schemaVersion"] == header(bundled)["schemaVersion"] && catalogue(file) == catalogue(bundled) &&
+            revision(file) > revision(bundled) && power.closest > 0 && power.rankedTiers.size == 6 && power.quickMatch.size == 3 &&
+            ids.size == ids.toSet().size && ids.containsAll(AIDeckPool.parse(bundled).map { it.id }) &&
+            decks.all { deck ->
+                deck.id.startsWith("ai-") && deck.deck.entries.count { it.section == "commanders" } == 1 && deck.deck.entries.sumOf { it.quantity } == 100
+            }
+    }.getOrDefault(false)
+
+    fun step(offered: AppConfig.DeckFile?, installedRevision: Int?, bundledRevision: Int): Step {
+        if (offered == null || offered.revision <= bundledRevision) return if (installedRevision == null) Step.Keep else Step.Remove
+        return if (offered.revision == installedRevision) Step.Keep else Step.Download(offered)
     }
 }
 

@@ -214,6 +214,7 @@ def main():
            "catalogueHash": catalogue["catalogueHash"], "decks": decks}
     if "power" in previous:
         out["power"] = previous["power"]  # deck_power.py rate --write owns it
+        out["revision"] = previous.get("revision", 1)  # publish_ai_decks.py owns it
     target.write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n")
     print(f"wrote {target.relative_to(repo)}: {len(decks)} decks")
 

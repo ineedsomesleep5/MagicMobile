@@ -1,5 +1,6 @@
 {
  "schemaVersion": 1,
+ "revision": 1,
  "source": "EDHREC average decks by bracket, fetched 2026-10-04 (first six commanders), 2026-10-24 and 2026-10-25, 2026-10-29 (the last thirteen commanders), limited to this XMage catalogue",
  "catalogueHash": "2eae078bbbaf35ae8e4be525b0ab80867dfe1aa9e6698319f7500a0dc7859c88",
  "decks": [
@@ -24544,6 +24545,14 @@
  "power": {
   "source": "scripts/ranked/deck_power.py rate --write (docs/DECK_POWER.md)",
   "closest": 3,
+  "rankedClosest": [
+   3,
+   3,
+   3,
+   3,
+   3,
+   5
+  ],
   "rankedTiers": [
    [
     3,

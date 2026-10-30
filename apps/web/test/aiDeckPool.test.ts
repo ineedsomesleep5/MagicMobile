@@ -133,6 +133,9 @@ describe("Deck Power picking (parity/power-cases.json)", () => {
     for (const item of powerCases.targets) {
       expect(AIDeckPool.rankedTarget(item.tier, item.division, powerCases.rankedTiers), JSON.stringify(item)).toBeCloseTo(item.expect, 9);
     }
+    for (const item of powerCases.closestByTier) {
+      expect(AIDeckPool.closest(powerCases, item.tier), JSON.stringify(item)).toBe(item.expect);
+    }
   });
 
   it("ships a Power for every AI deck and precon", () => {
