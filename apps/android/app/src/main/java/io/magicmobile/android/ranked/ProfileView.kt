@@ -152,6 +152,10 @@ fun PlayerProfileScreen(store: PlayerRecordStore, account: PlayerAccount, player
     /** The rest of the player's story, under the season rank. */
     @Composable
     fun ColumnScope.playerStory() {
+        if (account.awards.isNotEmpty()) Column(Modifier.leatherCard().testTag("profile.awards"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ProfileSectionTitle("Awards")
+            AwardShelf(account.awards)
+        }
         SeasonCard(store, summary)
         SeasonBadgesCard(store.file.rank)
         if (stats.decks.size > 1) ChipRow(Modifier.trailingFade().testTag("profile.filter.decks")) {

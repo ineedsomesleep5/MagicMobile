@@ -202,4 +202,7 @@ insert into public.awards (id, name, description, tint, rarity, title, rule) val
   ('centurion', 'Centurion', 'Won 100 ranked games in one season.', '#FFCC5C', 2, null, '{"kind": "season_wins", "count": 100}'),
   ('unstoppable', 'Unstoppable', 'Won 10 ranked games in a row.', '#C2D4E0', 1, null, '{"kind": "win_streak", "count": 10}');
 
+update public.awards set image_url = 'https://raw.githubusercontent.com/ineedsomesleep5/MagicMobile/main/design/awards/first-mythic.png'
+ where id = 'first-mythic';
+
 select public.mm_awards_backfill(id) from public.awards where rule is not null;

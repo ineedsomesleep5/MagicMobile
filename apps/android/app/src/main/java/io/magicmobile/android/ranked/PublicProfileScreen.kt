@@ -174,6 +174,10 @@ private fun ColumnScope.Content(profile: PublicProfile, account: PlayerAccount, 
     if (profile.isSelf) Box(Modifier.leatherCard().testTag("publicProfile.selfNote")) {
         ProfileEmptyNote("This is how other players see your profile. It is ${profile.visibility.title.lowercase()}.", "eye")
     } else Actions(profile, account, scope, reload, challenge, myRankStep, report, block, close)
+    if (profile.awards.isNotEmpty()) Column(Modifier.leatherCard().testTag("publicProfile.awards"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ProfileSectionTitle("Awards")
+        AwardShelf(profile.awards, 56.dp)
+    }
     Column(Modifier.leatherCard().testTag("publicProfile.rank"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         val rank = profile.rank
         val position = rank?.position

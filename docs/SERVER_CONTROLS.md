@@ -51,6 +51,39 @@ once shipped, because saved games name it: drop its Power instead and Ranked and
 tier of `deck-power-weights.json`). A new card catalogue needs its own entry, so an engine release still ships its own
 file.
 
+## Awards
+
+Medals on a player's profile (tables `awards`, `player_awards`; apps from TestFlight 73 / Android 51 and the web). An award
+is a row and its art a URL, so a new one needs no build. An unseen award opens with a ceremony on the menu, once across a
+player's devices, then sits on their profile. A profile that can't be opened doesn't show its awards.
+
+| Column | What it does |
+| --- | --- |
+| `id` | Lowercase letters, numbers, dashes. Don't reuse one. |
+| `name`, `description` | What the medal says (40 and 160 characters). |
+| `image_url` | https only: a square transparent PNG, about 512 px. Without it, or if it can't load, a star medal in `tint`. |
+| `tint` | `#RRGGBB`: the glow, the name's colour and the star medal. |
+| `rarity` | 1 plain, 2 a soft glow, 3 a strong glow and a gold ring. |
+| `title` | Optional. The player's title, shown everywhere titles show, even on old apps. It replaces the title they picked; the highest rarity wins, then the oldest. |
+| `rule` | Optional. Hands it out by itself as ranked standings move: `{"kind": "peak_step", "step": 20}`, `{"kind": "season_wins", "count": 100}` or `{"kind": "win_streak", "count": 10}`; add `"first": 1` to stop after that many players. Steps: Diamond 16, Mythic 20. Another kind needs a migration. |
+| `active` | `false` hides it everywhere and keeps who earned it. |
+
+Art goes in `design/awards/` on `main`, then `https://raw.githubusercontent.com/ineedsomesleep5/MagicMobile/main/design/awards/<name>.png`.
+
+```sql
+-- A new award with a rule, then give it to everyone who has already earned it, in the order they did.
+insert into public.awards (id, name, description, tint, rarity, rule)
+values ('first-gold', 'First to Gold', 'The first player ever to reach Gold.', '#FFCC5C', 2, '{"kind": "peak_step", "step": 8, "first": 1}');
+select public.mm_awards_backfill('first-gold');
+-- By hand. The note shows under the description.
+select public.mm_award_give('PlayerName', 'season-1-champion', 'October 2026');
+-- New art, a new word: every app has it on its next read.
+update public.awards set image_url = 'https://...', description = '...' where id = 'first-mythic';
+-- Take one back. A title it gave stays until the player's app next publishes, so clear it.
+delete from public.player_awards where award_id = 'mythic' and user_id = (select id from public.profiles where username = 'PlayerName');
+update public.ranked_profiles set title = null where user_id = (select id from public.profiles where username = 'PlayerName');
+```
+
 ## Voice chat
 
 The `agora-token` edge function mints voice tokens; it needs the Supabase secret `AGORA_APP_CERTIFICATE` (Caleb sets it in
