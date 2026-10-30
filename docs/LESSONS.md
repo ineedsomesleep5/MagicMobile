@@ -21,6 +21,13 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-29 (Claude, name gate): every install and browser makes an anonymous Supabase account on first open, so of
+  720 accounts 716 had no name and showed nowhere (no leaderboard, friends or saved games). **Rule:** a profile that is
+  reachable but nameless gets the name screen before the menus (`PlayerAccount.needsName`: phase ready and no username;
+  iOS `NameGateView` over the root, Android `menus/NameGate.kt` over `OnDeviceRoot`, web `NameGate.tsx` in `.mroot`), with
+  Google (and Apple on iOS) for players who already have a profile. Offline or with the server down it never shows, so
+  nobody is locked out of playing. Don't claim a test name on the live server from a test browser: it makes a profile.
+
 - 2026-10-28 (Claude, card picture sync): the phones named custom card pictures by a hash of the card key, so the
   files alone can't say which cards have pictures, and iOS hashed `"card:" + full name` while Android hashed the name
   and the web keyed by front face. **Rule:** the card key is the front face, trimmed, lower case on every platform

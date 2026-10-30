@@ -819,3 +819,18 @@ button.mtoolcoin:disabled { opacity: .35; }
 .mlesson.next i { border: 1.5px solid #fad685; }
 .mlesson i.done { color: #fad685; }
 .mlesson b { flex: 1; font: 700 18px/1.1 "Cormorant SC", serif; }
+
+/* The name gate (NameGate.tsx): over everything until the profile has a name. */
+.mnamegate { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: rgba(0,0,0,.88); overflow-y: auto; }
+.mnamegate-body { width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.mnamegate h2 { margin: 0; font: 700 26px/1.2 var(--serif); color: var(--gold); text-align: center; }
+.mnamegate-card { width: 100%; display: flex; flex-direction: column; gap: 12px; padding: 18px; }
+.mnamegate-card input { height: 48px; padding: 0 16px; border-radius: 24px; border: 1px solid var(--hair); background: rgba(0,0,0,.55);
+  color: var(--text); font: 600 17px/1 var(--sans); text-align: center; outline: none; }
+.mnamegate-card input:focus { border-color: var(--gold); }
+.mnamegate-card input::placeholder { color: var(--dim); }
+.mnamegate-card p { margin: 0; font: 500 12px/1.4 var(--sans); color: var(--dim); text-align: center; }
+.mnamegate-card p.warn { color: var(--loss); }
+.mnamegate-card > button, .mnamegate-signin > button { width: 100%; }
+.mnamegate-signin { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; }
