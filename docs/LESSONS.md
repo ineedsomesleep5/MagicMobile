@@ -204,6 +204,11 @@ contradicting one.
   keeps every deck already in `ai-decks.json` (`--rebuild` to redo them) and swaps a combo's other card. Pick AI
   commanders whose plan works with one opponent (Caleb: Y'shtola is good, but not 1v1).
   Where: `scripts/ranked/build_ai_decks.py`, `docs/cloud/power-high-decks.md`.
+- 2026-10-30 (Claude, power 5): the cloud session's background commands stop at 2 hours, so a 1,008-game calibration
+  batch (about 3.2 h on 4 workers) was cut off at 619 games. Rerunning the same `ai_calibration.py run` command
+  resumed it and replayed the interrupted game. A game that stops in the engine again on replay stays in the CSV as
+  `engine-stopped`; `deck_power.py` counts only `ended` games with a winner. **Rule:** for batches over ~600 games,
+  plan a second launch with the same arguments and append to the same log. Where: docs/cloud/reports/power-5.md.
 - 2026-10-24 (Claude, deck Power): C3's precon round robin is not the only deck-strength data. Every calibration CSV
   in `docs/cloud/c3-results` and `c4-results` schedules both deck assignments per pair, so together they are 2,986
   skill-balanced games on the eleven Core decks, and they reorder the precons: Draconic Destruction wins 62% against
