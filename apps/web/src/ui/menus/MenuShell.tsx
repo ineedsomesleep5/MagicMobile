@@ -391,7 +391,8 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
     const pickOpponent = (power?: number) => {
       const target = power ?? (pool.power && AIDeckPool.rankedTarget(RankTier.index(tier), rank.position.division, pool.power.rankedTiers));
       return (target !== undefined && pool.power
-        ? pool.pickByPower({ target, maxBracket: RankTier.maxDeckBracket(tier), avoidingCommander: deck.commander, recent: [...record.recentAIDecks] })
+        ? pool.pickByPower({ target, maxBracket: RankTier.maxDeckBracket(tier), avoidingCommander: deck.commander, recent: [...record.recentAIDecks],
+            closest: pool.power && AIDeckPool.closest(pool.power, RankTier.index(tier)) })
         : undefined) ?? pool.pick({ bracket: RankPosition.opponentBracket(rank.position), avoidingCommander: deck.commander, recent: [...record.recentAIDecks],
           preconsOnly: RankTier.preconOpponentsOnly(tier), onlyPrecons: RankTier.preconOpponentsOnly(tier) ? AIDeckPool.gentlestPrecons : undefined });
     };

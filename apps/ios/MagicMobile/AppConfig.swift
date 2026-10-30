@@ -1,12 +1,19 @@
 import Foundation
 
 /// What the server can change without a build (mm_app_config; docs/SERVER_CONTROLS.md): a news banner for the main menu,
-/// card-name fixes for deck imports, and switches for newer features. The phone keeps the last copy, so it applies offline
-/// too. Android's AppConfig and the web's appConfig.ts read the same reply.
+/// card-name fixes for deck imports, switches for newer features, and a newer AI deck file. The phone keeps the last copy,
+/// so it applies offline too. Android's AppConfig and the web's appConfig.ts read the same reply.
 struct AppConfig: Equatable, Sendable {
     struct Notice: Equatable, Sendable {
         let id: String
         let text: String
+    }
+
+    /// An ai-decks.json the server offers (AIDeckUpdates).
+    struct DeckFile: Equatable, Sendable {
+        let revision: Int
+        let url: URL
+        let sha256: String
     }
 
     static let maxNameFixes = 500
@@ -15,6 +22,8 @@ struct AppConfig: Equatable, Sendable {
     /// The name a deck site sends → the app's card name (used only when that card is in the catalogue).
     var nameFixes: [String: String] = [:]
     var switches: [String: Bool] = [:]
+    /// By card catalogue hash: a file only suits the catalogue it was built for.
+    var deckFiles: [String: DeckFile] = [:]
 
     /// A switch the server hasn't named is on, unless the feature says otherwise (voiceChat).
     func isOn(_ name: String, default fallback: Bool = true) -> Bool { switches[name] ?? fallback }
@@ -34,6 +43,14 @@ struct AppConfig: Equatable, Sendable {
         }
         if let switches = root["switches"] as? [String: Any] {
             for (name, value) in switches { if let on = value as? Bool { config.switches[name] = on } }
+        }
+        if let files = root["aiDecks"] as? [String: Any] {
+            for (catalogue, value) in files {
+                guard let file = value as? [String: Any], let revision = file["revision"] as? Int, revision > 0,
+                      let url = (file["url"] as? String).flatMap(URL.init(string:)), url.scheme == "https",
+                      let sha256 = file["sha256"] as? String, sha256.count == 64 else { continue }
+                config.deckFiles[catalogue] = DeckFile(revision: revision, url: url, sha256: sha256)
+            }
         }
         return config
     }

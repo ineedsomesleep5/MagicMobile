@@ -30,7 +30,7 @@ describe("AI deck pool", () => {
     const resolver = new DeckResolver(readFileSync(join(generated, "printings.tsv"), "utf8"));
     const rules = new BracketRules(json(join(root, "apps/ios/MagicMobile/Resources/commander-brackets.json")));
     const basics = new Set(["Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"]);
-    expect(pool.bracketDecks.length).toBe(43);
+    expect(pool.bracketDecks.length).toBe(57);
     expect(pool.all.filter(isPrecon).length).toBe(5);
     const unresolved: string[] = [];
     for (const deck of pool.all) {
@@ -132,6 +132,9 @@ describe("Deck Power picking (parity/power-cases.json)", () => {
   it("aims each division as the cases say", () => {
     for (const item of powerCases.targets) {
       expect(AIDeckPool.rankedTarget(item.tier, item.division, powerCases.rankedTiers), JSON.stringify(item)).toBeCloseTo(item.expect, 9);
+    }
+    for (const item of powerCases.closestByTier) {
+      expect(AIDeckPool.closest(powerCases, item.tier), JSON.stringify(item)).toBe(item.expect);
     }
   });
 

@@ -203,7 +203,8 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
                     runCatching { context.assets.open("ai-decks.json").use { it.readBytes().decodeToString() } } to
                         runCatching { io.magicmobile.android.game.BracketRules.parse(context.assets.open("commander-brackets.json").use { it.readBytes().decodeToString() }) }
                 }.let { (aiDecks, rules) ->
-                    aiDecks.mapCatching { io.magicmobile.android.game.AIDeckPool.parse(it) to io.magicmobile.android.game.AIDeckPool.parsePower(it) }
+                    aiDecks.map { io.magicmobile.android.ranked.AIDeckDownloads.installed(context, it) ?: it }
+                        .mapCatching { io.magicmobile.android.game.AIDeckPool.parse(it) to io.magicmobile.android.game.AIDeckPool.parsePower(it) }
                         .onSuccess { (decks, power) -> bracketDecks = decks; deckPower = power }
                     rules.onSuccess { bracketRules = it }
                 }

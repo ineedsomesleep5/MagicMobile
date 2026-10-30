@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// An AI opponent's deck: the included precons (Core) plus ai-decks.json, built from EDHREC's
@@ -24,10 +25,15 @@ struct AIDeck: Identifiable, Hashable, Sendable {
 struct DeckPowerData: Decodable, Sendable {
     struct Level: Decodable, Sendable { let power: Double; let skill: Int }
     let closest: Int
+    /// How many decks each tier picks among, Bronze to Mythic; `closest` for a tier it leaves out.
+    var rankedClosest: [Int]? = nil
     /// Bronze to Mythic: each tier's [low, high] Power band.
     let rankedTiers: [[Double]]
     let quickMatch: [String: Level]
     let decks: [String: Double]
+
+    /// How many of the nearest decks a tier picks among.
+    func closest(tier: Int) -> Int { rankedClosest.flatMap { $0.indices.contains(tier) ? $0[tier] : nil } ?? closest }
 }
 
 enum AIDeckPool {
@@ -60,12 +66,14 @@ enum AIDeckPool {
     }
 
     private static let bundledFile: Data? = Bundle.main.url(forResource: "ai-decks", withExtension: "json").flatMap { try? Data(contentsOf: $0) }
+    /// The file in play: a newer one the server sent (AIDeckUpdates) if there is one, or the app's own.
+    private static let deckFile: Data? = bundledFile.map { AIDeckUpdates.installedFile(bundled: $0) ?? $0 }
 
     /// The `power` block of an ai-decks.json, or nil when it has none.
     static func decodePower(_ data: Data) -> DeckPowerData? { (try? JSONDecoder().decode(PowerFile.self, from: data))?.power }
 
     /// Power picking's settings from the bundled file.
-    static let power: DeckPowerData? = bundledFile.flatMap(decodePower)
+    static let power: DeckPowerData? = deckFile.flatMap(decodePower)
 
     /// The bundled bracket decks (ai-decks.json), without the precons.
     static let bracketDecks: [AIDeck] = all.filter { !$0.isPrecon }
@@ -74,7 +82,7 @@ enum AIDeckPool {
     static let all: [AIDeck] = (PreconCatalog.all.map { precon in
         AIDeck(id: precon.id, name: precon.name, subtitle: precon.subtitle, colors: precon.colors,
                commander: precon.commander, bracket: .core, deckList: precon.deckList)
-    } + (bundledFile.flatMap { try? decode($0) } ?? [])).map { deck in
+    } + (deckFile.flatMap { try? decode($0) } ?? [])).map { deck in
         var rated = deck
         rated.power = power?.decks[deck.id]
         return rated
@@ -152,5 +160,67 @@ enum AIDeckPool {
         if !fresh.isEmpty { candidates = fresh }
         guard !candidates.isEmpty else { return nil }
         return candidates[min(candidates.count - 1, max(0, roll(candidates.count)))]
+    }
+}
+
+/// A newer ai-decks.json than the app's own, so AI decks and their Power change without a build (docs/SERVER_CONTROLS.md).
+/// The server names a file for this card catalogue; the phone checks it, keeps it, and plays with it from the next launch.
+/// A missing or bad file leaves the app's own, and the server naming none goes back to it.
+enum AIDeckUpdates {
+    private struct Header: Decodable { let schemaVersion: Int; let catalogueHash: String; let revision: Int? }
+
+    enum Step: Equatable {
+        case keep, remove
+        case download(AppConfig.DeckFile)
+    }
+
+    static let maxBytes = 5_000_000
+
+    static var installedURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ai-decks.json")
+    }
+
+    private static func header(_ file: Data) -> Header? { try? JSONDecoder().decode(Header.self, from: file) }
+
+    /// Saved games and deck choices name decks by ID, so a newer file keeps every deck of the app's own (to retire one,
+    /// drop its Power). The publish script checks the card names against the catalogue.
+    static func isUsable(_ file: Data, bundled: Data) -> Bool {
+        guard let new = header(file), let own = header(bundled), new.schemaVersion == own.schemaVersion,
+              new.catalogueHash == own.catalogueHash, new.revision ?? 0 > own.revision ?? 0,
+              let decks = try? AIDeckPool.decode(file), let ownDecks = try? AIDeckPool.decode(bundled),
+              let power = AIDeckPool.decodePower(file), power.closest > 0, power.rankedTiers.count == 6,
+              power.rankedTiers.allSatisfy({ $0.count == 2 }), power.quickMatch.count == 3 else { return false }
+        let ids = Set(decks.map(\.id))
+        return ids.count == decks.count && ids.isSuperset(of: ownDecks.map(\.id))
+            && decks.allSatisfy { deck in
+                deck.id.hasPrefix("ai-") && deck.deckList.commander != nil && deck.deckList.entries.reduce(1) { $0 + $1.quantity } == 100
+            }
+    }
+
+    static func step(for offered: AppConfig.DeckFile?, installedRevision: Int?, bundledRevision: Int) -> Step {
+        guard let offered, offered.revision > bundledRevision else { return installedRevision == nil ? .keep : .remove }
+        return offered.revision == installedRevision ? .keep : .download(offered)
+    }
+
+    static func installedFile(bundled: Data) -> Data? {
+        (try? Data(contentsOf: installedURL)).flatMap { isUsable($0, bundled: bundled) ? $0 : nil }
+    }
+
+    /// Best effort, and nothing changes until the next launch: a game in progress keeps the decks it started with.
+    static func refresh(_ config: AppConfig) async {
+        guard let bundled = Bundle.main.url(forResource: "ai-decks", withExtension: "json").flatMap({ try? Data(contentsOf: $0) }),
+              let own = header(bundled) else { return }
+        let installed = installedFile(bundled: bundled).flatMap { header($0)?.revision }
+        switch step(for: config.deckFiles[own.catalogueHash], installedRevision: installed, bundledRevision: own.revision ?? 0) {
+        case .keep: return
+        case .remove: try? FileManager.default.removeItem(at: installedURL)
+        case .download(let offered):
+            guard let (file, response) = try? await URLSession.shared.data(from: offered.url),
+                  (response as? HTTPURLResponse)?.statusCode == 200, file.count <= maxBytes,
+                  SHA256.hash(data: file).map({ String(format: "%02x", $0) }).joined() == offered.sha256,
+                  isUsable(file, bundled: bundled) else { return }
+            try? FileManager.default.createDirectory(at: installedURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? file.write(to: installedURL, options: .atomic)
+        }
     }
 }

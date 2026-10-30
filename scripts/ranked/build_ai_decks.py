@@ -8,7 +8,8 @@ the gap is refilled from the same commander's other brackets, then with basic la
 checked against commander-brackets.json: a card that would push it above its bracket is swapped
 out the same way, so every deck's computed bracket is at most its label.
 
-Usage: build_ai_decks.py [repo] [--offline]   (EDHREC pages are cached in scripts/ranked/.edhrec-cache)
+Usage: build_ai_decks.py [repo] [--offline] [--rebuild]   (EDHREC pages are cached in scripts/ranked/.edhrec-cache;
+       decks already in ai-decks.json are kept unless --rebuild)
 """
 import json, re, sys, time, urllib.request
 from pathlib import Path
@@ -51,6 +52,22 @@ COMMANDERS = [
     ("marrow-gnawer", "Marrow-Gnawer", "B", {2: "Rat Pack"}, "Mono-black rats"),
     ("arahbo-roar-of-the-world", "Arahbo, Roar of the World", "GW", {2: "Pride of Arahbo"}, "Selesnya cats"),
     ("syr-gwyn-hero-of-ashvale", "Syr Gwyn, Hero of Ashvale", "RWB", {2: "Ashvale Knights"}, "Mardu knights and equipment"),
+    # Added 2026-10-29 so Platinum, Diamond and Mythic stop meeting the same dragon and token decks (Caleb): other plans
+    # that still work with one opponent (Y'shtola was left out for that). Core aims at Platinum, Upgraded at Diamond,
+    # Optimized at Mythic; games set the real Power.
+    ("teysa-karlov", "Teysa Karlov", "WB", {2: "Karlov Estate"}, "Orzhov sacrifice"),
+    ("arcades-the-strategist", "Arcades, the Strategist", "GWU", {2: "Wall of Arcades"}, "Bant walls that attack"),
+    ("isshin-two-heavens-as-one", "Isshin, Two Heavens as One", "RWB", {2: "Two Heavens"}, "Mardu attack triggers"),
+    ("sythis-harvests-hand", "Sythis, Harvest's Hand", "GW", {2: "Harvest Grove"}, "Selesnya enchantments"),
+    ("lord-windgrace", "Lord Windgrace", "BRG", {2: "Windgrace Lands"}, "Jund lands"),
+    ("kinnan-bonder-prodigy", "Kinnan, Bonder Prodigy", "GU", {3: "Bonder's Bounty", 4: "Prodigy's Engine"}, "Simic big mana"),
+    ("atraxa-praetors-voice", "Atraxa, Praetors' Voice", "WUBG", {3: "Praetors' Voice"}, "Four-color counters"),
+    ("muldrotha-the-gravetide", "Muldrotha, the Gravetide", "BGU", {3: "Gravetide"}, "Sultai graveyard"),
+    ("rafiq-of-the-many", "Rafiq of the Many", "GWU", {3: "The Many"}, "Bant exalted champion"),
+    ("prosper-tome-bound", "Prosper, Tome-Bound", "BR", {3: "Tome-Bound"}, "Rakdos exile and treasure"),
+    ("korvold-fae-cursed-king", "Korvold, Fae-Cursed King", "BRG", {4: "Fae-Cursed Court"}, "Jund sacrifice"),
+    ("omnath-locus-of-creation", "Omnath, Locus of Creation", "WURG", {4: "Locus of Creation"}, "Four-color landfall"),
+    ("tergrid-god-of-fright", "Tergrid, God of Fright", "B", {4: "God of Fright"}, "Mono-black theft"),
 ]
 VARIANTS = {1: "exhibition", 2: "core", 3: "upgraded", 4: "optimized"}
 BASICS = {"W": "Plains", "U": "Island", "B": "Swamp", "R": "Mountain", "G": "Forest"}
@@ -86,8 +103,8 @@ class Rules:
             if set(combo["cards"]) <= names: level = max(level, 4 if combo["early"] else 3)
         return level
 
-    def offenders(self, names, bracket):
-        """Cards to swap out so the deck's computed bracket is at most `bracket`."""
+    def offenders(self, names, bracket, commander=None):
+        """Cards to swap out so the deck's computed bracket is at most `bracket` (never the commander)."""
         names = set(names); out = set()
         if bracket < 4:
             out |= names & self.mld
@@ -98,7 +115,7 @@ class Rules:
         out |= set(gcs[allowed:])
         for combo in self.combos:
             if set(combo["cards"]) <= names and (bracket <= 2 or (bracket == 3 and combo["early"])):
-                out.add(combo["cards"][1])
+                out.add([c for c in combo["cards"] if c != commander][-1])
         return out
 
 
@@ -134,7 +151,7 @@ def build(repo: Path, commanders, offline: bool):
 
         for bracket, name in names.items():
             page_commander, cards = pages[bracket]
-            assert page_commander == commander, (page_commander, commander)
+            assert canonical(page_commander) == commander, (page_commander, commander)
             dropped = []
             singles, basics = [], {}
             for raw, quantity in cards:
@@ -145,7 +162,7 @@ def build(repo: Path, commanders, offline: bool):
                 elif card not in singles: singles.append(card)
             # Swap out anything above this bracket, then refill from the fallback pool.
             for _ in range(6):
-                bad = rules.offenders(singles + [commander], bracket)
+                bad = rules.offenders(singles + [commander], bracket, commander)
                 if not bad: break
                 singles = [c for c in singles if c not in bad]
                 for candidate in sorted(votes, key=lambda c: (-votes[c], c)):
@@ -184,13 +201,20 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     offline = "--offline" in sys.argv
     repo = Path(args[0]) if args else Path(__file__).resolve().parents[2]
-    decks, catalogue = build(repo, COMMANDERS, offline)
-    out = {"schemaVersion": 1,
-           "source": "EDHREC average decks by bracket, fetched 2026-10-04 (first six commanders), 2026-10-24 and 2026-10-25 (the rest), limited to this XMage catalogue",
-           "catalogueHash": catalogue["catalogueHash"], "decks": decks}
     target = repo / "apps/ios/MagicMobile/Resources/ai-decks.json"
-    if target.exists() and "power" in (previous := json.loads(target.read_text())):
+    previous = json.loads(target.read_text()) if target.exists() else {}
+    # Decks already shipped stay exactly as they are (EDHREC's averages drift); --rebuild builds every deck again.
+    kept = [] if "--rebuild" in sys.argv else previous.get("decks", [])
+    have = {d["id"] for d in kept}
+    missing = [c for c in COMMANDERS if any(f"ai-{c[0]}-{VARIANTS[b]}" not in have for b in c[3])]
+    built, catalogue = build(repo, missing, offline)
+    decks = kept + [d for d in built if d["id"] not in have]
+    out = {"schemaVersion": 1,
+           "source": "EDHREC average decks by bracket, fetched 2026-10-04 (first six commanders), 2026-10-24 and 2026-10-25, 2026-10-29 (the last thirteen commanders), limited to this XMage catalogue",
+           "catalogueHash": catalogue["catalogueHash"], "decks": decks}
+    if "power" in previous:
         out["power"] = previous["power"]  # deck_power.py rate --write owns it
+        out["revision"] = previous.get("revision", 1)  # publish_ai_decks.py owns it
     target.write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n")
     print(f"wrote {target.relative_to(repo)}: {len(decks)} decks")
 

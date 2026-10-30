@@ -198,6 +198,31 @@ contradicting one.
   whether answers are still owed (then wait 30 s, not 5), and an unchanged prompt gets 2 s before the plan stops; real
   rejections still stop it through the command failure. Never change layout or posture under a live gesture.
   Where: `ArenaBoardModel` handPosture (all three), `CardChoicePlan`, the boards' card-choice drivers.
+- 2026-10-29 (Claude, AI decks): `build_ai_decks.py` rebuilt every deck from EDHREC on each run, and EDHREC's average
+  decks drift, so adding commanders would have silently changed the measured decks; and a bracket combo that includes
+  the commander (Kinnan + Basalt Monolith) made it try to swap out the commander forever. **Rule:** the builder now
+  keeps every deck already in `ai-decks.json` (`--rebuild` to redo them) and swaps a combo's other card. Pick AI
+  commanders whose plan works with one opponent (Caleb: Y'shtola is good, but not 1v1).
+  Where: `scripts/ranked/build_ai_decks.py`, `docs/cloud/power-high-decks.md`.
+- 2026-10-30 (Claude, deck updates): Android's `InputStream.readNBytes` needs API 33, and `runCatching` hides the
+  `NoSuchMethodError`, so a download on an older phone would fail silently. Use `readBytes` with a Content-Length check.
+  The AI deck file now updates from the server: a revision is only newer than the file the app shipped with, so a
+  later app build can't be downgraded by an old offer. Where: `AIDeckDownloads.kt`, docs/SERVER_CONTROLS.md.
+- 2026-10-30 (Claude, deck review): `deck_power.py ladder` shows the ladder bands in `deck-power-weights.json`, not what
+  players get. Live Ranked takes its target from `ranked_ai_tuning`, and the picker skips the player's last 4 decks
+  before taking the nearest 3, so a tier rotates through about 7 to 14 decks, not 3 per division. **Rule:** judge a
+  tier's variety from the live bands with the recent window applied. Also, engine-heavy commanders (Korvold,
+  Muldrotha, Kinnan Optimized) rate far below their formula because the AI cannot pilot them.
+  Where: docs/cloud/reports/power-5.md, `AIDeckPool.pick`.
+- 2026-10-30 (Claude, deck review): Gradle does not track `ai-decks.json` as a `:core:test` input, because
+  `RankedParityTest` reads it straight from the iOS resources. After a ratings change `:core:test` reports success
+  from the old result in seconds. **Rule:** add `:core:cleanTest` and check the timestamp in the result XML. A piped
+  `heavy.sh ... | tail` also exits 0 when Gradle fails, so read `BUILD`. Where: `RankedParityTest.kt`.
+- 2026-10-30 (Claude, power 5): the cloud session's background commands stop at 2 hours, so a 1,008-game calibration
+  batch (about 3.2 h on 4 workers) was cut off at 619 games. Rerunning the same `ai_calibration.py run` command
+  resumed it and replayed the interrupted game. A game that stops in the engine again on replay stays in the CSV as
+  `engine-stopped`; `deck_power.py` counts only `ended` games with a winner. **Rule:** for batches over ~600 games,
+  plan a second launch with the same arguments and append to the same log. Where: docs/cloud/reports/power-5.md.
 - 2026-10-24 (Claude, deck Power): C3's precon round robin is not the only deck-strength data. Every calibration CSV
   in `docs/cloud/c3-results` and `c4-results` schedules both deck assignments per pair, so together they are 2,986
   skill-balanced games on the eleven Core decks, and they reorder the precons: Draconic Destruction wins 62% against

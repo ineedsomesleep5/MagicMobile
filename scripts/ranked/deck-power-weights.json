@@ -398,7 +398,8 @@
      8,
      9
     ],
-    "maxBracket": 4
+    "maxBracket": 4,
+    "closest": 5
    }
   ],
   "quickMatch": [
