@@ -1151,6 +1151,11 @@ contradicting one.
   Two `.animation(minimumInterval: 1 / 30)` timelines fall between each other's frames and update the screen about 60
   times a second, so full-screen loops belong on `AmbientTimelineSchedule`.
 
+- 2026-10-31 (Claude, blockers): XMage's `possibleBlockers` is every creature free to block, not per attacker, and
+  `selectCombatGroup` then offers only attackers passing `CombatGroup.canBlock`. So a white creature lit up against an
+  attacker with fear and tapping it did nothing. `QueryEncoder` now drops creatures that can block no attacker, using the
+  same `canBlock`, so all three platforms get it and an empty list shows the existing "no creatures can block" state.
+
 ## Awards (2026-10-30)
 
 - A server-driven feature's app side has to carry everything it will ever need: art by URL with a drawn fallback, tint, rarity and the ceremony all shipped at once, so later awards are rows. The rules are data too, but a new rule `kind` still needs a migration.
