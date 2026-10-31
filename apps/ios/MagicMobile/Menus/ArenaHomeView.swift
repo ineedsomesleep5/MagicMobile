@@ -205,7 +205,7 @@ struct ArenaFeaturePanel: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 1))
-        .shadow(color: .black.opacity(0.6), radius: 12, y: 6)
+        .background { RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.black).shadow(color: .black.opacity(0.6), radius: 12, y: 6) }
         // The page follows the finger and turns past a third of a swipe. High priority, or the page's own Button takes the
         // touch and a swipe never turns it (Caleb, 2026-10-22).
         .highPriorityGesture(DragGesture(minimumDistance: 12)
@@ -299,7 +299,7 @@ struct ArenaHomeTileView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 1))
-            .shadow(color: .black.opacity(0.55), radius: 8, y: 4)
+            .background { RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.black).shadow(color: .black.opacity(0.55), radius: 8, y: 4) }
             .contentShape(Rectangle())
         }
         .buttonStyle(BrandPressStyle())

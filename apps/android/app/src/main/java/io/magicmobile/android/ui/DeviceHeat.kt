@@ -2,6 +2,9 @@ package io.magicmobile.android.ui
 
 import android.app.ActivityManager
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Debug
 import android.os.PowerManager
@@ -75,7 +78,12 @@ object GamePerformanceRecorder {
         val availableMB = runCatching {
             ActivityManager.MemoryInfo().also { context.getSystemService(ActivityManager::class.java)?.getMemoryInfo(it) }.availMem / 1_048_576
         }.getOrNull()?.toInt()?.takeIf { it > 0 }
-        current = entry.absorb(System.currentTimeMillis(), pssMB, availableMB, DeviceHeat.level)
+        // The battery broadcast is sticky: asking for it with no receiver reads the last one and needs no permission.
+        val onCharger = runCatching {
+            context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
+        }.getOrDefault(false)
+        val lowPowerMode = runCatching { context.getSystemService(PowerManager::class.java)?.isPowerSaveMode == true }.getOrDefault(false)
+        current = entry.absorb(System.currentTimeMillis(), pssMB, availableMB, DeviceHeat.level, onCharger, lowPowerMode)
     }
 
     fun noteTurn(turn: Int?) { if (turn != null) current = current?.let { it.copy(turns = maxOf(it.turns, turn)) } }

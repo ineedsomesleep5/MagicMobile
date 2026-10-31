@@ -981,12 +981,16 @@ struct ArenaStackCard: View {
             .scaleEffect(settled || !lands ? 1 : 1.07)
             .background {
                 if let landedAt {
-                    TimelineView(.animation) { timeline in arrivalBloom(min(1, timeline.date.timeIntervalSince(landedAt) / Self.landing)) }
+                    TimelineView(.animation(minimumInterval: DeviceHeat.shared.effectsFrameInterval)) { timeline in
+                        arrivalBloom(min(1, timeline.date.timeIntervalSince(landedAt) / Self.landing))
+                    }
                 }
             }
             .overlay {
                 if let landedAt {
-                    TimelineView(.animation) { timeline in arrivalShine(min(1, timeline.date.timeIntervalSince(landedAt) / Self.landing)) }
+                    TimelineView(.animation(minimumInterval: DeviceHeat.shared.effectsFrameInterval)) { timeline in
+                        arrivalShine(min(1, timeline.date.timeIntervalSince(landedAt) / Self.landing))
+                    }
                 }
             }
             .onAppear {
@@ -1152,12 +1156,14 @@ struct ArenaGlassPanel: ViewModifier {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         content
             .background {
+                // The shadow is the panel shape's alone. On the whole panel it would be worked out from everything inside,
+                // again on every frame a scroll moves it, and a page of panels (the profile) dropped frames.
                 shape.fill(LinearGradient(colors: [ArenaGlass.top.opacity(opacity), ArenaGlass.bottom.opacity(opacity)],
                                           startPoint: .top, endPoint: .bottom))
                     .overlay(shape.fill(LinearGradient(colors: [.white.opacity(0.06), .clear], startPoint: .top, endPoint: .center)))
+                    .shadow(color: .black.opacity(0.55), radius: 14, y: 6)
             }
             .overlay { shape.strokeBorder(ArenaGlass.hairline, lineWidth: 1) }
-            .shadow(color: .black.opacity(0.55), radius: 14, y: 6)
     }
 }
 

@@ -404,3 +404,13 @@ same objects that dominate allocation.
   Loaming Shaman's trigger made a game copy for each of up to 4,000 options, uncounted and unstopped, and timed-out
   searches kept copying. Abandoned and capped searches now stop at their next copy; the cap counts every search.
   0 of 640 calibration games out of memory (#202: 2), win rates within #202's intervals.
+- 2026-10-30: Game Performance report from Caleb's iPhone (build 73, 20 ranked games): 11 nominal, 6 fair, 3 serious for a
+  minute each, none critical, and the serious ones were three in a row followed by cooler games, so neither AI skill,
+  memory nor game length explains them. The report now records the state a game began in, charging and Low Power Mode on
+  both phones. App-only: effects and menu loops capped; profile panels' shadows moved to their shapes. The last Instruments
+  trace is still build 46, before the Arena board; a skill 6 Arena trace is the next real measurement.
+- 2026-10-31: Animation Hitches traces on Caleb's iPhone 16 Pro Max, 10 s each, plugged in, all at Serious, build 73 against
+  the same source with PR #273. Profile scroll: 362 slow frames to 1, screen updates 23 to 58 a second on average, about 330
+  offscreen passes a frame to none reported. Idle menu: CPU reading 46% to 16%, updates 47 to 25 a second, slow frames 13 to
+  32, about 135 offscreen passes a frame left. The room's flames and the sparks ran on separate 30 Hz clocks, so together
+  they updated about 60 times a second and ignored heat; both now use the shared grid. Skill 6 Arena trace still to do.

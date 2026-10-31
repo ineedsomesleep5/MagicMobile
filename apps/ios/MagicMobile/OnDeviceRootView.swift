@@ -392,7 +392,8 @@ struct OnDeviceRootView: View {
         .animation(reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.34, dampingFraction: 0.88), value: playPanel)
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: activeGame)
         // Menu ambience pauses while anything covers the menu.
-        .environment(\.brandAmbientMotion, !menuSheetOpen)
+        // The profile is a long page of cards scrolling over the room, dimmed: the room holds still under it.
+        .environment(\.brandAmbientMotion, !menuSheetOpen && lobby != .profile)
         let social = learningSheets(menu)
         .arenaPanel(isPresented: $showAppearance, maxWidth: 560, fitsContent: true) {
             ArenaOptionsView(portraitModeEnabled: $portraitModeEnabled, upstreamCommit: setup.identity?.upstreamCommit,

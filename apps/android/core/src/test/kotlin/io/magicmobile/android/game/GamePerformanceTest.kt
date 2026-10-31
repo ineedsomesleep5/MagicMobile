@@ -20,6 +20,22 @@ class GamePerformanceTest {
         assertEquals(2.0, entry.hotMinutes, 0.001)
     }
 
+    @Test fun recordKeepsHowTheGameBegan() {
+        val start = 1_000_000_000L
+        val entry = GamePerformanceEntry(start, "ranked", 6)
+            .absorb(start, null, null, 1)
+            .absorb(start + 60_000, null, null, 2, onCharger = true)
+            .absorb(start + 120_000, null, null, 0, lowPowerMode = true)
+        assertEquals(1, entry.startThermal)
+        assertTrue(entry.line, entry.line.endsWith("hottest serious, hot 1 min, began fair, charging, low power"))
+        val cool = GamePerformanceEntry(start, "ranked", 6).absorb(start, null, null, 0).absorb(start + 60_000, null, null, 1)
+        assertTrue(cool.line, cool.line.endsWith("hottest fair"))
+        // A record saved by an earlier build has none of these and still loads.
+        val old = GamePerformanceLog.decode("""[{"started":1,"mode":"quick"}]""").single()
+        assertNull(old.startThermal)
+        assertEquals(false, old.charging)
+    }
+
     @Test fun logKeepsTheLastTwentyGames() {
         var text: String? = null
         val start = 2_000_000_000L
