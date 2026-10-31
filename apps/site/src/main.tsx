@@ -301,7 +301,7 @@ function App() {
               <details>
                 <summary>What to expect from the alpha</summary>
                 <p>
-                  Android build 51 brings more opponents to Platinum, Diamond and Mythic, adds awards to your profile, asks every player for a name first, lets you pay for Propaganda and other taxes when it isn't your priority, and fills the screen on
+                  Android build 52 lights up only creatures that can actually block and explains Fear on the card. It also brings more opponents to Platinum, Diamond and Mythic, adds awards to your profile, asks every player for a name first, lets you pay for Propaganda and other taxes when it isn't your priority, and fills the screen on
                   phones with Back, Home and Recents buttons. Your own picture is the whole card and follows you to every phone and
                   browser you sign in on, and five short lessons with Maren teach Commander on the real board. You can talk with the other players at online tables
                   with the mic under the gear. Tables keep going when a player leaves, and the leaderboard and profile show
