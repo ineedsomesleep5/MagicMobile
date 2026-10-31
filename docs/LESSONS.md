@@ -21,6 +21,17 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-30 (Claude, profile frame rate): `.shadow` on a view that holds other views is worked out from all of them, again
+  on every frame a scroll moves it, and `ArenaGlassPanel` did that to every card on the profile's long plain `VStack`.
+  **Rule:** a panel's shadow goes on its background shape; a shadow on a picture with transparency gets flattened with
+  `.drawingGroup()` (pad it first or the glow is cut, `AwardMedal`). The profile can't simply become a `LazyVStack`:
+  `RankedUITests` and `ProfileHistoryUITests` expect `profile.season` and `profile.history` to exist on opening. Repeating
+  motion off the board uses `AmbientLoop`, not `repeatForever`, and `TimelineView(.animation)` always gets a
+  `minimumInterval`: uncapped it runs at 120 a second on ProMotion. Also: Xcode 27.2's `simctl` and `devicectl` are
+  scripts that run `xcodebuild -runFirstLaunch` when CoreSimulator is older than they expect, and without an admin
+  password that hangs forever with no message. If one hangs, Caleb runs `sudo xcodebuild -runFirstLaunch` once.
+  Where: `Board/ArenaBoardViews.swift`, `AmbientMotion.swift`.
+
 - 2026-10-29 (Claude, name gate): every install and browser makes an anonymous Supabase account on first open, so of
   720 accounts 716 had no name and showed nowhere (no leaderboard, friends or saved games). **Rule:** a profile that is
   reachable but nameless gets the name screen before the menus (`PlayerAccount.needsName`: phase ready and no username;

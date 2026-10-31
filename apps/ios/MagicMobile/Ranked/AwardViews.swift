@@ -17,6 +17,10 @@ struct AwardMedal: View {
         }
         .frame(width: size, height: size)
         .shadow(color: award.rarity > 1 ? award.tint.opacity(award.rarity == 3 ? 0.8 : 0.45) : .clear, radius: size * (award.rarity == 3 ? 0.2 : 0.12))
+        // Flattened once, with room for the glow: a shadow on a picture is otherwise worked out again every frame it scrolls.
+        .padding(size * 0.3)
+        .drawingGroup()
+        .padding(-size * 0.3)
         .accessibilityHidden(true)
     }
 

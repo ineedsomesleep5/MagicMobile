@@ -875,25 +875,28 @@ struct ArenaSeam: View {
     let vertical: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.brandAmbientMotion) private var ambient
-    @State private var flicker = false
 
     var body: some View {
+        if reduceMotion || !ambient {
+            seam(0)
+        } else {
+            AmbientLoop(period: 1.8) { phase in seam(0.5 - 0.5 * cos(2 * .pi * phase)) }
+        }
+    }
+
+    private func seam(_ flicker: Double) -> some View {
         let line = LinearGradient(colors: [ArenaMenuStyle.seam.opacity(0.55), Color(red: 1, green: 0.84, blue: 0.5), ArenaMenuStyle.seam,
                                            Color(red: 1, green: 0.7, blue: 0.3), ArenaMenuStyle.seam.opacity(0.6)],
                                   startPoint: vertical ? .top : .leading, endPoint: vertical ? .bottom : .trailing)
         // A burning edge: a bright core, an ember glow around it, a wider haze.
-        Rectangle()
+        return Rectangle()
             .fill(line)
             .frame(width: vertical ? 3.5 : nil, height: vertical ? nil : 3.5)
-            .shadow(color: ArenaMenuStyle.seam.opacity(flicker ? 1 : 0.7), radius: flicker ? 9 : 7)
+            .shadow(color: ArenaMenuStyle.seam.opacity(0.7 + 0.3 * flicker), radius: 7 + 2 * flicker)
             .shadow(color: Color(red: 1, green: 0.35, blue: 0.1).opacity(0.55), radius: 20)
             .ignoresSafeArea(edges: vertical ? .bottom : [])
             .allowsHitTesting(false)
             .accessibilityHidden(true)
-            .onAppear {
-                guard !reduceMotion, ambient else { return }
-                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { flicker = true }
-            }
     }
 }
 

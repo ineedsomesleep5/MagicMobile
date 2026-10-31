@@ -24,6 +24,29 @@ final class PerformanceAwarenessTests: XCTestCase {
         XCTAssertEqual(entry.hotMinutes, 2, accuracy: 0.001, "only the minutes ending in a hot reading count")
     }
 
+    /// The report tells a game that heated the phone from a phone already warm or on a charger.
+    func testRecordKeepsHowTheGameBegan() throws {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        var entry = GamePerformanceEntry(started: start, mode: "ranked", aiSkill: 6)
+        entry.absorb(at: start, footprint: nil, available: nil, thermal: 1)
+        entry.absorb(at: start + 60, footprint: nil, available: nil, thermal: 2, onCharger: true)
+        entry.absorb(at: start + 120, footprint: nil, available: nil, thermal: 0, lowPowerMode: true)
+        XCTAssertEqual(entry.startThermal, 1)
+        XCTAssertTrue(entry.line.hasSuffix("hottest serious, hot 1 min, began fair, charging, low power"), entry.line)
+
+        var cool = GamePerformanceEntry(started: start, mode: "ranked", aiSkill: 6)
+        cool.absorb(at: start, footprint: nil, available: nil, thermal: 0)
+        cool.absorb(at: start + 60, footprint: nil, available: nil, thermal: 1)
+        XCTAssertTrue(cool.line.hasSuffix("hottest fair"), "only what is worth saying: \(cool.line)")
+
+        // A record saved by an earlier build has none of these and still loads.
+        var saved = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(cool)) as? [String: Any])
+        saved["startThermal"] = nil
+        let old = try JSONDecoder().decode(GamePerformanceEntry.self, from: JSONSerialization.data(withJSONObject: saved))
+        XCTAssertNil(old.startThermal)
+        XCTAssertNil(old.charging)
+    }
+
     func testLogKeepsTheLastTwentyGames() {
         let log = GamePerformanceLog(defaults: freshDefaults())
         let start = Date(timeIntervalSince1970: 2_000_000)
@@ -71,6 +94,11 @@ final class PerformanceAwarenessTests: XCTestCase {
         XCTAssertTrue(fromB.allSatisfy { fromA.contains($0) }, "both timelines tick at exactly the same times")
         // The same answer asked again: a fixed grid, never "now".
         XCTAssertEqual(Array(schedule.entries(from: b, mode: .normal).prefix(10)), fromB)
+    }
+
+    func testAmbientLoopsReadTheSharedClock() {
+        XCTAssertEqual(AmbientTimelineSchedule.phase(at: Date(timeIntervalSinceReferenceDate: 9), period: 2), 0.5, accuracy: 1e-9)
+        XCTAssertEqual(AmbientTimelineSchedule.phase(at: Date(timeIntervalSinceReferenceDate: 8), period: 2), 0, accuracy: 1e-9)
     }
 
     func testPausedAmbientTimelineDrawsOnce() {

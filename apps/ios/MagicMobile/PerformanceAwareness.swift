@@ -47,6 +47,11 @@ struct AmbientTimelineSchedule: TimelineSchedule {
     var interval: TimeInterval
     var paused = false
 
+    /// How far through a repeating `period` a grid time is, 0 up to 1. Reading the wall clock keeps every loop in step.
+    static func phase(at date: Date, period: TimeInterval) -> Double {
+        date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
+    }
+
     func entries(from startDate: Date, mode: TimelineScheduleMode) -> Entries {
         // Always-on displays get one step a second.
         let step = mode == .lowFrequency ? max(interval, 1) : max(interval, 1.0 / 120)
@@ -129,6 +134,19 @@ enum AppMemory {
     }
 }
 
+/// Whether the phone is on a charger; false where the system doesn't say (simulator, Mac).
+enum DevicePower {
+    @MainActor static var onCharger: Bool {
+        #if os(iOS)
+        let device = UIDevice.current
+        device.isBatteryMonitoringEnabled = true
+        return device.batteryState == .charging || device.batteryState == .full
+        #else
+        return false
+        #endif
+    }
+}
+
 /// One game's performance record.
 struct GamePerformanceEntry: Codable, Equatable, Sendable {
     var started: Date
@@ -143,9 +161,19 @@ struct GamePerformanceEntry: Codable, Equatable, Sendable {
     var hotMinutes: Double = 0
     var memoryWarnings = 0
     var lastSample: Date?
+    /// The state at the first reading: a game that began warm didn't heat the phone by itself. Optional, like the two
+    /// below, so records saved by earlier builds still load.
+    var startThermal: Int?
+    /// On a charger at any reading (charging heats a phone by itself).
+    var charging: Bool?
+    /// Low Power Mode at any reading.
+    var lowPower: Bool?
 
     /// Takes one reading. Time since the previous reading counts as hot when this reading is hot.
-    mutating func absorb(at now: Date, footprint: UInt64?, available: UInt64?, thermal: Int) {
+    mutating func absorb(at now: Date, footprint: UInt64?, available: UInt64?, thermal: Int, onCharger: Bool = false, lowPowerMode: Bool = false) {
+        if startThermal == nil { startThermal = thermal }
+        if onCharger { charging = true }
+        if lowPowerMode { lowPower = true }
         if let footprint { peakFootprintMB = max(peakFootprintMB, Int(footprint / 1_048_576)) }
         if let available {
             let mb = Int(available / 1_048_576)
@@ -168,6 +196,9 @@ struct GamePerformanceEntry: Codable, Equatable, Sendable {
         if let lowestAvailableMB { parts.append("lowest headroom \(lowestAvailableMB) MB") }
         parts.append("hottest \(Self.thermalNames[min(max(hottest, 0), 3)])")
         if hotMinutes >= 0.5 { parts.append(String(format: "hot %.0f min", hotMinutes)) }
+        if let startThermal, startThermal > 0 { parts.append("began \(Self.thermalNames[min(startThermal, 3)])") }
+        if charging == true { parts.append("charging") }
+        if lowPower == true { parts.append("low power") }
         if memoryWarnings > 0 { parts.append("\(memoryWarnings) memory warning" + (memoryWarnings == 1 ? "" : "s")) }
         return parts.joined(separator: ", ")
     }
@@ -208,8 +239,10 @@ final class GamePerformanceLog {
     }
 
     func sample(at now: Date = Date(), footprint: UInt64? = AppMemory.footprint(), available: UInt64? = AppMemory.available(),
-                thermal: ProcessInfo.ThermalState = ProcessInfo.processInfo.thermalState) {
-        current?.absorb(at: now, footprint: footprint, available: available, thermal: thermal.rawValue)
+                thermal: ProcessInfo.ThermalState = ProcessInfo.processInfo.thermalState,
+                lowPowerMode: Bool = ProcessInfo.processInfo.isLowPowerModeEnabled) {
+        current?.absorb(at: now, footprint: footprint, available: available, thermal: thermal.rawValue,
+                        onCharger: DevicePower.onCharger, lowPowerMode: lowPowerMode)
     }
 
     func noteTurn(_ turn: Int?) {

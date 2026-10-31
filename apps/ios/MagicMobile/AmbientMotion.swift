@@ -35,6 +35,21 @@ struct BoardBreath<Content: View>: View {
     }
 }
 
+/// A repeating 0 to 1 for slow motion away from the board (menus, ranked pages), on the same grid as the breaths: thirty
+/// steps a second, fifteen while hot. A repeating SwiftUI animation would redraw at up to 120 a second as long as its page
+/// stays open. Unlike BoardBreath it never rests: BoardActivity only knows about the board.
+struct AmbientLoop<Content: View>: View {
+    let period: Double
+    @ViewBuilder let content: (Double) -> Content
+    @ObservedObject private var heat = DeviceHeat.shared
+
+    var body: some View {
+        TimelineView(AmbientTimelineSchedule(interval: heat.ambientInterval)) { timeline in
+            content(AmbientTimelineSchedule.phase(at: timeline.date, period: period))
+        }
+    }
+}
+
 /// Frames only while a brief effect is on screen: thirty a second for `active` seconds at the start
 /// of every `cycle`, then nothing until the next cycle. A glint that shows for under a second every
 /// few seconds no longer redraws thirty times a second in between.

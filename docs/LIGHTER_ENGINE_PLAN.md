@@ -404,3 +404,8 @@ same objects that dominate allocation.
   Loaming Shaman's trigger made a game copy for each of up to 4,000 options, uncounted and unstopped, and timed-out
   searches kept copying. Abandoned and capped searches now stop at their next copy; the cap counts every search.
   0 of 640 calibration games out of memory (#202: 2), win rates within #202's intervals.
+- 2026-10-30: Game Performance report from Caleb's iPhone (build 73, 20 ranked games): 11 nominal, 6 fair, 3 serious for a
+  minute each, none critical, and the serious ones were three in a row followed by cooler games, so neither AI skill,
+  memory nor game length explains them. The report now records the state a game began in, charging and Low Power Mode on
+  both phones. App-only: effects and menu loops capped; profile panels' shadows moved to their shapes. The last Instruments
+  trace is still build 46, before the Arena board; a skill 6 Arena trace is the next real measurement.
