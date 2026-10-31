@@ -1,5 +1,6 @@
 package io.magicmobile.xmage;
 
+import io.magicmobile.core.DecisionSpec;
 import io.magicmobile.core.Json;
 import io.magicmobile.generated.GeneratedCardFactory;
 import io.magicmobile.generated.GeneratedSetRegistry;
@@ -12,13 +13,19 @@ import mage.cards.MobileCardFactories;
 import mage.cards.a.AmbushViper;
 import mage.cards.basiclands.Forest;
 import mage.cards.c.Counterspell;
+import mage.cards.d.DrudgeSkeletons;
 import mage.cards.decks.Deck;
+import mage.cards.e.EidolonOfRhetoric;
 import mage.cards.g.GiantGrowth;
 import mage.cards.g.GrizzlyBears;
 import mage.cards.l.LightningBolt;
+import mage.cards.m.MarrowGnawer;
+import mage.cards.o.Ornithopter;
 import mage.cards.p.ProdigalSorcerer;
 import mage.cards.r.Rout;
 import mage.cards.t.ThinkTwice;
+import mage.cards.v.VoraciousVermin;
+import mage.constants.Constants;
 import mage.constants.Rarity;
 import mage.constants.Zone;
 import mage.game.events.PlayerQueryEvent;
@@ -47,6 +54,7 @@ public final class RealStackResponseTests {
         tests.put("untargeted-sweeper", RealStackResponseTests::untargetedSweeper);
         tests.put("combat", RealStackResponseTests::combat);
         tests.put("attack-tax", RealStackResponseTests::attackTax);
+        tests.put("legal-blockers", RealStackResponseTests::legalBlockers);
         int passed = 0;
         for (Map.Entry<String,Runnable> test : tests.entrySet()) {
             if (args.length > 0 && !args[0].equals(test.getKey())) continue;
@@ -207,6 +215,42 @@ public final class RealStackResponseTests {
             check(f.game.getPermanent(home.getId()) != null && !f.game.getPermanent(home.getId()).isAttacking(),
                 "a creature that stayed home is not part of the attack");
         }
+    }
+
+    /**
+     * Marrow-Gnawer gives every Rat fear: a white creature can't block one, and tapping it did nothing. The block prompt
+     * lights only creatures with an attacker they can block, so it lights again once a Grizzly Bears attacks too.
+     */
+    private static void legalBlockers() {
+        try (Fixture f = new Fixture()) {
+            f.battlefield(f.card(MarrowGnawer::new, "Marrow-Gnawer", "CHK", "124", f.opponent));
+            Card rat = f.battlefield(f.card(VoraciousVermin::new, "Voracious Vermin", "C20", "143", f.opponent));
+            Card bears = f.battlefield(f.card(GrizzlyBears::new, "Grizzly Bears", "M10", "189", f.opponent));
+            Card white = f.battlefield(f.card(EidolonOfRhetoric::new, "Eidolon of Rhetoric", "JOU", "10", f.owner));
+            Card black = f.battlefield(f.card(DrudgeSkeletons::new, "Drudge Skeletons", "M10", "96", f.owner));
+            Card artifact = f.battlefield(f.card(Ornithopter::new, "Ornithopter", "M10", "216", f.owner));
+            f.game.getState().setActivePlayerId(f.opponent.getId());
+            CombatPhase phase = new CombatPhase();
+            phase.setStep(new DeclareAttackersStep());
+            f.game.getTurn().setPhase(phase);
+            f.game.getCombat().setAttacker(f.opponent.getId());
+            f.game.getCombat().setDefenders(f.game);
+            check(f.game.getCombat().declareAttacker(rat.getId(), f.owner.getId(), f.opponent.getId(), f.game), "the Rat attacks");
+            f.game.applyEffects();
+            eq(possibleBlockers(f, white, black, artifact), List.of(black.getId().toString(), artifact.getId().toString()));
+            check(f.game.getCombat().declareAttacker(bears.getId(), f.owner.getId(), f.opponent.getId(), f.game), "the Bears attack");
+            eq(possibleBlockers(f, white, black, artifact),
+                List.of(white.getId().toString(), black.getId().toString(), artifact.getId().toString()));
+        }
+    }
+
+    private static Object possibleBlockers(Fixture f, Card... creatures) {
+        ArrayList<UUID> candidates = new ArrayList<>();
+        for (Card creature : creatures) candidates.add(creature.getId());
+        Map<String,java.io.Serializable> options = new HashMap<>();
+        options.put(Constants.Option.POSSIBLE_BLOCKERS, candidates);
+        DecisionSpec spec = QueryEncoder.encode(PlayerQueryEvent.selectEvent(f.owner.getId(), "Select blockers", options), f.game);
+        return Json.object(spec.payload.get("options")).get(Constants.Option.POSSIBLE_BLOCKERS);
     }
 
     /**
