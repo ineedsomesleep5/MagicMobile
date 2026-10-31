@@ -1144,6 +1144,13 @@ contradicting one.
   pills now wrap; other pills keep `nowrap`. `EngineDisplayText.text` trims, so running a log span through `RulesText`
   ate the spaces between spans ("CalebFplaysPlains"): `LogText` puts the edge spaces back.
 
+- 2026-10-31 (Claude, phone traces): the `Animation Hitches` template writes about 300 to 500 MB a second to
+  `instruments*.ktrace` in the user temp folder and keeps the file after saving, so a 30 s recording filled the disk and
+  lost the trace. Record 10 s and check free space first. xctrace needs `devicectl device info details` just before it or
+  it times out "waiting for device to boot", and `--attach` can fail by name yet work by pid, or the reverse: try both.
+  Two `.animation(minimumInterval: 1 / 30)` timelines fall between each other's frames and update the screen about 60
+  times a second, so full-screen loops belong on `AmbientTimelineSchedule`.
+
 ## Awards (2026-10-30)
 
 - A server-driven feature's app side has to carry everything it will ever need: art by URL with a drawn fallback, tint, rarity and the ceremony all shipped at once, so later awards are rows. The rules are data too, but a new rule `kind` still needs a migration.

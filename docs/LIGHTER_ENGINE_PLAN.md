@@ -409,3 +409,8 @@ same objects that dominate allocation.
   memory nor game length explains them. The report now records the state a game began in, charging and Low Power Mode on
   both phones. App-only: effects and menu loops capped; profile panels' shadows moved to their shapes. The last Instruments
   trace is still build 46, before the Arena board; a skill 6 Arena trace is the next real measurement.
+- 2026-10-31: Animation Hitches traces on Caleb's iPhone 16 Pro Max, 10 s each, plugged in, all at Serious, build 73 against
+  the same source with PR #273. Profile scroll: 362 slow frames to 1, screen updates 23 to 58 a second on average, about 330
+  offscreen passes a frame to none reported. Idle menu: CPU reading 46% to 16%, updates 47 to 25 a second, slow frames 13 to
+  32, about 135 offscreen passes a frame left. The room's flames and the sparks ran on separate 30 Hz clocks, so together
+  they updated about 60 times a second and ignored heat; both now use the shared grid. Skill 6 Arena trace still to do.
