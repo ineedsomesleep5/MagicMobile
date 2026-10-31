@@ -1156,6 +1156,10 @@ contradicting one.
   attacker with fear and tapping it did nothing. `QueryEncoder` now drops creatures that can block no attacker, using the
   same `canBlock`, so all three platforms get it and an empty list shows the existing "no creatures can block" state.
 
+- 2026-10-31 (Claude, TestFlight 74): `preflight.py run` prints a `Checking ...` line per check before its JSON, so
+  `json.load` on the saved output fails even when every check passed. Read from the first `{` line. The upload and
+  distribution steps are safe to start on their own after a passing preflight.
+
 ## Awards (2026-10-30)
 
 - A server-driven feature's app side has to carry everything it will ever need: art by URL with a drawn fallback, tint, rarity and the ceremony all shipped at once, so later awards are rows. The rules are data too, but a new rule `kind` still needs a migration.
