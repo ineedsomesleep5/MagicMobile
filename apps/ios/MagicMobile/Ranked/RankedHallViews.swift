@@ -271,20 +271,23 @@ private struct HallEntrance: ViewModifier {
 private struct RankGlow: View {
     let tier: RankTier
     let size: CGFloat
-    @State private var breathe = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        if reduceMotion {
+            glow(0)
+        } else {
+            AmbientLoop(period: 5.2) { phase in glow(0.5 - 0.5 * cos(2 * .pi * phase)) }
+        }
+    }
+
+    private func glow(_ breath: Double) -> some View {
         Circle()
             .fill(RadialGradient(colors: [tier.tint.opacity(0.55), tier.tint.opacity(0.12), .clear], center: .center,
                                  startRadius: 0, endRadius: size / 2))
             .frame(width: size, height: size)
-            .scaleEffect(breathe ? 1.06 : 0.9)
-            .opacity(breathe ? 1 : 0.7)
-            .onAppear {
-                guard !reduceMotion else { return }
-                withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) { breathe = true }
-            }
+            .scaleEffect(0.9 + 0.16 * breath)
+            .opacity(0.7 + 0.3 * breath)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
@@ -669,24 +672,27 @@ struct RankedLeaderboardView: View {
 struct LeaderboardOnlineDot: View {
     static let color = Color(red: 0.45, green: 0.92, blue: 0.45)
     var size: CGFloat = 8
-    @State private var pulse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        if reduceMotion {
+            dot(0)
+        } else {
+            AmbientLoop(period: 1.6) { phase in dot(1 - (1 - phase) * (1 - phase)) }
+        }
+    }
+
+    private func dot(_ pulse: Double) -> some View {
         ZStack {
             Circle().fill(Self.color.opacity(0.5))
-                .scaleEffect(pulse ? 2.4 : 1)
-                .opacity(pulse ? 0 : 0.8)
+                .scaleEffect(1 + 1.4 * pulse)
+                .opacity(0.8 * (1 - pulse))
             Circle()
                 .fill(RadialGradient(colors: [.white, Self.color], center: .init(x: 0.35, y: 0.3), startRadius: 0, endRadius: size * 0.6))
                 .overlay(Circle().strokeBorder(Color.black.opacity(0.5), lineWidth: 1))
                 .shadow(color: Self.color, radius: 3)
         }
         .frame(width: size, height: size)
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.easeOut(duration: 1.6).repeatForever(autoreverses: false)) { pulse = true }
-        }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
@@ -696,7 +702,6 @@ struct LeaderboardOnlineDot: View {
 private struct MythicShimmer: ViewModifier {
     let active: Bool
     var cornerRadius: CGFloat = 10
-    @State private var sweep = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
@@ -704,17 +709,19 @@ private struct MythicShimmer: ViewModifier {
             content
                 .overlay {
                     GeometryReader { geo in
-                        LinearGradient(colors: [.clear, ArenaMenuStyle.gold.opacity(0.22), .white.opacity(0.22), .clear],
-                                       startPoint: .leading, endPoint: .trailing)
-                            .frame(width: geo.size.width * 0.4)
-                            .offset(x: sweep ? geo.size.width * 1.1 : -geo.size.width * 0.5)
-                            .blendMode(.screen)
+                        AmbientLoop(period: 2.8) { phase in
+                            // A 0.6 s rest, then 2.2 s across.
+                            let across = max(0, phase * 2.8 - 0.6) / 2.2
+                            let sweep = 0.5 - 0.5 * cos(.pi * across)
+                            LinearGradient(colors: [.clear, ArenaMenuStyle.gold.opacity(0.22), .white.opacity(0.22), .clear],
+                                           startPoint: .leading, endPoint: .trailing)
+                                .frame(width: geo.size.width * 0.4)
+                                .offset(x: geo.size.width * (1.6 * sweep - 0.5))
+                                .blendMode(.screen)
+                        }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
                     .allowsHitTesting(false)
-                }
-                .onAppear {
-                    withAnimation(.easeInOut(duration: 2.2).delay(0.6).repeatForever(autoreverses: false)) { sweep = true }
                 }
         } else {
             content

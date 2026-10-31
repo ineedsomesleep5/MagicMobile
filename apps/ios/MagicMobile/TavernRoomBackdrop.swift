@@ -9,6 +9,7 @@ struct TavernRoomBackdrop: View {
     @Environment(\.brandAmbientMotion) private var ambient
     @StateObject private var tilt = DeviceTilt()
     @ObservedObject private var images = TavernRoomImages.shared
+    @ObservedObject private var heat = DeviceHeat.shared
     @State private var start = Date()
 
     /// The room's art is installed (tavern-room-* images and tavern-room.json).
@@ -30,7 +31,7 @@ struct TavernRoomBackdrop: View {
                         // Decoding (first appearance or a turn of the phone): the room fades in when ready.
                         EmptyView()
                     } else if moving {
-                        TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+                        TimelineView(AmbientTimelineSchedule(interval: heat.ambientInterval)) { timeline in
                             glows(shot, size: proxy.size, t: timeline.date.timeIntervalSince(start))
                         }
                     } else {

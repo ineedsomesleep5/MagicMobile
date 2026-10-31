@@ -132,6 +132,7 @@ struct BrandBackdrop: View {
     var cards = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.brandAmbientMotion) private var ambient
+    @ObservedObject private var heat = DeviceHeat.shared
     @State private var start = Date()
 
     var body: some View {
@@ -155,7 +156,8 @@ struct BrandBackdrop: View {
                 if reduceMotion || !ambient {
                     Canvas { context, size in draw(&context, size, t: 0) }
                 } else {
-                    TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+                    // The shared grid: on its own clock this falls between the room's frames and the screen updates twice as often.
+                    TimelineView(AmbientTimelineSchedule(interval: heat.ambientInterval)) { timeline in
                         let t = timeline.date.timeIntervalSince(start)
                         Canvas { context, size in draw(&context, size, t: t) }
                     }

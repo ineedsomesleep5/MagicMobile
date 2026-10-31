@@ -288,7 +288,7 @@ struct PlayerProfileView: View {
         }
         .clipShape(shape)
         .overlay(shape.strokeBorder(ArenaGlass.hairline, lineWidth: 1))
-        .shadow(color: .black.opacity(0.6), radius: 14, y: 6)
+        .background(shape.fill(Color.black).shadow(color: .black.opacity(0.6), radius: 14, y: 6))
     }
 
     // MARK: Customization
