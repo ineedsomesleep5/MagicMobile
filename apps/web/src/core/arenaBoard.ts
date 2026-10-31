@@ -18,6 +18,8 @@ export const GLOSSARY: [string, string][] = [
   ["First strike", "Deals combat damage before creatures without first strike."],
   ["Double strike", "Deals both first-strike and regular combat damage."],
   ["Menace", "Can't be blocked except by two or more creatures."],
+  ["Fear", "Can be blocked only by artifact creatures and/or black creatures."],
+  ["Intimidate", "Can be blocked only by artifact creatures and/or creatures that share a colour with it."],
   ["Hexproof", "Can't be the target of spells or abilities your opponents control."],
   ["Shroud", "Can't be the target of any spell or ability."],
   ["Indestructible", "Damage and \"destroy\" effects don't destroy it."],

@@ -499,6 +499,7 @@ final class ArenaBoardModelTests: XCTestCase {
         XCTAssertEqual(entries.map(\.keyword), ["Flying", "Vigilance", "Flashback"])
         XCTAssertTrue(ArenaKeywordGlossary.entries(rules: "Flashback {2}").allSatisfy { $0.keyword != "Flash" }, "flashback isn't flash")
         XCTAssertTrue(ArenaKeywordGlossary.entries(rules: "Equipped creature gets +1/+1.").isEmpty, "equipped isn't equip")
+        XCTAssertEqual(ArenaKeywordGlossary.entries(rules: "Fear").map(\.keyword), ["Fear"], "a Rat under Marrow-Gnawer")
     }
 
     /// A carried card plays anywhere on the table above the hand, your land row and the table's right side included,
