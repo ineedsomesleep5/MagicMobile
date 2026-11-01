@@ -159,6 +159,8 @@ struct ArenaTopBar: View {
     let compact: Bool
     let select: (ArenaMenuTab) -> Void
     var rank: RankPosition? = nil
+    /// Set while placing, in place of the rank's own title.
+    var rankTitle: String? = nil
     var openRank: (() -> Void)? = nil
     var unread = false
     var messages: (() -> Void)? = nil
@@ -184,8 +186,8 @@ struct ArenaTopBar: View {
                     openRank?()
                 } label: {
                     HStack(spacing: 6) {
-                        RankEmblem(tier: rank.tier, size: 22)
-                        Text(rank.title).font(ArenaMenuStyle.font(12, .bold)).foregroundStyle(ArenaMenuStyle.text)
+                        RankEmblem(tier: rank.tier, size: 22).saturation(rankTitle == nil ? 1 : 0)
+                        Text(rankTitle ?? rank.title).font(ArenaMenuStyle.font(12, .bold)).foregroundStyle(ArenaMenuStyle.text)
                             .lineLimit(1)
                     }
                     .padding(.horizontal, 10)
@@ -197,7 +199,7 @@ struct ArenaTopBar: View {
                 }
                 .buttonStyle(BrandPressStyle())
                 .padding(.trailing, 4)
-                .accessibilityLabel(String(localized: "Your rank, \(rank.title)"))
+                .accessibilityLabel(String(localized: "Your rank, \(rankTitle ?? rank.title)"))
                 .accessibilityIdentifier("menu.rank")
             }
             if let messages {

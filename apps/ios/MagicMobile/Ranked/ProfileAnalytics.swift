@@ -69,7 +69,7 @@ struct ProfileGame: Identifiable, Equatable, Sendable {
         self.init(id: match.id.uuidString, date: match.date, mode: match.mode, outcome: match.outcome, deckName: match.deckName,
                   commanders: match.commander.map { [$0] } ?? [], colors: match.colors,
                   opponents: match.opponents.map { Opponent(name: $0.name, commander: $0.commander, isAI: $0.isAI) },
-                  turns: match.turns > 0 ? match.turns : nil, rankDelta: match.rankChange?.pipDelta, engineMatchID: match.engineMatchID)
+                  turns: match.turns > 0 ? match.turns : nil, rankDelta: match.rankChange?.ladderDelta, engineMatchID: match.engineMatchID)
         rankLine = match.rankChange.map(Self.rankLine)
         rankNote = match.rankNote
         durationSeconds = match.durationSeconds

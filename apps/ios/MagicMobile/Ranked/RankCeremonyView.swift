@@ -10,6 +10,35 @@ struct RankProgressPanel: View {
     private var shown: RankPosition { RankPosition(points: shownPoints ?? change.before.points) }
 
     var body: some View {
+        if let left = change.placementLeft { placement(left: left) } else { ladder }
+    }
+
+    /// A placement match: how far through, with the climb kept for the end.
+    private func placement(left: Int) -> some View {
+        let played = RankLadder.placementMatches - left
+        return HStack(spacing: 14) {
+            RankBadge(position: .start, size: 64, showsPips: false, unplaced: true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(String(localized: "Placement \(played) of \(RankLadder.placementMatches)"))
+                    .font(.system(size: 18, weight: .black, design: .serif))
+                    .foregroundStyle(ArenaMenuStyle.text)
+                HStack(spacing: 5) {
+                    ForEach(0..<RankLadder.placementMatches, id: \.self) { game in
+                        Circle().fill(game < played ? AnyShapeStyle(ArenaMenuStyle.goldFill) : AnyShapeStyle(Color.white.opacity(0.14)))
+                            .frame(width: 10, height: 10)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .modifier(ArenaGlassPanel(cornerRadius: 12, opacity: 0.95))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(localized: "Placement \(played) of \(RankLadder.placementMatches)"))
+        .accessibilityIdentifier("rank.placement")
+    }
+
+    private var ladder: some View {
         HStack(spacing: 14) {
             RankBadge(position: shown, size: 64, showsPips: false)
                 .id(shown.tier.rawValue * 10 + shown.division)
@@ -85,7 +114,8 @@ struct RankCeremonyOverlay: View {
     @State private var finished = false
     @State private var spinStart = Date()
 
-    private var promoted: Bool { change.after > change.before }
+    private var placed: Bool { change.kind == .placed }
+    private var promoted: Bool { placed || change.after > change.before }
     private var tierChange: Bool { change.after.tier != change.before.tier }
 
     var body: some View {
@@ -119,13 +149,14 @@ struct RankCeremonyOverlay: View {
         .contentShape(Rectangle())
         .onTapGesture {}
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(promoted ? String(localized: "Ranked up to \(change.after.title)") : String(localized: "Ranked down to \(change.after.title)"))
+        .accessibilityLabel(placed ? String(localized: "Placed in \(change.after.title)") : promoted ? String(localized: "Ranked up to \(change.after.title)") : String(localized: "Ranked down to \(change.after.title)"))
         .accessibilityIdentifier("rank.ceremony")
         .task { await run() }
     }
 
     private var oldBadge: some View {
-        RankBadge(position: change.before, size: 170, showsPips: false, spin: stage == 1 && promoted ? .init(start: spinStart, turns: 1, duration: 0.9) : nil)
+        RankBadge(position: placed ? .start : change.before, size: 170, showsPips: false,
+                  spin: stage == 1 && promoted ? .init(start: spinStart, turns: 1, duration: 0.9) : nil, unplaced: placed)
             .scaleEffect(stage == 1 ? (promoted ? 1.1 : 0.96) : 1)
             .modifier(RankShake(amount: stage == 1 ? (promoted ? 3 : 7) : 0))
             .overlay { if !promoted && stage >= 1 { RankCracks(progress: stage >= 1 ? 1 : 0).frame(width: 150, height: 150) } }
@@ -147,8 +178,9 @@ struct RankCeremonyOverlay: View {
 
     private var titleBlock: some View {
         VStack(spacing: 8) {
-            Text(promoted ? (tierChange ? String(localized: "NEW RANK") : String(localized: "RANKED UP"))
-                          : String(localized: "RANKED DOWN"))
+            Text(placed ? String(localized: "PLACED")
+                 : promoted ? (tierChange ? String(localized: "NEW RANK") : String(localized: "RANKED UP"))
+                 : String(localized: "RANKED DOWN"))
                 .font(ArenaMenuStyle.font(15, .black)).tracking(4)
                 .foregroundStyle(promoted ? TavernPalette.brass : Color(red: 0.85, green: 0.4, blue: 0.35))
             Text(change.after.title)
@@ -156,7 +188,8 @@ struct RankCeremonyOverlay: View {
                 .foregroundStyle(LinearGradient(colors: [.white, change.after.tier.tint], startPoint: .top, endPoint: .bottom))
                 .shadow(color: (promoted ? change.after.tier.tint : .black).opacity(0.7), radius: 12)
                 .minimumScaleFactor(0.6).lineLimit(1)
-            Text(promoted ? String(localized: "Your opponents grow stronger.") : String(localized: "Win your next games to climb back."))
+            Text(placed ? String(localized: "Your season starts here.")
+                 : promoted ? String(localized: "Your opponents grow stronger.") : String(localized: "Win your next games to climb back."))
                 .font(ArenaMenuStyle.font(14, .medium))
                 .foregroundStyle(TavernPalette.parchment.opacity(0.8))
         }

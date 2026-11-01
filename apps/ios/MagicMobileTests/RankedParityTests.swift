@@ -145,7 +145,26 @@ final class RankedParityTests: XCTestCase {
             if item["to"] as? String != item["season"] as? String {
                 XCTAssertEqual(next.wins + next.losses, 0, name)
                 XCTAssertEqual(next.peak, next.position, name)
+                XCTAssertEqual(next.placementLeft, RankLadder.placementMatches, name)
             }
+        }
+    }
+
+    func testPlacements() throws {
+        for item in try rows("placements") {
+            let name = item["name"] as? String ?? ""
+            var state = RankState.newPlayer(season: "2026-11")
+            state.position = try position(item["start"])
+            state.peak = state.position
+            var last: RankChange?
+            for result in try XCTUnwrap(item["results"] as? [String]) {
+                let applied = RankLadder.apply(try XCTUnwrap(RankOutcome(rawValue: result)), to: state, deckBracket: 1)
+                state = applied.state
+                last = applied.change
+            }
+            XCTAssertEqual(state.position, try position(item["after"]), name)
+            XCTAssertEqual(state.placementLeft, item["left"] as? Int, name)
+            XCTAssertEqual(last?.kind.rawValue, item["kind"] as? String, name)
         }
     }
 

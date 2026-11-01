@@ -125,16 +125,21 @@ struct RankChange: Codable, Equatable, Sendable {
         case underdog
     }
 
-    enum Kind: String, Codable, Sendable { case none, pipUp, pipDown, divisionUp, divisionDown, tierUp, tierDown }
+    enum Kind: String, Codable, Sendable { case none, pipUp, pipDown, divisionUp, divisionDown, tierUp, tierDown, placing, placed }
 
     let outcome: RankOutcome
     let before: RankPosition
     let after: RankPosition
     let bonuses: [Bonus]
+    /// A placement match: the placements still to play after it.
+    var placementLeft: Int? = nil
 
     var pipDelta: Int { after.points - before.points }
+    /// What the game did on the ladder itself: placements don't move you pip by pip.
+    var ladderDelta: Int? { placementLeft == nil ? pipDelta : nil }
 
     var kind: Kind {
+        if let placementLeft { return placementLeft == 0 ? .placed : .placing }
         if after.tier != before.tier { return after.tier > before.tier ? .tierUp : .tierDown }
         if after.division != before.division { return after.division < before.division ? .divisionUp : .divisionDown }
         if after.pips != before.pips { return after.pips > before.pips ? .pipUp : .pipDown }
@@ -160,8 +165,28 @@ struct RankState: Codable, Equatable, Sendable {
     var draws = 0
     var winStreak = 0
     var history: [SeasonRecord] = []
+    /// Placement matches still to play. Optional because profiles saved before placements have no such field.
+    var placementGames: Int? = nil
 
     static func fresh(season: String) -> RankState { RankState(season: season, position: .start, peak: .start) }
+    /// A new player's first season starts with placements too.
+    static func newPlayer(season: String) -> RankState {
+        var state = fresh(season: season)
+        state.placementGames = RankLadder.placementMatches
+        return state
+    }
+
+    var placementLeft: Int { placementGames ?? 0 }
+    var isPlacing: Bool { placementLeft > 0 }
+
+    /// The rank to show: while placing, the climb stays hidden until the last game.
+    var shownPosition: RankPosition { isPlacing ? .start : position }
+    var shownTitle: String {
+        isPlacing ? String(localized: "Placement \(RankLadder.placementMatches - placementLeft + 1) of \(RankLadder.placementMatches)")
+                  : position.title
+    }
+    /// The tier whose deck limit applies. Placements start low, so they take decks up to the highest place they can reach.
+    var deckLimitTier: RankTier { isPlacing ? RankLadder.placementTier : position.tier }
 }
 
 enum RankLadder {
@@ -235,8 +260,14 @@ enum RankLadder {
         return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: 1))
     }
 
-    /// A new month: last season goes into history and everyone drops one tier (Mythic to Diamond IV),
-    /// keeping their division, with empty pips.
+    /// Placement matches open every season (Caleb, 2026-11-01). A win climbs two divisions and a loss or draw changes
+    /// nothing, so five wins reach Gold II. Making Mythic starts you two divisions higher, so five wins reach Platinum IV.
+    /// Opponents follow your climb. Server: mm_ranked_apply.
+    static let placementMatches = 5
+    static let placementWinPips = 2 * RankPosition.pipsPerDivision
+    static let placementTier = RankTier.gold
+
+    /// A new season: last season goes into history and you start your placements.
     static func rollover(_ state: RankState, to season: String) -> RankState {
         guard state.season != season else { return state }
         var next = RankState.fresh(season: season)
@@ -247,14 +278,27 @@ enum RankLadder {
                                              wins: state.wins, losses: state.losses), at: 0)
         }
         next.history = Array(next.history.prefix(24))
-        next.position = .atStep(state.position.step - RankPosition.divisions)
+        next.position = state.peak.tier == .mythic ? RankPosition(points: placementWinPips) : .start
         next.peak = next.position
+        next.placementGames = placementMatches
         return next
     }
 
     /// One ranked result. `deckBracket` is your deck's bracket, for the underdog pip.
     static func apply(_ outcome: RankOutcome, to state: RankState, deckBracket: Int) -> (state: RankState, change: RankChange) {
         var next = state
+        if state.isPlacing {
+            switch outcome {
+            case .win: next.wins += 1; next.winStreak += 1
+            case .loss: next.losses += 1; next.winStreak = 0
+            case .draw: next.draws += 1; next.winStreak = 0
+            }
+            next.position = RankPosition(points: state.position.points + (outcome == .win ? placementWinPips : 0))
+            next.peak = max(next.peak, next.position)
+            next.placementGames = state.placementLeft - 1
+            return (next, RankChange(outcome: outcome, before: state.position, after: next.position, bonuses: [],
+                                     placementLeft: state.placementLeft - 1))
+        }
         var bonuses: [RankChange.Bonus] = []
         var delta = 0
         switch outcome {
@@ -301,6 +345,8 @@ struct RankedStanding: Decodable, Equatable, Sendable {
     let losses: Int
     let draws: Int
     let winStreak: Int
+    /// Placement matches still to play; nil from a server before placements.
+    var placementLeft: Int? = nil
     let history: [Season]?
     /// How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped, unverified or abandoned.
     let settlement: String?
@@ -314,6 +360,7 @@ struct RankedStanding: Decodable, Equatable, Sendable {
         let pointsBefore: Int?
         let pointsAfter: Int?
         let bonuses: [String]?
+        var placementLeft: Int? = nil
     }
 
     static func parse(_ data: Data) throws -> RankedStanding { try JSONDecoder().decode(RankedStanding.self, from: data) }

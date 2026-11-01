@@ -268,7 +268,7 @@ final class PlayerRecordStore: ObservableObject {
         fileURL = directory?.appendingPathComponent("player-record.json")
         gameRecordsURL = directory?.appendingPathComponent("GameRecords", isDirectory: true)
         let season = RankLadder.season(for: now())
-        var loaded = File(rank: .fresh(season: season), matches: [])
+        var loaded = File(rank: .newPlayer(season: season), matches: [])
         if let fileURL, let data = try? Data(contentsOf: fileURL), let file = try? JSONDecoder.record.decode(File.self, from: data) {
             loaded = file
         }
@@ -407,7 +407,8 @@ final class PlayerRecordStore: ObservableObject {
         match.settlementCheck = check
         if let before = change?.pointsBefore, let after = change?.pointsAfter {
             match.rankChange = RankChange(outcome: match.outcome, before: RankPosition(points: before), after: RankPosition(points: after),
-                                          bonuses: (change?.bonuses ?? []).compactMap(RankChange.Bonus.init(rawValue:)))
+                                          bonuses: (change?.bonuses ?? []).compactMap(RankChange.Bonus.init(rawValue:)),
+                                          placementLeft: change?.placementLeft)
         } else if RankSettlement.held(settlement), let local = match.rankChange {
             let stands = points.map { RankPosition(points: $0) } ?? local.before
             match.rankChange = RankChange(outcome: local.outcome, before: stands, after: stands, bonuses: [])
@@ -435,6 +436,7 @@ final class PlayerRecordStore: ObservableObject {
         next.losses = standing.losses
         next.draws = standing.draws
         next.winStreak = standing.winStreak
+        if let left = standing.placementLeft { next.placementGames = left }
         // The server's past seasons replace the phone's for the same month.
         for record in standing.history ?? [] {
             let season = SeasonRecord(season: record.season, final: RankPosition(points: record.finalPoints),
