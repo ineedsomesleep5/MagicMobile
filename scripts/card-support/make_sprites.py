@@ -11,6 +11,7 @@ import argparse
 import io
 import json
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -20,17 +21,23 @@ UA = {'User-Agent': 'MagicMobileCardSupport/1.0', 'Accept': 'application/json'}
 W, H, COLS, PER = 146, 204, 10, 100
 
 
-def http(url, body=None, tries=4):
+def http(url, body=None, tries=6):
+    """Retries rate limits (429, honouring Retry-After) and server errors with growing waits."""
     req = urllib.request.Request(url, data=json.dumps(body).encode() if body else None,
                                  headers={**UA, **({'Content-Type': 'application/json'} if body else {})})
     for attempt in range(tries):
         try:
             with urllib.request.urlopen(req, timeout=60) as r:
                 return r.read()
-        except Exception:
+        except urllib.error.HTTPError as e:
+            if attempt == tries - 1 or (e.code != 429 and e.code < 500):
+                raise
+            wait = e.headers.get('Retry-After') if e.headers else None
+            time.sleep(float(wait) if wait and wait.replace('.', '', 1).isdigit() else 2 ** (attempt + 1))
+        except urllib.error.URLError:
             if attempt == tries - 1:
                 raise
-            time.sleep(2 ** attempt)
+            time.sleep(2 ** (attempt + 1))
 
 
 def lookup(cards):
@@ -52,7 +59,7 @@ def lookup(cards):
                             (pass_ == 'print' and c['set'].lower() == card['set'] and str(c['num']) == card['collector_number'])
                             or (pass_ == 'name' and c['name'].split(' // ')[0].lower() == card['name'].split(' // ')[0].lower())):
                         found[c['name']] = uris['small']
-            time.sleep(0.12)
+            time.sleep(0.6)  # Scryfall allows about 2 requests a second on /cards/collection.
     return found
 
 
