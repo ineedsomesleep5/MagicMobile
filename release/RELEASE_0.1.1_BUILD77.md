@@ -18,4 +18,5 @@ Uploaded November 1, 2026 and distributed to Internal and External testers, from
 ## Verification
 - SQL suite in PGlite, including `trophies.sql`. A rolled-back dry run on the live database, then the migration: 15 trophies given across 5 players, 0 unseen.
 - iOS: `swift test` (825), board and profile tests, and on the simulator the trophy shelf, season badges and a 92-card deck in both orientations. CI on #281 passed.
-- **Not verified on a phone:** the shelf with real account data, and a trophy earned after a real game.
+- **Seen on Caleb's phone:** the shelf with his real account, 16 of 25, the new art loading and his five backfilled trophies lit.
+- **Not verified on a phone:** a trophy earned after a real game.
