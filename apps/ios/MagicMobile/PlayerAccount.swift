@@ -191,6 +191,7 @@ final class PlayerAccount: ObservableObject {
         unreadMessages = fixtureMessages.values.joined().filter { !$0.fromMe && !$0.read }.count
         phase = .ready
         username = SocialFixtures.ownName
+        trophies = SocialFixtures.trophies()
         friends = SocialFixtures.startingFriends()
         friendRanks = Dictionary(uniqueKeysWithValues: friends.compactMap { friend in SocialFixtures.rank(friend.username).map { (friend.username, $0) } })
         visibilityKnown = true

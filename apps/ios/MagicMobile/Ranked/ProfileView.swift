@@ -130,10 +130,12 @@ struct PlayerProfileView: View {
     /// The rest of the player's story, under the season rank: the season's chart and past seasons, the record and its
     /// charts, trophies, games, then the account and who can see it all.
     @ViewBuilder private func playerStory(_ summary: ProfileSummary, scoped: [MatchRecord]) -> some View {
-        if !account.awards.isEmpty {
+        // Trophies stand on their own shelf; they stay in `awards` for the ceremony.
+        let awards = account.awards.filter { !$0.shelf }
+        if !awards.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 ProfileSectionTitle(text: String(localized: "Awards"))
-                AwardShelf(awards: account.awards.filter { !$0.shelf })
+                AwardShelf(awards: awards)
             }.modifier(TavernLeatherCard()).accessibilityIdentifier("profile.awards")
         }
         seasonCard(summary)

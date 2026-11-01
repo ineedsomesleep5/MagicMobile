@@ -433,6 +433,7 @@ struct ArenaPileStack<Top: View>: View {
         .overlay(alignment: .bottomTrailing) {
             if count > 0 { ArenaCountBadge(count: count).offset(x: 8, y: -2) }
         }
+        .offset(y: lean.sink(under: thickness))
     }
 }
 

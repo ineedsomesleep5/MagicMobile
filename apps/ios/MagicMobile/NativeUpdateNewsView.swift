@@ -188,6 +188,14 @@ struct UpdateNewsMessage: Identifiable {
 /// The releases' notes, newest first, dated by the day they were written (git history of this file).
 enum UpdateNews {
     static let messages: [UpdateNewsMessage] = [
+        UpdateNewsMessage(id: "trophies-placements", title: String(localized: "Placements and trophies"), day: 1, month: 11,
+                          art: "Trophy Mage", colors: ["U"],
+                          lede: String(localized: "Every season now starts with five placement matches, and there are twelve new trophies to earn."),
+                          notes: [
+                            String(localized: "A placement win climbs two divisions and a loss costs nothing. The highest start is Gold II, or Platinum IV if you made Mythic last season."),
+                            String(localized: "Games you already played this season count toward your placements."),
+                            String(localized: "New trophies wait on your profile, dark until you earn them."),
+                          ]),
         UpdateNewsMessage(id: "living-worlds", title: String(localized: "Living worlds"), day: 1, month: 11,
                           art: "Valakut, the Molten Pinnacle", colors: ["R"],
                           lede: String(localized: "Four new tables that move, sound alive and answer the game: Volcano, Utopia, Halloween and Radio Night."),

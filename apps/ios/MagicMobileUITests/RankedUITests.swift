@@ -141,6 +141,22 @@ final class RankedUITests: XCTestCase {
         XCTAssertTrue(app.buttons["quick.bracket.0"].waitForExistence(timeout: 5))
     }
 
+    /// Server trophies join the shelf after the built-in coins, dark until earned (mm_trophies), and new rows need no build.
+    func testServerTrophiesStandOnTheShelf() {
+        let art = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("design/awards")
+        launch(["MAGICMOBILE_UI_TEST_SOCIAL": "1", "MAGICMOBILE_TROPHY_ART": art.path])
+        tapSteady(app.buttons["menu.profile"], until: app.descendants(matching: .any)["profile.season"])
+        reveal(app.descendants(matching: .any)["profile.seasonBadges"])
+        capture("Season badges")
+        let earned = app.descendants(matching: .any)["profile.trophy.lightning"]
+        let locked = app.descendants(matching: .any)["profile.trophy.grand-collector"]
+        reveal(locked)
+        XCTAssertTrue(earned.waitForExistence(timeout: 10))
+        XCTAssertTrue(locked.exists)
+        capture("Trophy shelf")
+    }
+
     func testProfileShowsRankStatsAndHistory() {
         launch(["MAGICMOBILE_UI_TEST_RANK": "gold-2-3-1", "MAGICMOBILE_UI_TEST_MATCHES": "14"])
         let profile = app.buttons["menu.profile"]

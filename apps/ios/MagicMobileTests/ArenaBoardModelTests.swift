@@ -1,4 +1,5 @@
 import CoreGraphics
+import SwiftUI
 import XCTest
 import MagicMobileOnDevice
 @testable import MagicMobile
@@ -601,6 +602,17 @@ final class ArenaBoardModelTests: XCTestCase {
         XCTAssertEqual(wide.pileLean(at: wide.viewerLibrary).rise, 1)
         let tall = ArenaLayout.portraitLayout
         XCTAssertLessThan(tall.pileLean(at: tall.opponentLibrary).drift, 0)
+    }
+
+    /// A full deck at the top of the screen sinks rather than leaving it. Near piles have room to rise.
+    func testAFullFarDeckStaysOnTheScreen() {
+        for layout in [ArenaLayout.landscapeLayout, ArenaLayout.portraitLayout] {
+            let lean = layout.pileLean(at: layout.opponentLibrary)
+            let thickness = ArenaPileStack<EmptyView>.thickness(count: 92, height: layout.opponentPile.height) * lean.rise
+            let top = layout.opponentLibrary.y - layout.opponentPile.height / 2 - thickness + lean.sink(under: thickness)
+            XCTAssertGreaterThanOrEqual(top, 0)
+            XCTAssertEqual(layout.pileLean(at: layout.viewerLibrary).sink(under: 40), 0)
+        }
     }
 
     /// The landscape stack card sits under the opponent's piles and above the raised phase strip and its pills.

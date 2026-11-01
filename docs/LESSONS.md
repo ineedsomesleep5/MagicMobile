@@ -1216,3 +1216,9 @@ contradicting one.
 - 2026-11-01 (Claude, placements on Android and web): (1) `RankChange.placementLeft` set means a placement game, and 0 means placed, so a win the server holds back must not keep the old count. Web's spread kept 0 and would have played PLACED for a game that never counted. **Rule:** a held placement win adds one back (`placementLeft + 1`), so it shows "Placement 4 of 5", not the hidden position. (2) `parity/ranked-cases.json`'s "after placing the ladder counts as usual" row expects Gold II with 2 pips, so its sixth game needs a Gold deck: bracket 1 earns the underdog pip there. Play bracket 1 only while placing. (3) Web has no rank ceremony, only `.rankstrip`, so "placed" is its own overlay in `GameResult.tsx`. (4) Any screen that names `change.after` shows the climb: check the Arena result as well as the strip. Where: `Ranked.kt`, `rankLadder.ts`, `playerRecord.ts`, `ArenaBrowsers.kt`.
 
 - 2026-11-01 (Claude, audio): `scripts/android/prepare_audio.py` converts every `.caf` in the iOS audio folder and accepts only 16-bit PCM, so an IMA4 file breaks every Android build, and iOS-only PRs don't catch it because CI skips the `app` job when no Android files change. New iOS audio needs `prepare_audio.py` run by hand, or a rule in it.
+
+- 2026-11-01 (Claude, trophies): (1) `mm_ranked_apply` updates the standing before it inserts the result, so a rule that reads
+  `ranked_results` from the standings trigger sees one game short: Flawless needed a trigger on `ranked_results` too. (2) A launch
+  argument like `-quick.level 3` overrides `@AppStorage` for the whole run, so taps can't change it and a test looks like a broken
+  picker. (3) A class inserted above an existing `@MainActor` line takes that mark, and the class it came from fails to build. A
+  harness `build=1` with no error, though, means a file changed mid-build: leave Swift alone until it finishes.

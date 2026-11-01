@@ -37,6 +37,10 @@ struct ArenaPileLean: Equatable {
     var drift: CGFloat = -0.22
     /// The pile's height, as a share of a near pile's.
     var rise: CGFloat = 1
+    /// Room above the pile on the screen. A taller pile sinks by the rest, so a full deck's top card stays in view.
+    var headroom: CGFloat = .infinity
+
+    func sink(under thickness: CGFloat) -> CGFloat { max(0, thickness - headroom) }
 }
 
 /// The Arena board's design canvases: landscape 956 × 440 (an iPhone 17 Pro Max held sideways) and portrait 440 × 956.
@@ -147,7 +151,9 @@ struct ArenaLayout: Equatable {
     func pileLean(at point: CGPoint) -> ArenaPileLean {
         let under = landscape ? CGPoint(x: 478, y: 596) : CGPoint(x: 220, y: 744)
         let drift = (point.x - under.x) / max(abs(point.y - under.y), 1)
-        return ArenaPileLean(drift: min(0.22, max(-0.22, drift)), rise: point.y < canvas.height / 2 ? 0.6 : 1)
+        let far = point.y < canvas.height / 2
+        return ArenaPileLean(drift: min(0.22, max(-0.22, drift)), rise: far ? 0.6 : 1,
+                             headroom: far ? max(point.y - opponentPile.height / 2, 0) : .infinity)
     }
 
     /// The landscape table (scripts/brand/arena_layout.json "landscape").
