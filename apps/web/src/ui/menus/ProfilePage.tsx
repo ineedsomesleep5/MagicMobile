@@ -25,7 +25,7 @@ import { gameAudio } from "../audio";
 import { DeckArt } from "./DeckBox";
 import { Btn, Caps, Emblem, MenuPanel, PanelHeader, Pill, Segmented } from "./kit";
 import { RankBadge } from "./PlayPanel";
-import { AwardShelf } from "./AwardViews";
+import { AwardMedal, AwardShelf } from "./AwardViews";
 import { SeasonBadgeShelf } from "./SeasonBadges";
 import { RankEmblem } from "./TopBar";
 import "./profile.css";
@@ -112,9 +112,11 @@ function useWidth<T extends HTMLElement>(): [RefObject<T | null>, number] {
 
 // MARK: The page
 
-export function ProfilePage({ record, remote = [], playerName, deckCommanders, onChange, account, awards = [] }: {
+export function ProfilePage({ record, remote = [], playerName, deckCommanders, onChange, account, awards = [], trophies = [] }: {
   record: PlayerRecordStore; playerName: string; deckCommanders: string[]; onChange: () => void;
   awards?: readonly Award[];
+  /** The Trophies shelf's server rows (mm_trophies). */
+  trophies?: readonly Award[];
   /** Your games the server has from other devices (mm_my_games); they join this browser's by their id. */
   remote?: readonly MatchRecord[];
   /** The account and privacy cards, which follow the games (AccountSignInCard, privacyCard). */
@@ -136,6 +138,9 @@ export function ProfilePage({ record, remote = [], playerName, deckCommanders, o
   const matches = useMemo(() => mergeMatches(record.matches, remote), [record.matches, remote]);
   const stats = useMemo(() => playerStats(matches), [matches]);
   const unlocked = useMemo(() => Achievement.unlocked(matches, record.rank), [matches, record.rank]);
+  const earnedTrophies = unlocked.size + trophies.filter((trophy) => trophy.awardedAt !== undefined).length;
+  // Trophies stand on their own shelf; they stay in `awards` for the ceremony.
+  const shownAwards = awards.filter((award) => !award.shelf);
   const scoped = useMemo(() => (deckFilter === undefined ? [...matches] : matches.filter((m) => m.deckID === deckFilter)), [matches, deckFilter]);
   const summary = useMemo(() => ProfileSummary.forDeck(matches, deckFilter), [matches, deckFilter]);
   const insights = useMemo(() => ProfileInsights.of(scoped.map((m) => ProfileGame.from(m))), [scoped]);
@@ -190,7 +195,7 @@ export function ProfilePage({ record, remote = [], playerName, deckCommanders, o
       <div className="mprofileprogress" data-id="profile.career">
         <ProgressTile value={`${all.games}`} label="Games" glyph="controller" />
         <ProgressTile value={all.games === 0 ? "–" : `${percent(all.wins, all.games)}%`} label="Win rate" glyph="pie" />
-        <ProgressTile value={`${unlocked.size}`} label="Trophies" glyph="trophy" />
+        <ProgressTile value={`${earnedTrophies}`} label="Trophies" glyph="trophy" />
       </div>
     </div>
   );
@@ -201,7 +206,7 @@ export function ProfilePage({ record, remote = [], playerName, deckCommanders, o
 
   const story = (
     <>
-      {awards.length > 0 && <Card id="profile.awards"><SectionTitle text="Awards" /><AwardShelf awards={awards} /></Card>}
+      {shownAwards.length > 0 && <Card id="profile.awards"><SectionTitle text="Awards" /><AwardShelf awards={shownAwards} /></Card>}
       <Card id="profile.season">
         <SectionTitle text="Rank history" />
         {summary.rankPoints.length === 0
@@ -283,8 +288,8 @@ export function ProfilePage({ record, remote = [], playerName, deckCommanders, o
         </Card>
       )}
       <Card id="profile.achievements">
-        <SectionTitle text="Trophies" trailing={`${unlocked.size}/${Achievement.all.length}`} />
-        <TrophyShelf unlocked={unlocked} />
+        <SectionTitle text="Trophies" trailing={`${earnedTrophies}/${Achievement.all.length + trophies.length}`} />
+        <TrophyShelf unlocked={unlocked} server={trophies} />
       </Card>
       <Card id="profile.history">
         <SectionTitle text="Recent games" trailing={`${visible.length} shown`} />
@@ -707,24 +712,40 @@ function CommanderTiles({ shares }: { shares: ProfileShare[] }) {
   );
 }
 
-/** The achievements as gold coins on a wooden shelf; earned ones shine, the rest wait in the dark (TrophyShelf). */
-function TrophyShelf({ unlocked }: { unlocked: Set<Achievement> }) {
-  const [chosen, setChosen] = useState<Achievement>();
-  const rows: Achievement[][] = [];
-  for (let i = 0; i < Achievement.all.length; i += 5) rows.push(Achievement.all.slice(i, i + 5));
+/**
+ * The achievements as gold coins on a wooden shelf, then the server's trophies (mm_trophies); earned ones shine, the rest
+ * wait in the dark (TrophyShelf).
+ */
+export function TrophyShelf({ unlocked, server }: { unlocked: Set<Achievement>; server: readonly Award[] }) {
+  const [note, setNote] = useState<string>();
+  const coins = [...Achievement.all, ...server];
+  const rows: (typeof coins)[] = [];
+  for (let i = 0; i < coins.length; i += 5) rows.push(coins.slice(i, i + 5));
   return (
     <div className="mprofileshelf">
       {rows.map((row, index) => (
         <div key={index} className="mprofileshelfrow">
           <div className="mprofilecoins">
-            {row.map((achievement) => {
-              const earned = unlocked.has(achievement);
+            {row.map((coin) => {
+              if (typeof coin !== "string") {
+                const earned = coin.awardedAt !== undefined;
+                const read = () => setNote(`${coin.name}: ${coin.detail}`);
+                return (
+                  <button key={`server.${coin.id}`} type="button" className={`mprofilecoin ${earned ? "earned" : ""}`} data-id={`profile.trophy.${coin.id}`}
+                    aria-label={`${coin.name}. ${coin.detail} ${earned ? "Earned" : "Locked"}`} onClick={read} onMouseEnter={read} onFocus={read}>
+                    <em className="mprofilemedal"><AwardMedal award={coin} size={46} /></em>
+                    <span>{coin.name}</span>
+                  </button>
+                );
+              }
+              const earned = unlocked.has(coin);
+              const read = () => setNote(`${Achievement.title(coin)}: ${Achievement.detail(coin)}`);
               return (
-                <button key={achievement} type="button" className={`mprofilecoin ${earned ? "earned" : ""}`} data-id={`profile.trophy.${achievement}`}
-                  aria-label={`${Achievement.title(achievement)}. ${Achievement.detail(achievement)} ${earned ? "Earned" : "Locked"}`}
-                  onClick={() => setChosen(achievement)} onMouseEnter={() => setChosen(achievement)} onFocus={() => setChosen(achievement)}>
-                  <i><Glyph name={TROPHY_GLYPH[achievement]} size={18} fill={earned ? "rgb(77,38,10)" : "rgba(128,128,128,.55)"} /></i>
-                  <span>{Achievement.title(achievement)}</span>
+                <button key={coin} type="button" className={`mprofilecoin ${earned ? "earned" : ""}`} data-id={`profile.trophy.${coin}`}
+                  aria-label={`${Achievement.title(coin)}. ${Achievement.detail(coin)} ${earned ? "Earned" : "Locked"}`}
+                  onClick={read} onMouseEnter={read} onFocus={read}>
+                  <i><Glyph name={TROPHY_GLYPH[coin]} size={18} fill={earned ? "rgb(77,38,10)" : "rgba(128,128,128,.55)"} /></i>
+                  <span>{Achievement.title(coin)}</span>
                 </button>
               );
             })}
@@ -733,9 +754,7 @@ function TrophyShelf({ unlocked }: { unlocked: Set<Achievement> }) {
           <i className="mprofileplank" />
         </div>
       ))}
-      <p className="mprofiletrophynote" data-id="profile.trophyNote" aria-live="polite">
-        {chosen ? `${Achievement.title(chosen)}: ${Achievement.detail(chosen)}` : ""}
-      </p>
+      <p className="mprofiletrophynote" data-id="profile.trophyNote" aria-live="polite">{note ?? ""}</p>
     </div>
   );
 }

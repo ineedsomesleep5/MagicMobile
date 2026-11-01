@@ -47,6 +47,17 @@ fun BoardRect.union(other: BoardRect): BoardRect {
 fun BoardRect.insetBy(dx: Float, dy: Float): BoardRect = BoardRect(x + dx, y + dy, width - 2 * dx, height - 2 * dy)
 
 /**
+ * How a pile stands on the table. Uprights fan out from the point under the camera, so a pile left of it leans left and one
+ * right of it leans right (Caleb, 2026-11-01: the opponent's library leaned the wrong way). Far piles stand shorter.
+ */
+data class ArenaPileLean(
+    /** Sideways shift per point of height. */
+    val drift: Float = -0.22f,
+    /** The pile's height, as a share of a near pile's. */
+    val rise: Float = 1f,
+)
+
+/**
  * The Arena board's design canvases: landscape 956 × 440 (an iPhone 17 Pro Max held sideways) and portrait 440 × 956. Every
  * number was tuned in the Duel Board Prototype against the reference gameplay video. Other screens scale both axes; sizes
  * scale by the smaller axis.
@@ -101,6 +112,13 @@ data class ArenaLayout(
     fun drops(point: BoardPoint, start: BoardPoint): Boolean =
         dropArea.contains(point) && dropCorner?.contains(point) != true &&
             (start.y - point.y >= dropLift || hypot(point.x - start.x, point.y - start.y) >= dropCarry)
+
+    /** A pile at `point` (design points): the table camera stands over (478, 596) in landscape and (220, 744) in portrait. */
+    fun pileLean(point: BoardPoint): ArenaPileLean {
+        val under = if (landscape) BoardPoint(478f, 596f) else BoardPoint(220f, 744f)
+        val drift = (point.x - under.x) / max(abs(point.y - under.y), 1f)
+        return ArenaPileLean(drift.coerceIn(-0.22f, 0.22f), if (point.y < canvas.height / 2) 0.6f else 1f)
+    }
 
     /** Front rows a side may use: landscape has no room between the lanes for a second; portrait grows one toward its owner. */
     val maxCreatureRows: Int get() = if (landscape) 1 else 2
