@@ -149,7 +149,7 @@ class RankedParityTest {
     }
 
     @Test fun aiDecksAreHundredsAtTheirBrackets() {
-        assertEquals(43, bracketDecks.size)
+        assertEquals(57, bracketDecks.size)
         val basics = setOf("Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes")
         for (deck in bracketDecks) {
             assertEquals(deck.id, 100, deck.deck.entries.sumOf { it.quantity })
@@ -267,6 +267,8 @@ class RankedParityTest {
             assertEquals(str(item, "name"), str(item, "expect"), pick?.id)
         }
         val tiers = powerCases["rankedTiers"]!!.jsonArray.map { val b = it.jsonArray; b[0].jsonPrimitive.double to b[1].jsonPrimitive.double }
+        val power = DeckPowerData(int(powerCases, "closest"), tiers, emptyMap(), emptyMap(), powerCases["rankedClosest"]!!.jsonArray.map { it.jsonPrimitive.int })
+        for (item in powerCases["closestByTier"]!!.jsonArray.map { it.jsonObject }) assertEquals("$item", int(item, "expect"), power.closest(int(item, "tier")))
         for (item in powerCases["targets"]!!.jsonArray.map { it.jsonObject }) {
             assertEquals("$item", item["expect"]!!.jsonPrimitive.double, AIDeckPool.rankedTarget(int(item, "tier"), int(item, "division"), tiers), 1e-9)
         }
@@ -277,5 +279,47 @@ class RankedParityTest {
         for (deck in pool) assertTrue(deck.id, (power.decks[deck.id] ?: 0.0) >= 1.0)
         assertEquals(6, power.rankedTiers.size)
         assertEquals(setOf("easy", "medium", "hard"), power.quickMatch.keys)
+    }
+
+    private fun deckFile(revision: Int? = 2, catalogue: String = "c1", ids: List<String> = listOf("ai-a", "ai-b"), cards: Int = 99, commanders: Int = 1, tiers: Int = 6): String {
+        val entries = (0 until commanders).map { """{"name": "Commander $it", "quantity": 1, "section": "commander"}""" } + """{"name": "Swamp", "quantity": $cards, "section": "deck"}"""
+        val decks = ids.joinToString { """{"id": "$it", "name": "$it", "subtitle": "", "colors": "B", "commander": "Commander 0", "bracket": 2, "entries": [${entries.joinToString()}]}""" }
+        val bands = List(tiers) { "[1.0, 2.0]" }.joinToString()
+        val revisionField = revision?.let { """"revision": $it,""" } ?: ""
+        return """{"schemaVersion": 1, $revisionField "catalogueHash": "$catalogue", "decks": [$decks], "power": {"closest": 3, "rankedTiers": [$bands], "decks": {},
+            "quickMatch": {"easy": {"power": 3.0, "skill": 2}, "medium": {"power": 5.0, "skill": 3}, "hard": {"power": 7.0, "skill": 5}}}}"""
+    }
+
+    /** A newer deck file is used only when it is whole and suits this app (RankedParityTests.swift). */
+    @Test fun aNewerDeckFileMustBeWholeAndForThisCatalogue() {
+        val bundled = deckFile(revision = 1)
+        assertTrue(AIDeckUpdates.isUsable(deckFile(), bundled))
+        assertTrue(AIDeckUpdates.isUsable(deckFile(ids = listOf("ai-a", "ai-b", "ai-c")), bundled))
+        assertFalse("not newer", AIDeckUpdates.isUsable(deckFile(revision = 1), bundled))
+        assertFalse("no revision", AIDeckUpdates.isUsable(deckFile(revision = null), bundled))
+        assertFalse("another catalogue", AIDeckUpdates.isUsable(deckFile(catalogue = "c2"), bundled))
+        assertFalse("lost a deck", AIDeckUpdates.isUsable(deckFile(ids = listOf("ai-a")), bundled))
+        assertFalse("repeated deck", AIDeckUpdates.isUsable(deckFile(ids = listOf("ai-a", "ai-b", "ai-a")), bundled))
+        assertFalse("not an AI deck ID", AIDeckUpdates.isUsable(deckFile(ids = listOf("ai-a", "ai-b", "x")), bundled))
+        assertFalse("99 cards", AIDeckUpdates.isUsable(deckFile(cards = 98), bundled))
+        assertFalse("no commander", AIDeckUpdates.isUsable(deckFile(commanders = 0), bundled))
+        assertFalse("tiers missing", AIDeckUpdates.isUsable(deckFile(tiers = 5), bundled))
+        assertFalse("not a deck file", AIDeckUpdates.isUsable("{}", bundled))
+    }
+
+    @Test fun theShippedDeckFileWouldPassAsAnUpdate() {
+        val bundled = File(repo, "apps/ios/MagicMobile/Resources/ai-decks.json").readText()
+        val raised = bundled.replaceFirst(Regex("\"revision\": \\d+"), "\"revision\": ${AIDeckUpdates.revision(bundled) + 1}")
+        assertTrue(AIDeckUpdates.isUsable(raised, bundled))
+    }
+
+    @Test fun theServerDecidesWhichDeckFileIsKept() {
+        val offered = AppConfig.DeckFile(3, "https://example.com/a.json", "")
+        assertEquals(AIDeckUpdates.Step.Download(offered), AIDeckUpdates.step(offered, null, 1))
+        assertEquals(AIDeckUpdates.Step.Download(offered), AIDeckUpdates.step(offered, 2, 1))
+        assertEquals(AIDeckUpdates.Step.Keep, AIDeckUpdates.step(offered, 3, 1))
+        assertEquals("the app has caught up", AIDeckUpdates.Step.Remove, AIDeckUpdates.step(offered, 2, 3))
+        assertEquals(AIDeckUpdates.Step.Remove, AIDeckUpdates.step(null, 2, 1))
+        assertEquals(AIDeckUpdates.Step.Keep, AIDeckUpdates.step(null, null, 1))
     }
 }

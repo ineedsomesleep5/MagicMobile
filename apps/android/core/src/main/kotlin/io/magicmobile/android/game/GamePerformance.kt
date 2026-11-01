@@ -17,9 +17,18 @@ data class GamePerformanceEntry(
     val started: Long, val mode: String, val aiSkill: Int? = null, val minutes: Double = 0.0, val turns: Int = 0,
     val peakMemoryMB: Int = 0, val lowestAvailableMB: Int? = null, val hottest: Int = 0, val hotMinutes: Double = 0.0,
     val memoryWarnings: Int = 0, val lastSample: Long? = null,
+    /** The state at the first reading: a game that began warm didn't heat the phone by itself. */
+    val startThermal: Int? = null,
+    /** On a charger at any reading (charging heats a phone by itself). */
+    val charging: Boolean = false,
+    /** Battery saver at any reading. */
+    val lowPower: Boolean = false,
 ) {
     /** Takes one reading. Time since the previous reading counts as hot when this reading is hot. */
-    fun absorb(now: Long, memoryMB: Int?, availableMB: Int?, thermal: Int): GamePerformanceEntry = copy(
+    fun absorb(now: Long, memoryMB: Int?, availableMB: Int?, thermal: Int, onCharger: Boolean = false, lowPowerMode: Boolean = false): GamePerformanceEntry = copy(
+        startThermal = startThermal ?: thermal,
+        charging = charging || onCharger,
+        lowPower = lowPower || lowPowerMode,
         peakMemoryMB = maxOf(peakMemoryMB, memoryMB ?: 0),
         lowestAvailableMB = availableMB?.let { minOf(lowestAvailableMB ?: it, it) } ?: lowestAvailableMB,
         hottest = maxOf(hottest, thermal),
@@ -32,6 +41,9 @@ data class GamePerformanceEntry(
         lowestAvailableMB?.let { parts += "lowest headroom $it MB" }
         parts += "hottest ${THERMAL_NAMES[hottest.coerceIn(0, 3)]}"
         if (hotMinutes >= 0.5) parts += "hot %.0f min".format(hotMinutes)
+        startThermal?.takeIf { it > 0 }?.let { parts += "began ${THERMAL_NAMES[it.coerceAtMost(3)]}" }
+        if (charging) parts += "charging"
+        if (lowPower) parts += "low power"
         if (memoryWarnings > 0) parts += "$memoryWarnings memory warning" + if (memoryWarnings == 1) "" else "s"
         return parts.joinToString(", ")
     }

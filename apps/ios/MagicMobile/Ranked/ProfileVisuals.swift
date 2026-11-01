@@ -459,7 +459,7 @@ struct CommanderTile: View {
             }
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(TavernPalette.brassLine, lineWidth: 1.5))
-        .shadow(color: .black.opacity(0.5), radius: 4, y: 2)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.black).shadow(color: .black.opacity(0.5), radius: 4, y: 2))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "\(share.id): \(share.games) games, \(share.wins) won"))
     }
@@ -556,6 +556,7 @@ struct TrophyShelf: View {
                     Circle().fill(earned ? AnyShapeStyle(RadialGradient(colors: [Color(red: 1, green: 0.9, blue: 0.62), Color(red: 0.72, green: 0.48, blue: 0.16), Color(red: 0.36, green: 0.22, blue: 0.08)],
                                                                            center: .init(x: 0.35, y: 0.3), startRadius: 0, endRadius: 30))
                                          : AnyShapeStyle(Color.black.opacity(0.5)))
+                        .shadow(color: earned ? ProfilePalette.win.opacity(0.4) : .black.opacity(0.4), radius: earned ? 5 : 2, y: 2)
                     Circle().strokeBorder(earned ? TavernPalette.brassLine : LinearGradient(colors: [.gray.opacity(0.5)], startPoint: .top, endPoint: .bottom), lineWidth: 2)
                     Image(systemName: achievement.systemImage)
                         .font(.system(size: 18, weight: .black))
@@ -563,7 +564,6 @@ struct TrophyShelf: View {
                         .shadow(color: earned ? .white.opacity(0.35) : .clear, radius: 0, y: 1)
                 }
                 .frame(width: 46, height: 46)
-                .shadow(color: earned ? ProfilePalette.win.opacity(0.4) : .black.opacity(0.4), radius: earned ? 5 : 2, y: 2)
                 Text(achievement.title).font(ArenaMenuStyle.font(9, .heavy)).lineLimit(2).multilineTextAlignment(.center)
                     .minimumScaleFactor(0.7).opacity(earned ? 0.95 : 0.45).frame(height: 24, alignment: .top)
             }

@@ -8,6 +8,7 @@ import mage.choices.Choice;
 import mage.constants.Constants;
 import mage.constants.Zone;
 import mage.game.Game;
+import mage.game.combat.CombatGroup;
 import mage.game.events.PlayerQueryEvent;
 import mage.game.permanent.Permanent;
 import mage.util.MultiAmountMessage;
@@ -116,6 +117,7 @@ public final class QueryEncoder {
                 boolean attackers=options.containsKey(Constants.Option.POSSIBLE_ATTACKERS);
                 boolean blockers=options.containsKey(Constants.Option.POSSIBLE_BLOCKERS);
                 p.put("selectMode",attackers?"attackers":blockers?"blockers":"priority");
+                if(blockers && game!=null) keepLegalBlockers(Json.object(p.get("options")),options.get(Constants.Option.POSSIBLE_BLOCKERS),game);
                 types.addAll(Set.of("uuid","boolean","integer"));min=Integer.MIN_VALUE;max=Integer.MAX_VALUE;
                 if((!attackers && !blockers) || options.containsKey(Constants.Option.SPECIAL_BUTTON)) {
                     types.add("string");strings=Set.of("special");
@@ -153,6 +155,21 @@ public final class QueryEncoder {
             default: throw unsupported(kind);
         }
         return new DecisionSpec(kind,p,types,ids,strings,min,max,allocations);
+    }
+    /**
+     * HumanPlayer lists every creature free to block, then offers each one only the attackers its own CombatGroup.canBlock
+     * allows. A creature with none (all fear, or all flying) could never block, so it is not highlighted.
+     */
+    private static void keepLegalBlockers(Map<String,Object> published,Object candidates,Game game) {
+        if(!(candidates instanceof Collection<?>)) return;
+        List<String> legal=new ArrayList<>();
+        for(Object id:(Collection<?>)candidates) {
+            Permanent blocker=id instanceof UUID?game.getPermanent((UUID)id):null;
+            boolean canBlock=blocker==null;
+            if(blocker!=null) for(CombatGroup group:game.getCombat().getGroups()) canBlock|=group.canBlock(blocker,game);
+            if(canBlock) legal.add(id.toString());
+        }
+        published.put(Constants.Option.POSSIBLE_BLOCKERS,legal);
     }
     private static Object card(Card c,Game game) {
         // Only called for cards explicitly supplied to this seat's query by XMage.

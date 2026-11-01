@@ -810,6 +810,8 @@ object ArenaKeywordGlossary {
         "First strike" to "Deals combat damage before creatures without first strike.",
         "Double strike" to "Deals both first-strike and regular combat damage.",
         "Menace" to "Can't be blocked except by two or more creatures.",
+        "Fear" to "Can be blocked only by artifact creatures and/or black creatures.",
+        "Intimidate" to "Can be blocked only by artifact creatures and/or creatures that share a colour with it.",
         "Hexproof" to "Can't be the target of spells or abilities your opponents control.",
         "Shroud" to "Can't be the target of any spell or ability.",
         "Indestructible" to "Damage and \"destroy\" effects don't destroy it.",

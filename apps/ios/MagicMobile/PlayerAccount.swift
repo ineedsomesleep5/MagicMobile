@@ -158,6 +158,8 @@ final class PlayerAccount: ObservableObject {
     /// Google or Apple sign-ins on this account; empty while the profile lives only on this phone (anonymous).
     @Published private(set) var linkedIdentities: [LinkedIdentity] = []
     @Published private(set) var isSigningIn = false
+    /// This player's awards, best first (mm_my_awards).
+    @Published private(set) var awards: [Award] = []
     /// Runs after each refresh while the app is open: the app sends games that could not be sent before.
     var afterRefresh: (() async -> Void)?
 
@@ -279,7 +281,7 @@ final class PlayerAccount: ObservableObject {
     /// until the player signs in again.
     func signOut() async {
         api.forgetSession()
-        username = nil; friends = []; blocked = []; friendRanks = [:]; linkedIdentities = []; unreadMessages = 0
+        username = nil; friends = []; blocked = []; friendRanks = [:]; linkedIdentities = []; awards = []; unreadMessages = 0
         visibility = .public; visibilityKnown = false
         phase = .idle
         await start()
@@ -605,7 +607,22 @@ final class PlayerAccount: ObservableObject {
     func refreshAppConfig() async {
         guard phase == .ready else { return }
         let build = Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") ?? 0
-        if let data = try? await api.rpc("mm_app_config", ["p_platform": "ios", "p_build": build]) { AppConfigStore.shared.store(data) }
+        guard let data = try? await api.rpc("mm_app_config", ["p_platform": "ios", "p_build": build]) else { return }
+        AppConfigStore.shared.store(data)
+        if let config = AppConfig.parse(data) { Task.detached(priority: .utility) { await AIDeckUpdates.refresh(config) } }
+    }
+
+    /// Quiet about a server without awards: the profile just shows none.
+    func refreshAwards() async {
+        guard phase == .ready, let data = try? await api.rpc("mm_my_awards"),
+              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
+        awards = Award.parse(rows)
+    }
+
+    /// Its ceremony has played, here and on the player's other devices.
+    func markAwardSeen(_ award: Award) {
+        awards = awards.map { var seen = $0; if seen.id == award.id { seen.seen = true }; return seen }
+        Task { _ = try? await api.rpc("mm_awards_seen", ["p_ids": [award.id]]) }
     }
 
     func recordGame(_ match: MatchRecord) async -> GameUploadResult {
@@ -678,7 +695,7 @@ final class PlayerAccount: ObservableObject {
         do {
             _ = try await api.rpc("mm_delete_account")
             api.forgetSession()
-            username = nil; friends = []; blocked = []; hosting = nil
+            username = nil; friends = []; blocked = []; hosting = nil; awards = []
             phase = .idle
             return true
         } catch {

@@ -21,6 +21,17 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-30 (Claude, profile frame rate): `.shadow` on a view that holds other views is worked out from all of them, again
+  on every frame a scroll moves it, and `ArenaGlassPanel` did that to every card on the profile's long plain `VStack`.
+  **Rule:** a panel's shadow goes on its background shape; a shadow on a picture with transparency gets flattened with
+  `.drawingGroup()` (pad it first or the glow is cut, `AwardMedal`). The profile can't simply become a `LazyVStack`:
+  `RankedUITests` and `ProfileHistoryUITests` expect `profile.season` and `profile.history` to exist on opening. Repeating
+  motion off the board uses `AmbientLoop`, not `repeatForever`, and `TimelineView(.animation)` always gets a
+  `minimumInterval`: uncapped it runs at 120 a second on ProMotion. Also: Xcode 27.2's `simctl` and `devicectl` are
+  scripts that run `xcodebuild -runFirstLaunch` when CoreSimulator is older than they expect, and without an admin
+  password that hangs forever with no message. If one hangs, Caleb runs `sudo xcodebuild -runFirstLaunch` once.
+  Where: `Board/ArenaBoardViews.swift`, `AmbientMotion.swift`.
+
 - 2026-10-29 (Claude, name gate): every install and browser makes an anonymous Supabase account on first open, so of
   720 accounts 716 had no name and showed nowhere (no leaderboard, friends or saved games). **Rule:** a profile that is
   reachable but nameless gets the name screen before the menus (`PlayerAccount.needsName`: phase ready and no username;
@@ -198,6 +209,31 @@ contradicting one.
   whether answers are still owed (then wait 30 s, not 5), and an unchanged prompt gets 2 s before the plan stops; real
   rejections still stop it through the command failure. Never change layout or posture under a live gesture.
   Where: `ArenaBoardModel` handPosture (all three), `CardChoicePlan`, the boards' card-choice drivers.
+- 2026-10-29 (Claude, AI decks): `build_ai_decks.py` rebuilt every deck from EDHREC on each run, and EDHREC's average
+  decks drift, so adding commanders would have silently changed the measured decks; and a bracket combo that includes
+  the commander (Kinnan + Basalt Monolith) made it try to swap out the commander forever. **Rule:** the builder now
+  keeps every deck already in `ai-decks.json` (`--rebuild` to redo them) and swaps a combo's other card. Pick AI
+  commanders whose plan works with one opponent (Caleb: Y'shtola is good, but not 1v1).
+  Where: `scripts/ranked/build_ai_decks.py`, `docs/cloud/power-high-decks.md`.
+- 2026-10-30 (Claude, deck updates): Android's `InputStream.readNBytes` needs API 33, and `runCatching` hides the
+  `NoSuchMethodError`, so a download on an older phone would fail silently. Use `readBytes` with a Content-Length check.
+  The AI deck file now updates from the server: a revision is only newer than the file the app shipped with, so a
+  later app build can't be downgraded by an old offer. Where: `AIDeckDownloads.kt`, docs/SERVER_CONTROLS.md.
+- 2026-10-30 (Claude, deck review): `deck_power.py ladder` shows the ladder bands in `deck-power-weights.json`, not what
+  players get. Live Ranked takes its target from `ranked_ai_tuning`, and the picker skips the player's last 4 decks
+  before taking the nearest 3, so a tier rotates through about 7 to 14 decks, not 3 per division. **Rule:** judge a
+  tier's variety from the live bands with the recent window applied. Also, engine-heavy commanders (Korvold,
+  Muldrotha, Kinnan Optimized) rate far below their formula because the AI cannot pilot them.
+  Where: docs/cloud/reports/power-5.md, `AIDeckPool.pick`.
+- 2026-10-30 (Claude, deck review): Gradle does not track `ai-decks.json` as a `:core:test` input, because
+  `RankedParityTest` reads it straight from the iOS resources. After a ratings change `:core:test` reports success
+  from the old result in seconds. **Rule:** add `:core:cleanTest` and check the timestamp in the result XML. A piped
+  `heavy.sh ... | tail` also exits 0 when Gradle fails, so read `BUILD`. Where: `RankedParityTest.kt`.
+- 2026-10-30 (Claude, power 5): the cloud session's background commands stop at 2 hours, so a 1,008-game calibration
+  batch (about 3.2 h on 4 workers) was cut off at 619 games. Rerunning the same `ai_calibration.py run` command
+  resumed it and replayed the interrupted game. A game that stops in the engine again on replay stays in the CSV as
+  `engine-stopped`; `deck_power.py` counts only `ended` games with a winner. **Rule:** for batches over ~600 games,
+  plan a second launch with the same arguments and append to the same log. Where: docs/cloud/reports/power-5.md.
 - 2026-10-24 (Claude, deck Power): C3's precon round robin is not the only deck-strength data. Every calibration CSV
   in `docs/cloud/c3-results` and `c4-results` schedules both deck assignments per pair, so together they are 2,986
   skill-balanced games on the eleven Core decks, and they reorder the precons: Draconic Destruction wins 62% against
@@ -1146,3 +1182,31 @@ contradicting one.
 - 2026-11-01 (Claude, Arena world motion): `simctl io recordVideo` on a landscape app can record the phone's upright frame with the game sideways inside it, so check a clip's width and height before cropping regions, or you'll measure the wrong corner and chase a bug that isn't there. A launch can take over 12 seconds on a loaded Mac, and the app rotates just after launch, so brightness dips at the start of a clip are the launch screen and that turn, not the world. Flaring a glow that's already bright mostly clips: a tap needs its own light under the finger (`bloom`). Rest can be proved by frame difference: 0.00 across the whole frame for 15 seconds, then a real tap through the iOS Simulator tool wakes it.
 
 - 2026-11-01 (Claude, Arena world motion): when macOS's own services push the load past about 100, UI tests fail on timing, not on the change: `testLandscapeLibraryChoices` typed before its search box had focus, and `ProfileHistoryUITests` missed a 5-second wait. Rerun the failed test alone on a calm Mac before blaming the code. Booting a simulator can itself push the load past 300, so give up on that run rather than risk a panic on this 8 GB Mac.
+
+- 2026-10-31 (Claude, phone traces): the `Animation Hitches` template writes about 300 to 500 MB a second to
+  `instruments*.ktrace` in the user temp folder and keeps the file after saving, so a 30 s recording filled the disk and
+  lost the trace. Record 10 s and check free space first. xctrace needs `devicectl device info details` just before it or
+  it times out "waiting for device to boot", and `--attach` can fail by name yet work by pid, or the reverse: try both.
+  Two `.animation(minimumInterval: 1 / 30)` timelines fall between each other's frames and update the screen about 60
+  times a second, so full-screen loops belong on `AmbientTimelineSchedule`.
+
+- 2026-10-31 (Claude, blockers): XMage's `possibleBlockers` is every creature free to block, not per attacker, and
+  `selectCombatGroup` then offers only attackers passing `CombatGroup.canBlock`. So a white creature lit up against an
+  attacker with fear and tapping it did nothing. `QueryEncoder` now drops creatures that can block no attacker, using the
+  same `canBlock`, so all three platforms get it and an empty list shows the existing "no creatures can block" state.
+
+- 2026-10-31 (Claude, TestFlight 74): `preflight.py run` prints a `Checking ...` line per check before its JSON, so
+  `json.load` on the saved output fails even when every check passed. Read from the first `{` line. The upload and
+  distribution steps are safe to start on their own after a passing preflight.
+
+## Awards (2026-10-30)
+
+- A server-driven feature's app side has to carry everything it will ever need: art by URL with a drawn fallback, tint, rarity and the ceremony all shipped at once, so later awards are rows. The rules are data too, but a new rule `kind` still needs a migration.
+- `ranked_profiles.title` is written by every app's publish, so a server title can't simply be set. A `before` trigger (`mm_awards_title`) wins over what the app sends, which also put it on leaderboards and old apps with no client change.
+- Award rules run in a trigger on `ranked_standings`. It catches every error, so a bad rule row can't stop a ranked result; the dry run proved it with a broken rule.
+- Dry-run a migration on the live database with an explicit `begin`, no commit, and a final `raise exception` carrying the results as JSON. Check afterwards that nothing stayed.
+- `codex exec -i file "prompt"` treats the prompt as a second image and stops with "No prompt provided". Put `-i` after the prompt.
+- The Board type-check gate fails at 200 ms, and a line can sit on that limit with no change in its file (NativeGameView's preview `.task`, 200-221 ms). Don't shorten a closure in a modifier chain to one line: a multi-statement closure is solved on its own, a one-line closure is solved with the whole chain, and that took the gate from 220 ms to 8 s. Keep the closure's statements and move the slow line into a method.
+- One Swift file can be type-checked in about 20 seconds with no build: `swiftc -frontend -typecheck -primary-file <file>` plus every other source, `-warn-long-expression-type-checking=200`, a `-plugin-path` for the SwiftUI macros (`Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins`), `-I` to a stub `AgoraRtcKit` module and to `MagicMobileOnDevice` emitted with a module map for `CMagicEngine`. It catches compile errors. Its timings come from the Mac's Xcode, which can differ from CI's: 27.2 here and 27.0 there disagreed about which line was slow.
+- A screenshot from the browser pane can catch a CSS animation mid-way because the page is throttled. Check `getAnimations()` before calling a dim result a bug.
+- An Xcode update drops the Metal Toolchain, and the archive then fails at `PageCurl.metal`, a minute in. Run `xcodebuild -downloadComponent MetalToolchain`, confirm Apple doesn't have the build, and rerun under a new run ID with the same build number.

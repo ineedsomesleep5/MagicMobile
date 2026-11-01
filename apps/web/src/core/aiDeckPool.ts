@@ -29,6 +29,8 @@ export const isPrecon = (deck: AIDeck) => !deck.id.startsWith("ai-");
 /** ai-decks.json's `power` block: each deck's Power, Ranked's tier bands and Quick Match's levels (docs/DECK_POWER.md). */
 export interface DeckPowerData {
   closest: number;
+  /** How many decks each tier picks among, Bronze to Mythic; `closest` for a tier it leaves out. */
+  rankedClosest?: number[];
   /** Bronze to Mythic: each tier's [low, high] Power band. */
   rankedTiers: [number, number][];
   quickMatch: Record<string, { power: number; skill: number }>;
@@ -96,6 +98,9 @@ export class AIDeckPool {
     if (division <= 0) return (low + high) / 2;
     return low + (high - low) * (4 - Math.min(4, division) + 0.5) / 4;
   }
+
+  /** How many of the nearest decks a tier picks among. */
+  static closest(power: DeckPowerData, tier: number): number { return power.rankedClosest?.[tier] ?? power.closest; }
 
   /**
    * An AI deck by Power: decks with a Power and a bracket at most `maxBracket` (none: any), never your commander and

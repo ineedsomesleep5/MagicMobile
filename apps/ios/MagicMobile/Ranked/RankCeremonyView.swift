@@ -194,7 +194,7 @@ private struct RankLightRays: View {
     let tint: Color
 
     var body: some View {
-        TimelineView(.animation) { context in
+        TimelineView(.animation(minimumInterval: 1 / 30)) { context in
             let angle = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 24) / 24 * 360
             Canvas { canvas, size in
                 let center = CGPoint(x: size.width / 2, y: size.height * 0.42)
@@ -224,7 +224,7 @@ private struct RankEmberBurst: View {
     private static let count = 46
 
     var body: some View {
-        TimelineView(.animation) { context in
+        TimelineView(.animation(minimumInterval: DeviceHeat.shared.effectsFrameInterval)) { context in
             let t = context.date.timeIntervalSince(start)
             Canvas { canvas, size in
                 guard t < 2.6 else { return }
@@ -283,7 +283,7 @@ private struct RankShake: ViewModifier {
     var amount: CGFloat
 
     func body(content: Content) -> some View {
-        TimelineView(.animation(paused: amount == 0)) { context in
+        TimelineView(.animation(minimumInterval: DeviceHeat.shared.effectsFrameInterval, paused: amount == 0)) { context in
             content.offset(x: amount == 0 ? 0 : amount * sin(context.date.timeIntervalSinceReferenceDate * 60))
         }
     }

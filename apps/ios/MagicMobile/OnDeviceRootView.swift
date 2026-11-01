@@ -392,7 +392,8 @@ struct OnDeviceRootView: View {
         .animation(reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.34, dampingFraction: 0.88), value: playPanel)
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: activeGame)
         // Menu ambience pauses while anything covers the menu.
-        .environment(\.brandAmbientMotion, !menuSheetOpen)
+        // The profile is a long page of cards scrolling over the room, dimmed: the room holds still under it.
+        .environment(\.brandAmbientMotion, !menuSheetOpen && lobby != .profile)
         let social = learningSheets(menu)
         .arenaPanel(isPresented: $showAppearance, maxWidth: 560, fitsContent: true) {
             ArenaOptionsView(portraitModeEnabled: $portraitModeEnabled, upstreamCommit: setup.identity?.upstreamCommit,
@@ -493,6 +494,7 @@ struct OnDeviceRootView: View {
             do { try await Task.sleep(for: .seconds(GameResumeText.noticeSeconds)) } catch { return }
             setup.multiplayer?.tableNotice = nil
         }
+        .modifier(AwardCeremonyHost(account: account, busy: activeGame || showSetup || lobby != nil || ceremony != nil))
         .environment(\.nativeTurnControl, turnControl)
         .arenaPanel(isPresented: $showDiagnostics, fitsContent: true) { diagnosticSheet }
         .background {
@@ -1640,8 +1642,10 @@ struct OnDeviceRootView: View {
         // The server's ticket can name the Power instead (ranked_ai_tuning), when the game starts.
         let recent = profileRecord.recentAIDecks
         let pickByPower = { (target: Double) -> AIDeck? in
-            AIDeckPool.power == nil ? nil : AIDeckPool.pick(targetPower: target, maxBracket: position.tier.maxDeckBracket,
-                                                            avoidingCommander: deck.commander?.cardName, recent: recent)
+            AIDeckPool.power.flatMap { power in
+                AIDeckPool.pick(targetPower: target, maxBracket: position.tier.maxDeckBracket, avoidingCommander: deck.commander?.cardName,
+                                recent: recent, closest: power.closest(tier: position.tier.rawValue))
+            }
         }
         let byPower = AIDeckPool.power.flatMap { power in
             pickByPower(AIDeckPool.rankedTarget(tier: position.tier.rawValue, division: position.division, tiers: power.rankedTiers))

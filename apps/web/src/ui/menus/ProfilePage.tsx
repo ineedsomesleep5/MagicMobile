@@ -20,10 +20,12 @@ import {
 } from "../../core/profileSummary";
 import { RankLadder, RankPosition, RankTier, SeasonBadge } from "../../core/rankLadder";
 import { ManaSymbol } from "../arena/Symbols";
+import type { Award } from "../../core/account";
 import { gameAudio } from "../audio";
 import { DeckArt } from "./DeckBox";
 import { Btn, Caps, Emblem, MenuPanel, PanelHeader, Pill, Segmented } from "./kit";
 import { RankBadge } from "./PlayPanel";
+import { AwardShelf } from "./AwardViews";
 import { SeasonBadgeShelf } from "./SeasonBadges";
 import { RankEmblem } from "./TopBar";
 import "./profile.css";
@@ -110,8 +112,9 @@ function useWidth<T extends HTMLElement>(): [RefObject<T | null>, number] {
 
 // MARK: The page
 
-export function ProfilePage({ record, remote = [], playerName, deckCommanders, onChange, account }: {
+export function ProfilePage({ record, remote = [], playerName, deckCommanders, onChange, account, awards = [] }: {
   record: PlayerRecordStore; playerName: string; deckCommanders: string[]; onChange: () => void;
+  awards?: readonly Award[];
   /** Your games the server has from other devices (mm_my_games); they join this browser's by their id. */
   remote?: readonly MatchRecord[];
   /** The account and privacy cards, which follow the games (AccountSignInCard, privacyCard). */
@@ -198,6 +201,7 @@ export function ProfilePage({ record, remote = [], playerName, deckCommanders, o
 
   const story = (
     <>
+      {awards.length > 0 && <Card id="profile.awards"><SectionTitle text="Awards" /><AwardShelf awards={awards} /></Card>}
       <Card id="profile.season">
         <SectionTitle text="Rank history" />
         {summary.rankPoints.length === 0

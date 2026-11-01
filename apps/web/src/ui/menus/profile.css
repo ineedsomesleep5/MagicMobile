@@ -240,3 +240,28 @@
 .mprofilerecordbar { display: block; height: 5px; margin-top: 5px; border-radius: 3px; background: rgba(0,0,0,.42); overflow: hidden; }
 .mprofilerecordbar i { display: block; height: 100%; border-radius: 3px; background: #fac75c; }
 .mprofilematchupart { width: 28px; height: 28px; border-radius: 50%; overflow: hidden; display: block; box-shadow: 0 0 0 1px rgba(232,190,110,.6); }
+
+/* awards (AwardViews.tsx; AwardMedal in iOS's AwardViews.swift) */
+.mawardshelf { display: flex; align-items: flex-start; gap: 12px; overflow-x: auto; scrollbar-width: none; padding: 6px 2px; }
+.mawardshelf::-webkit-scrollbar { display: none; }
+.maward { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0; background: none; border: 0; color: var(--text); cursor: pointer; }
+.maward > span:last-child { font: 600 11px/1.2 var(--sans); text-align: center; }
+.mawardmedal { position: relative; flex: none; display: grid; place-items: center; border-radius: 50%;
+  background: radial-gradient(circle, var(--tint), color-mix(in srgb, var(--tint) 45%, black) 55%, black 100%);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--tint) 80%, transparent); }
+.mawardmedal:has(img) { background: none; box-shadow: none; border-radius: 0; }
+.mawardmedal img { width: 100%; height: 100%; object-fit: contain; }
+.mawardmedal svg { width: 62%; height: 62%; }
+.mawardmedal.rarity2 { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--tint) 45%, transparent)); }
+.mawardmedal.rarity3 { filter: drop-shadow(0 0 12px color-mix(in srgb, var(--tint) 80%, transparent)); box-shadow: inset 0 0 0 3px #fc5; }
+.mawardmedal.rarity3:has(img) { box-shadow: none; }
+.mawardmetal { fill: #fc5; stroke: #8c5c1f; stroke-width: .5; }
+.mawardceremony { position: fixed; inset: 0; z-index: 900; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px;
+  background: rgba(0,0,0,.9); text-align: center; color: var(--text); }
+.mawardceremony .mawardmedal { margin: 14px 0; animation: mawardpop .5s cubic-bezier(.3,1.5,.6,1) both; }
+.mawardceremony h2 { margin: 0; font: 900 28px/1.2 var(--serif); color: transparent; background: linear-gradient(#ffe69e, var(--tint)); -webkit-background-clip: text; background-clip: text; }
+.mawardceremony p { margin: 0; max-width: 380px; font: 500 15px/1.4 var(--sans); }
+.mawardceremony small { font: 600 12px/1.3 var(--sans); color: var(--dim); }
+.mawardceremony .mbtn { margin-top: 28px; min-width: 180px; }
+@keyframes mawardpop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mawardceremony .mawardmedal { animation: none; } }

@@ -616,7 +616,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         // The server's ticket can name the Power instead (ranked_ai_tuning), when the game starts.
         val power = setup.deckPower
         val byPower = { target: Double -> power?.let {
-            io.magicmobile.android.game.AIDeckPool.pickByPower(target, position.tier.maxDeckBracket, deck.commanderName, record.file.recentAIDecks, aiPool, it.closest)
+            io.magicmobile.android.game.AIDeckPool.pickByPower(target, position.tier.maxDeckBracket, deck.commanderName, record.file.recentAIDecks, aiPool, it.closest(position.tier.ordinal))
         } }
         val opponent = power?.let { byPower(io.magicmobile.android.game.AIDeckPool.rankedTarget(position.tier.ordinal, position.division, it.rankedTiers)) }
             ?: io.magicmobile.android.game.AIDeckPool.pick(position.opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool,
@@ -996,7 +996,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // 5 minutes while it is open; a change here goes up a few seconds after the last one, when something waits to go up.
     val accountReady = vm.account.phase == PlayerAccount.Phase.READY
     // The server's settings for this build (AppConfig): the menu's notice, name fixes, feature switches.
-    LaunchedEffect(accountReady) { if (accountReady) vm.account.refreshAppConfig() }
+    val deckContext = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(accountReady) {
+        if (accountReady) vm.account.refreshAppConfig()?.let { io.magicmobile.android.ranked.AIDeckDownloads.refresh(deckContext, it) }
+    }
     LaunchedEffect(accountReady, vm.account.username, appForeground) {
         if (!accountReady || !appForeground) return@LaunchedEffect
         while (true) { vm.syncDecks(); vm.syncCardArt(); delay(5 * 60_000L) }
@@ -1617,6 +1620,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                     }
                 }
                 ceremony?.let { change -> io.magicmobile.android.ranked.RankCeremonyOverlay(change) { ceremony = null } }
+                io.magicmobile.android.ranked.AwardCeremonyHost(vm.account, accountReady, !menuIsFree || lobby != null || ceremony != null)
 
                 // The versus intro plays first, over the opaque starting roll that follows it.
                 if (activeGame) versusIntro?.let { (you, opponents) ->
