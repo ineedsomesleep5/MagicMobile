@@ -184,7 +184,8 @@ const isPosition = (value: unknown): value is RankPosition =>
   isObject(value) && RankTier.all.includes(value.tier as RankTier) && Number.isInteger(value.division) && Number.isInteger(value.pips);
 const isRank = (value: unknown): value is RankState =>
   isObject(value) && typeof value.season === "string" && isPosition(value.position) && isPosition(value.peak) &&
-  ["wins", "losses", "draws", "winStreak"].every((key) => Number.isInteger(value[key])) && Array.isArray(value.history);
+  ["wins", "losses", "draws", "winStreak"].every((key) => Number.isInteger(value[key])) && Array.isArray(value.history) &&
+  (value.placementGames === undefined || Number.isInteger(value.placementGames));
 
 /** A finished game as `PlayerRecordStore.record` takes it. */
 export interface FinishedGame {
@@ -218,7 +219,7 @@ export class PlayerRecordStore {
 
   constructor(private readonly store: KeyValueStore, private readonly now: () => number = Date.now, private readonly key = PlayerRecordStore.key) {
     const season = RankLadder.season(now());
-    let loaded: RecordFile = { rank: RankState.fresh(season), matches: [] };
+    let loaded: RecordFile = { rank: RankState.newPlayer(season), matches: [] };
     try {
       const raw = store.get(key);
       const parsed: unknown = raw ? JSON.parse(raw) : undefined;
@@ -294,10 +295,13 @@ export class PlayerRecordStore {
       match.rankChange = {
         outcome: match.outcome, before: RankPosition.fromPoints(change.pointsBefore), after: RankPosition.fromPoints(change.pointsAfter),
         bonuses: (change.bonuses ?? []).filter((b): b is RankBonus => b === "streak" || b === "underdog"),
+        ...(change.placementLeft !== undefined ? { placementLeft: change.placementLeft } : {}),
       };
     } else if (RankSettlement.held(settlement) && match.rankChange) {
       const stands = points !== undefined ? RankPosition.fromPoints(points) : match.rankChange.before;
-      match.rankChange = { ...match.rankChange, before: stands, after: stands, bonuses: [] };
+      const left = match.rankChange.placementLeft;
+      // A win held back doesn't use a placement, and the rank stays hidden while they last.
+      match.rankChange = { ...match.rankChange, before: stands, after: stands, bonuses: [], ...(left !== undefined ? { placementLeft: left + 1 } : {}) };
     }
     if (JSON.stringify(match) === JSON.stringify(this._matches[index])) return;
     this._matches = this._matches.map((m, i) => (i === index ? match : m));

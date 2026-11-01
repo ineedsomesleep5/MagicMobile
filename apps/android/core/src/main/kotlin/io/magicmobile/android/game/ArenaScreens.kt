@@ -441,6 +441,7 @@ object ArenaGameResult {
         RankChangeKind.DIVISION_DOWN -> "Division down"
         RankChangeKind.PIP_UP -> "+${change.pipDelta} pip"
         RankChangeKind.PIP_DOWN -> "${change.pipDelta} pip"
-        RankChangeKind.NONE -> "Ranked"
+        RankChangeKind.NONE, RankChangeKind.PLACING -> "Ranked"
+        RankChangeKind.PLACED -> "Placed"
     }
 }

@@ -19,7 +19,7 @@ struct RankedHallView: View {
     /// Compact height: the phone held sideways.
     @Environment(\.verticalSizeClass) private var verticalSize
 
-    private var tier: RankTier { rank.position.tier }
+    private var tier: RankTier { rank.shownPosition.tier }
 
     /// Arena's Season Rewards (the judge, 2026-10-22, against Arena's own): the title with the season's end in orange and the
     /// ways on as plaques beside it, a stair of tier plaques from Bronze to Mythic on the left (what each allows, and which
@@ -120,8 +120,8 @@ struct RankedHallView: View {
     }
 
     private func tierPlaque(_ step: RankTier, width: CGFloat) -> some View {
-        let reached = step <= tier
-        let current = step == tier
+        let reached = !rank.isPlacing && step <= tier
+        let current = !rank.isPlacing && step == tier
         let shape = ArenaRewardPlaque()
         return HStack(spacing: 12) {
             RankEmblem(tier: step, size: 34)
@@ -169,8 +169,8 @@ struct RankedHallView: View {
     private func badge(size: CGFloat, glow: CGFloat) -> some View {
         ZStack {
             RankGlow(tier: tier, size: glow)
-            RankBadge(position: rank.position, size: size, showsPips: true, showsTitle: true,
-                      spin: .init(start: appeared, turns: 1, duration: 1.2))
+            RankBadge(position: rank.shownPosition, size: size, showsPips: true, showsTitle: true,
+                      spin: .init(start: appeared, turns: 1, duration: 1.2), unplaced: rank.isPlacing)
         }
         .padding(.top, 4)
     }
@@ -178,7 +178,8 @@ struct RankedHallView: View {
     @ViewBuilder private var stats: some View {
         stat(String(localized: "Wins"), "\(rank.wins)")
         stat(String(localized: "Losses"), "\(rank.losses)")
-        stat(String(localized: "Peak"), rank.peak.title)
+        if rank.isPlacing { stat(String(localized: "Placement"), "\(RankLadder.placementMatches - rank.placementLeft + 1)/\(RankLadder.placementMatches)") }
+        else { stat(String(localized: "Peak"), rank.peak.title) }
         if let teaser, let me = teaser.me { stat(String(localized: "Place"), "#\(me.position)") }
     }
 

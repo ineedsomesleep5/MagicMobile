@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   Achievement, colorsFromManaCost, type FinishedGame, type KeyValueStore, PlayerRecordStore, type PlayMode, startingPlayerMode,
 } from "../src/core/playerRecord";
-import { RankPosition, type RankOutcome } from "../src/core/rankLadder";
+import { RankChange, RankPosition, type RankOutcome, RankState } from "../src/core/rankLadder";
 
 const root = join(__dirname, "..", "..", "..");
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -19,6 +19,13 @@ const memory = () => {
   return store;
 };
 
+/** A saved record from before placements, in October: the plain ladder. */
+const onTheLadder = () => {
+  const backing = memory();
+  backing.set(PlayerRecordStore.key, JSON.stringify({ rank: RankState.fresh("2026-10"), matches: [] }));
+  return backing;
+};
+
 const play = (store: PlayerRecordStore, mode: PlayMode, outcome: RankOutcome, options: Partial<FinishedGame> & { human?: boolean } = {}) =>
   store.record({
     mode, outcome, opponents: [{ name: "Foe", commander: "Edgar Markov", isAI: !options.human }], opponentBracket: 2, aiSkill: 3,
@@ -26,10 +33,57 @@ const play = (store: PlayerRecordStore, mode: PlayMode, outcome: RankOutcome, op
     deckBracket: options.deckBracket ?? 2, turns: 9, aiDeckID: "ai-edgar-markov-core",
   });
 
+describe("placements in the record", () => {
+  it("a new player places, and each game uses one", () => {
+    const store = new PlayerRecordStore(memory(), () => OCTOBER);
+    expect(RankState.placementLeft(store.rank)).toBe(5);
+    const change = play(store, "ranked", "win", { deckBracket: 1 })!;
+    expect(RankChange.kind(change)).toBe("placing");
+    expect(change.bonuses).toEqual([]);
+    expect(RankState.placementLeft(store.rank)).toBe(4);
+    expect(RankState.shownTitle(store.rank)).toBe("Placement 2 of 5");
+    expect(store.rank.position).toEqual(RankPosition.make("bronze", 2, 0));
+  });
+
+  it("a profile saved before placements loads without them and keeps counting pips", () => {
+    const saved = memory();
+    const position = RankPosition.make("gold", 2, 1);
+    saved.set(PlayerRecordStore.key, JSON.stringify({
+      rank: { season: "2026-10", position, peak: position, wins: 2, losses: 1, draws: 0, winStreak: 0, history: [] }, matches: [],
+    }));
+    const store = new PlayerRecordStore(saved, () => OCTOBER);
+    expect(RankState.isPlacing(store.rank)).toBe(false);
+    expect(RankState.shownTitle(store.rank)).toBe("Gold II");
+    expect(RankChange.kind(play(store, "ranked", "win")!)).toBe("pipUp");
+  });
+
+  it("a held placement win uses no game and keeps the rank hidden", () => {
+    const store = new PlayerRecordStore(memory(), () => OCTOBER);
+    for (let game = 0; game < 4; game += 1) play(store, "ranked", "loss");
+    const last = store.record({
+      mode: "ranked", outcome: "win", opponents: [{ name: "Foe", isAI: true }], deckID: "d", deckName: "Goblins", colors: [], deckBracket: 2, turns: 9, rankedTicket: "t1",
+    })!;
+    expect(RankChange.kind(last)).toBe("placed");
+    store.settleRanked("t1", "too_soon", undefined, undefined, 0);
+    const held = store.matches[0].rankChange!;
+    expect(RankChange.kind(held)).toBe("placing");
+    expect(RankChange.placementTitle(held)).toBe("Placement 4 of 5");
+  });
+
+  it("the server's placements travel with its change", () => {
+    const store = new PlayerRecordStore(memory(), () => OCTOBER);
+    store.record({
+      mode: "ranked", outcome: "win", opponents: [{ name: "Foe", isAI: true }], deckID: "d", deckName: "Goblins", colors: [], deckBracket: 2, turns: 9, rankedTicket: "t2",
+    });
+    store.settleRanked("t2", "counted", undefined, { pointsBefore: 0, pointsAfter: 8, bonuses: [], placementLeft: 4 });
+    expect(store.matches[0].rankChange?.placementLeft).toBe(4);
+  });
+});
+
 describe("player record", () => {
   it("ranked moves the ladder and quick does not", () => {
     let now = OCTOBER;
-    const store = new PlayerRecordStore(memory(), () => now);
+    const store = new PlayerRecordStore(onTheLadder(), () => now);
     expect(play(store, "quick", "win")).toBeUndefined();
     expect(store.rank.position).toEqual(RankPosition.start);
     const change = play(store, "ranked", "win");
@@ -114,7 +168,7 @@ describe("player record", () => {
   });
 
   it("an underdog ranked win is a Giant Slayer", () => {
-    const store = new PlayerRecordStore(memory(), () => OCTOBER);
+    const store = new PlayerRecordStore(onTheLadder(), () => OCTOBER);
     play(store, "ranked", "win", { deckBracket: 1 });
     expect(store.rank.position).toEqual(RankPosition.make("bronze", 4, 3));
     expect(store.achievements.has("giantSlayer")).toBe(true);

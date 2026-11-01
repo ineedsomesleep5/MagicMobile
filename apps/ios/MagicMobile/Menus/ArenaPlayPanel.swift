@@ -116,7 +116,7 @@ struct ArenaPlayPanelModel {
     }
 
     /// Ranked allows the deck at this tier.
-    var rankedEligible: Bool { (deckBracket?.rawValue ?? 99) <= rank.position.tier.maxDeckBracket }
+    var rankedEligible: Bool { (deckBracket?.rawValue ?? 99) <= rank.deckLimitTier.maxDeckBracket }
 
     var busy: Bool { search != nil || waitingFor != nil }
 
@@ -532,7 +532,7 @@ struct ArenaPlayBlade: View {
                     model.mode.wrappedValue = mode
                 } label: {
                     VStack(spacing: 4) {
-                        ArenaModeGem(mode: mode, rank: model.rank.position, lit: on, size: compact ? 34 : 40)
+                        ArenaModeGem(mode: mode, rank: model.rank.shownPosition, lit: on, size: compact ? 34 : 40)
                         Text(mode.title).font(ArenaMenuStyle.font(11, .semibold))
                             .foregroundStyle(on ? Color.white : ArenaMenuStyle.dim)
                     }
@@ -730,9 +730,9 @@ struct ArenaPlayBlade: View {
         ArenaCaps(text: String(localized: "Ranked Commander · 1v1"), size: 9.5).padding(.top, 6)
         HStack(spacing: 12) {
             // Searching, the footer grows: the standing shrinks to its badge and title.
-            RankBadge(position: rank.position, size: model.search == nil ? 42 : 30, showsPips: model.search == nil)
+            RankBadge(position: rank.shownPosition, size: model.search == nil ? 42 : 30, showsPips: model.search == nil, unplaced: rank.isPlacing)
             VStack(alignment: .leading, spacing: 2) {
-                Text(rank.position.title).font(ArenaMenuStyle.font(16, .bold)).foregroundStyle(ArenaMenuStyle.text)
+                Text(rank.shownTitle).font(ArenaMenuStyle.font(16, .bold)).foregroundStyle(ArenaMenuStyle.text)
                 Text(String(localized: "\(rank.wins) wins · \(rank.losses) losses"))
                     .font(ArenaMenuStyle.font(11, .semibold)).foregroundStyle(ArenaMenuStyle.gold)
             }
@@ -743,7 +743,7 @@ struct ArenaPlayBlade: View {
         .accessibilityIdentifier("ranked.standing")
         if model.search == nil {
             if !model.rankedEligible, let bracket = model.deckBracket {
-                Label(String(localized: "\(bracket.title) is above \(rank.position.tier.name)'s limit (Bracket \(rank.position.tier.maxDeckBracket)). Choose another deck."),
+                Label(String(localized: "\(bracket.title) is above \(rank.deckLimitTier.name)'s limit (Bracket \(rank.deckLimitTier.maxDeckBracket)). Choose another deck."),
                       systemImage: "exclamationmark.triangle.fill")
                     .font(ArenaMenuStyle.font(11.5, .semibold))
                     .foregroundStyle(Color(red: 1, green: 0.72, blue: 0.5))

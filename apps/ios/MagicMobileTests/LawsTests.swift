@@ -83,7 +83,10 @@ final class RankedLawsTests: XCTestCase {
             state.losses = Int.random(in: 0..<50, using: &random)
             try law(RankLadder.rollover(state, to: "2026-09") == state, "the same month changed the state")
             let next = RankLadder.rollover(state, to: "2026-10")
-            try law(next.position <= state.position, "a new season raised \(state.position) → \(next.position)")
+            // Only a Mythic's two-division head start can sit above where a low finish left them.
+            let headStart = RankPosition(points: RankLadder.placementWinPips)
+            try law(next.position <= max(state.position, headStart), "a new season raised \(state.position) → \(next.position)")
+            try law(next.placementLeft == RankLadder.placementMatches, "a new season didn't open placements")
             try law(next.peak == next.position && next.wins + next.losses + next.draws == 0, "the new season isn't fresh")
             try valid(next.position)
         }

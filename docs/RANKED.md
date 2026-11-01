@@ -37,8 +37,13 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 - Bonus: +1 for a win with a deck below the tier's opponent brackets ("underdog"). The old third-win streak bonus is
   gone (two-pip wins replace it). Draws change nothing and end the streak.
 - Seasons (UTC): October 2026 was a month; from November 2026 each season is three months, named by its first
-  ("2026-11" runs November to January; `mm_season_for`, `RankLadder.season`). A new season records the last one and drops everyone one tier, keeping
-  the division (Mythic restarts at Diamond IV).
+  ("2026-11" runs November to January; `mm_season_for`, `RankLadder.season`). A new season records the last one and opens placements.
+- Placements (Caleb, 2026-11-01): every season, and every new player, starts with five placement matches. A win climbs two
+  divisions; a loss or draw changes nothing and uses a game, with no underdog pip or crushing loss. From Bronze IV, five wins reach
+  Gold II. Making Mythic last season starts you at Bronze II, so five wins reach Platinum IV. Opponents follow the climb, but the
+  apps show "Placement 2 of 5" and a grey emblem, and the rank appears after the fifth game. Decks go up to Bracket 3 meanwhile. A
+  win held back from the ladder doesn't use a game. Nobody shows on the leaderboard until placed. Games already played this
+  season when the rule came in were replayed as placements (`mm_ranked_recount`).
 
 | Tier | AI deck Power (by division IV → I) | AI deck and your deck up to | AI skill |
 |---|---|---|---|

@@ -212,13 +212,13 @@ struct PlayerProfileView: View {
         return VStack(alignment: .leading, spacing: 10) {
             ArenaCaps(text: String(localized: "\(RankLadder.seasonName(rank.season)) · Season rank"))
             HStack(alignment: .center, spacing: 14) {
-                RankBadge(position: rank.position, size: 64, showsPips: false)
+                RankBadge(position: rank.shownPosition, size: 64, showsPips: false, unplaced: rank.isPlacing)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(rank.position.title).font(.system(size: 20, weight: .bold, design: .serif)).foregroundStyle(ArenaMenuStyle.text)
-                    if rank.position.tier != .mythic { RankPips(filled: rank.position.pips, tier: rank.position.tier, size: 10) }
+                    Text(rank.shownTitle).font(.system(size: 20, weight: .bold, design: .serif)).foregroundStyle(ArenaMenuStyle.text)
+                    if rank.position.tier != .mythic && !rank.isPlacing { RankPips(filled: rank.position.pips, tier: rank.position.tier, size: 10) }
                     Text("\(rank.wins)–\(rank.losses)").font(ArenaMenuStyle.font(13, .bold)).monospacedDigit()
                         .foregroundStyle(ArenaMenuStyle.gold)
-                    if rank.peak != rank.position {
+                    if rank.peak != rank.position && !rank.isPlacing {
                         Text(String(localized: "Peak \(rank.peak.title)")).font(ArenaMenuStyle.font(11.5, .semibold))
                             .foregroundStyle(ArenaMenuStyle.dim)
                     }

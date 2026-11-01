@@ -145,7 +145,26 @@ final class RankedParityTests: XCTestCase {
             if item["to"] as? String != item["season"] as? String {
                 XCTAssertEqual(next.wins + next.losses, 0, name)
                 XCTAssertEqual(next.peak, next.position, name)
+                XCTAssertEqual(next.placementLeft, RankLadder.placementMatches, name)
             }
+        }
+    }
+
+    func testPlacements() throws {
+        for item in try rows("placements") {
+            let name = item["name"] as? String ?? ""
+            var state = RankState.newPlayer(season: "2026-11")
+            state.position = try position(item["start"])
+            state.peak = state.position
+            var last: RankChange?
+            for result in try XCTUnwrap(item["results"] as? [String]) {
+                let applied = RankLadder.apply(try XCTUnwrap(RankOutcome(rawValue: result)), to: state, deckBracket: 3)
+                state = applied.state
+                last = applied.change
+            }
+            XCTAssertEqual(state.position, try position(item["after"]), name)
+            XCTAssertEqual(state.placementLeft, item["left"] as? Int, name)
+            XCTAssertEqual(last?.kind.rawValue, item["kind"] as? String, name)
         }
     }
 
@@ -251,7 +270,10 @@ final class PlayerRecordStoreTests: XCTestCase {
         XCTAssertNil(play(store, .quick, .win))
         XCTAssertEqual(store.rank.position, .start)
         let change = play(store, .ranked, .win)
-        XCTAssertEqual(change?.after, RankPosition(tier: .bronze, division: 4, pips: 2))
+        // A new player starts with placements: a win climbs two divisions.
+        XCTAssertEqual(change?.after, RankPosition(tier: .bronze, division: 2, pips: 0))
+        XCTAssertEqual(change?.kind, .placing)
+        XCTAssertEqual(store.rank.placementLeft, RankLadder.placementMatches - 1)
         XCTAssertEqual(store.rank.wins, 1)
         XCTAssertEqual(store.matches.count, 2)
         XCTAssertEqual(store.recentAIDecks, ["ai-edgar-markov-core"])

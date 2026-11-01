@@ -250,7 +250,9 @@ fun ArenaUnreadPip(modifier: Modifier = Modifier) {
 @Composable
 fun ArenaTopBar(selected: ArenaMenuTab?, compact: Boolean, select: (ArenaMenuTab) -> Unit, settings: () -> Unit, modifier: Modifier = Modifier,
                 rank: RankPosition? = null, openRank: (() -> Unit)? = null, unread: Boolean = false, messages: (() -> Unit)? = null,
-                updates: (() -> Unit)? = null, downloads: (() -> Unit)? = null, lit: String? = null) {
+                updates: (() -> Unit)? = null, downloads: (() -> Unit)? = null, lit: String? = null,
+                /** Set while placing, in place of the rank's own title. */
+                rankTitle: String? = null) {
     Column(modifier.fillMaxWidth()) {
         Box(Modifier.fillMaxWidth()) {
             ArenaTopBarBackground(Modifier.matchParentSize())
@@ -271,12 +273,12 @@ fun ArenaTopBar(selected: ArenaMenuTab?, compact: Boolean, select: (ArenaMenuTab
                     if (!compact && rank != null) {
                         BrandPressable({ GameAudio.play(GameSound.UI_OPEN); openRank?.invoke() },
                             Modifier.padding(end = 4.dp).defaultMinSize(minHeight = 44.dp).testTag("menu.rank")
-                                .semantics(mergeDescendants = true) { contentDescription = "Your rank, ${rank.title}" }) {
+                                .semantics(mergeDescendants = true) { contentDescription = "Your rank, ${rankTitle ?: rank.title}" }) {
                             Row(Modifier.height(28.dp).background(Color.White.copy(alpha = 0.05f), CircleShape)
                                 .border(0.8.dp, ArenaGlass.hairline, CircleShape).padding(horizontal = 10.dp),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                RankEmblem(rank.tier, 22.dp)
-                                Text(rank.title, color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(12f, SfWeight.bold), maxLines = 1)
+                                RankEmblem(rank.tier, 22.dp, Modifier.colorAdjust(saturation = if (rankTitle != null) 0f else 1f))
+                                Text(rankTitle ?: rank.title, color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(12f, SfWeight.bold), maxLines = 1)
                             }
                         }
                     }

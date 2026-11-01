@@ -177,7 +177,7 @@
  ],
  "rollover": [
   {
-   "name": "a played season is kept and you drop one tier",
+   "name": "a played season is kept and you start your placements",
    "season": "2026-10",
    "to": "2026-11",
    "position": {
@@ -192,11 +192,7 @@
    },
    "wins": 3,
    "losses": 1,
-   "after": {
-    "tier": "silver",
-    "division": 2,
-    "pips": 0
-   },
+   "after": {"tier": "bronze", "division": 4, "pips": 0},
    "history": [
     {
      "season": "2026-10",
@@ -216,7 +212,7 @@
    ]
   },
   {
-   "name": "Mythic restarts at Diamond IV",
+   "name": "making Mythic starts two divisions higher",
    "season": "2026-10",
    "to": "2026-11",
    "position": {
@@ -231,11 +227,7 @@
    },
    "wins": 40,
    "losses": 20,
-   "after": {
-    "tier": "diamond",
-    "division": 4,
-    "pips": 0
-   },
+   "after": {"tier": "bronze", "division": 2, "pips": 0},
    "history": [
     {
      "season": "2026-10",
@@ -339,6 +331,13 @@
    },
    "history": []
   }
+ ],
+ "placements": [
+   {"name": "five wins reach Gold II", "start": {"tier": "bronze", "division": 4, "pips": 0}, "results": ["win", "win", "win", "win", "win"], "after": {"tier": "gold", "division": 2, "pips": 0}, "left": 0, "kind": "placed"},
+   {"name": "a Mythic start with five wins reaches Platinum IV", "start": {"tier": "bronze", "division": 2, "pips": 0}, "results": ["win", "win", "win", "win", "win"], "after": {"tier": "platinum", "division": 4, "pips": 0}, "left": 0, "kind": "placed"},
+   {"name": "no wins stay at the start", "start": {"tier": "bronze", "division": 4, "pips": 0}, "results": ["loss", "draw", "loss", "loss", "loss"], "after": {"tier": "bronze", "division": 4, "pips": 0}, "left": 0, "kind": "placed"},
+   {"name": "losses and draws change nothing and use a game", "start": {"tier": "bronze", "division": 4, "pips": 0}, "results": ["loss", "draw", "win"], "after": {"tier": "bronze", "division": 2, "pips": 0}, "left": 2, "kind": "placing"},
+   {"name": "after placing the ladder counts as usual", "start": {"tier": "bronze", "division": 4, "pips": 0}, "results": ["win", "win", "win", "win", "win", "win"], "after": {"tier": "gold", "division": 2, "pips": 2}, "left": 0, "kind": "pipUp"}
  ],
  "seasons": [{"millis": 1793491199000, "season": "2026-10"}, {"millis": 1793491200000, "season": "2026-11"}, {"millis": 1800014400000, "season": "2026-11"}, {"millis": 1801440000000, "season": "2027-02"}, {"millis": 1809043200000, "season": "2027-02"}, {"millis": 1809129600000, "season": "2027-05"}],
  "seasonEnds": [{"season": "2026-10", "millis": 1793491200000}, {"season": "2026-11", "millis": 1801440000000}, {"season": "2027-05", "millis": 1817078400000}],

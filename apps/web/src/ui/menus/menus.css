@@ -211,6 +211,8 @@
 .mrankchip { display: flex; align-items: center; gap: 6px; align-self: center; height: 28px; padding: 0 10px; margin-right: 4px; border-radius: 999px;
   background: rgba(255,255,255,.05); border: .8px solid rgba(232,190,112,.36); font: 700 12px/1 var(--sans); white-space: nowrap; }
 .mrankemblem { display: block; object-fit: contain; flex: none; }
+.mrankemblem.grey { filter: grayscale(1); }
+.mrankbadge.unplaced .mrankemblem { opacity: .6; }
 
 /* Deck boxes (ArenaDeckBox); --o is the box's openness, 0 shut to 1 open */
 @property --o { syntax: "<number>"; inherits: true; initial-value: 0; }

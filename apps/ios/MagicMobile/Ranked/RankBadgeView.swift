@@ -109,6 +109,8 @@ struct RankBadge: View {
     var showsTitle = false
     /// Turns the emblem in 3D first (the division plate shows once it has landed).
     var spin: Spin? = nil
+    /// Still in placement matches: a grey emblem with no division.
+    var unplaced = false
 
     var body: some View {
         VStack(spacing: size * 0.06) {
@@ -120,8 +122,10 @@ struct RankBadge: View {
                     RankEmblem(tier: position.tier, size: size)
                 }
             }
+                .saturation(unplaced ? 0 : 1)
+                .opacity(unplaced ? 0.6 : 1)
                 .overlay(alignment: .bottom) {
-                    if position.tier != .mythic {
+                    if position.tier != .mythic && !unplaced {
                         Text(position.divisionNumeral)
                             .font(.system(size: max(10, size * 0.15), weight: .black, design: .serif))
                             .foregroundStyle(Color(red: 0.25, green: 0.12, blue: 0.04))
@@ -134,13 +138,13 @@ struct RankBadge: View {
                             .offset(y: size * 0.06)
                     }
                 }
-            if showsTitle {
+            if showsTitle && !unplaced {
                 Text(position.title)
                     .font(.system(size: max(13, size * 0.17), weight: .black, design: .serif))
                     .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.9, blue: 0.62), position.tier.tint], startPoint: .top, endPoint: .bottom))
                     .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
             }
-            if showsPips {
+            if showsPips && !unplaced {
                 if position.tier == .mythic {
                     Label("\(position.pips)", systemImage: "flame.fill")
                         .font(.system(size: max(11, size * 0.13), weight: .heavy, design: .serif))

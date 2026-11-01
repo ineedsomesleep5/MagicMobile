@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from "react";
 import { type GameSnapshot, type PlayerGameState } from "../../core/models";
-import { RankChange, RankPosition, type RankTier } from "../../core/rankLadder";
+import { RankChange, RankLadder, RankPosition, type RankTier } from "../../core/rankLadder";
 import { gameAudio } from "../audio";
 import { BrandMark } from "../menus/BrandMark";
 import { RankBadge } from "../menus/PlayPanel";
@@ -45,6 +45,14 @@ export function GameResult({ snapshot, me, finished, stoppedTitle, stoppedLine, 
     const settle = window.setTimeout(() => setSettled(true), reduce ? 300 : 1800);
     return () => { window.clearTimeout(land); window.clearTimeout(settle); };
   }, [reduce]);
+  // The last placement match: the rank's moment, after the result's own reveal. The server can still hold the win back.
+  const placed = rankChange !== undefined && RankChange.kind(rankChange) === "placed";
+  const [moment, setMoment] = useState<"waiting" | "open" | "seen">("waiting");
+  useEffect(() => {
+    if (!settled || !placed || moment !== "waiting") return;
+    const open = window.setTimeout(() => { gameAudio.play("victory"); setMoment("open"); }, 1500);
+    return () => window.clearTimeout(open);
+  }, [settled, placed, moment]);
   return (
     <div className={`aresult ${settled ? "settled" : ""} ${landed ? "landed" : ""} ${peeking ? "peek" : ""}`} data-outcome={outcome}
       style={{ ["--flare" as string]: FLARE[outcome] }} role="dialog" aria-label={`Game completed. ${word}`}
@@ -83,6 +91,7 @@ export function GameResult({ snapshot, me, finished, stoppedTitle, stoppedLine, 
       )}
       <button type="button" className="aplaque secondary rview" onClick={(event) => { event.stopPropagation(); setPeeking(!peeking); }}>
         {peeking ? "Back" : "View Battlefield"}</button>
+      {placed && moment === "open" && <PlacedMoment change={rankChange} close={() => setMoment("seen")} />}
     </div>
   );
 }
@@ -99,12 +108,49 @@ const TINT: Record<RankTier, [string, string]> = {
   platinum: ["140,230,219", "26,87,92"], diamond: ["128,191,255", "20,51,122"], mythic: ["255,115,56", "115,18,8"],
 };
 
+/** A placement match (RankProgressPanel.placement): how far through, with the climb kept for the end. */
+function PlacementProgress({ title, left }: { title: string; left: number }) {
+  const played = RankLadder.placementMatches - left;
+  return (
+    <div className="rankstrip placing" data-id="rank.placement" aria-label={title}>
+      <span className="rbadge"><RankBadge position={RankPosition.start} size={96} showsPips={false} unplaced /></span>
+      <div>
+        <b className="rtitle">{title}</b>
+        <span className="rdots" aria-hidden="true">
+          {Array.from({ length: RankLadder.placementMatches }, (_, game) => <i key={game} className={game < played ? "on" : ""} />)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** The rank ceremony's placed moment (RankCeremonyOverlay): the rank earned, over the result. Only Continue closes it. */
+function PlacedMoment({ change, close }: { change: RankChange; close: () => void }) {
+  const [tint, shade] = TINT[change.after.tier];
+  const title = RankPosition.title(change.after);
+  return (
+    <div className="aplaced" role="dialog" aria-modal="true" aria-label={`Placed in ${title}`} data-id="rank.ceremony"
+      style={{ ["--tint" as string]: tint, ["--shade" as string]: shade }} onClick={(event) => event.stopPropagation()}>
+      <span className="rbadge"><i className="rglow" /><RankBadge position={change.after} size={170} showsPips={false} /></span>
+      <em>PLACED</em>
+      <b>{title}</b>
+      <p>Your season starts here.</p>
+      <button type="button" className="aplaque primary" data-id="rank.ceremony.continue" onClick={close}>Continue</button>
+    </div>
+  );
+}
+
 /**
  * The result's rank (RankProgressPanel, Ranked/RankCeremonyView.swift), standing on its own in the middle in the medallion's
  * place, no box (Caleb, 2026-10-23): the badge in its tier's glow, then each pip filling or emptying
  * in turn so a crossing into the next division is seen, the change in words and the bonuses that earned extra pips.
  */
 export function RankProgress({ change }: { change: RankChange }) {
+  const placement = RankChange.placementTitle(change);
+  return placement !== undefined ? <PlacementProgress title={placement} left={change.placementLeft ?? 0} /> : <LadderProgress change={change} />;
+}
+
+function LadderProgress({ change }: { change: RankChange }) {
   const from = RankPosition.points(change.before);
   const to = RankPosition.points(change.after);
   const [points, setPoints] = useState<number>();

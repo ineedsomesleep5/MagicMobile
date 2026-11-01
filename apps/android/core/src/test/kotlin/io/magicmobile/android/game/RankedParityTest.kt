@@ -87,7 +87,84 @@ class RankedParityTest {
                 assertEquals(name, int(expected, "wins"), record.wins)
                 assertEquals(name, int(expected, "losses"), record.losses)
             }
+            if (str(item, "to") != str(item, "season")) {
+                assertEquals(name, 0, next.wins + next.losses)
+                assertEquals(name, next.position, next.peak)
+                assertEquals(name, RankLadder.PLACEMENT_MATCHES, next.placementLeft)
+            }
         }
+    }
+
+    @Test fun placements() {
+        for (item in rows("placements")) {
+            val name = str(item, "name")
+            val start = position(item["start"])
+            var state = RankState.newPlayer("2026-11").copy(position = start, peak = start)
+            var last: RankChange? = null
+            for (result in item["results"]!!.jsonArray) {
+                val outcome = RankOutcome.entries.first { it.raw == result.jsonPrimitive.content }
+                // A low bracket earns no underdog pip while placing; afterwards it would, so the ladder row plays a tier's own.
+                val (next, change) = RankLadder.apply(outcome, state, if (state.isPlacing) 1 else 2)
+                state = next; last = change
+            }
+            assertEquals(name, position(item["after"]), state.position)
+            assertEquals(name, int(item, "left"), state.placementLeft)
+            assertEquals(name, str(item, "kind"), last!!.kind.raw)
+            assertTrue(name, last.bonuses.isEmpty())
+        }
+    }
+
+    @Test fun placementsShowTheirTitleNotTheClimb() {
+        var state = RankState.newPlayer("2026-11")
+        assertEquals("Placement 1 of 5", state.shownTitle)
+        assertEquals(RankTier.GOLD, state.deckLimitTier)
+        val titles = (1..4).map {
+            val (next, change) = RankLadder.apply(RankOutcome.WIN, state, 2)
+            state = next
+            assertEquals(RankPosition.START, state.shownPosition)
+            assertEquals("Ranked", ArenaGameResult.rankLine(change))
+            assertEquals("no pip delta in the history", null, change.ladderDelta)
+            assertEquals(change.placementTitle, RankSettlement.line(change))
+            change.placementTitle
+        }
+        assertEquals(listOf("Placement 1 of 5", "Placement 2 of 5", "Placement 3 of 5", "Placement 4 of 5"), titles)
+        assertEquals("Placement 5 of 5", state.shownTitle)
+        val (placed, last) = RankLadder.apply(RankOutcome.WIN, state, 2)
+        assertEquals("the last game shows the rank", null, last.placementTitle)
+        assertEquals(RankChangeKind.PLACED, last.kind)
+        assertTrue(last.isMilestone)
+        assertEquals("Placed", ArenaGameResult.rankLine(last))
+        assertEquals("Gold II", placed.shownTitle)
+        assertEquals(RankTier.GOLD, placed.deckLimitTier)
+    }
+
+    @Test fun aProfileSavedBeforePlacementsStillLoads() {
+        val saved = """{"rank":{"season":"2026-11","position":{"tier":"GOLD","division":2,"pips":1},"peak":{"tier":"GOLD","division":2,"pips":1}},"matches":[]}"""
+        val file = PlayerRecordFile.json.decodeFromString(PlayerRecordFile.serializer(), saved)
+        assertFalse(file.rank.isPlacing)
+        assertEquals("Gold II", file.rank.shownTitle)
+    }
+
+    @Test fun theServerSaysHowManyPlacementsAreLeft() {
+        val answer = Json.parseToJsonElement("""{"season":"2026-11","points":16,"peakPoints":16,"placementLeft":3,"change":{"pointsBefore":8,"pointsAfter":16,"bonuses":[],"placementLeft":3}}""").jsonObject
+        val standing = RankedStanding.parse(answer)
+        assertEquals(3, standing.placementLeft)
+        assertEquals(3, standing.change?.placementLeft)
+        val file = PlayerRecordFile(RankState.newPlayer("2026-11")).adopting(standing)
+        assertEquals(3, file.rank.placementLeft)
+        val older = RankedStanding.parse(Json.parseToJsonElement("""{"season":"2026-11","points":16,"peakPoints":16}""").jsonObject)
+        assertEquals("an older server leaves them", 5, PlayerRecordFile(RankState.newPlayer("2026-11")).adopting(older).rank.placementLeft)
+    }
+
+    @Test fun aHeldPlacementWinUsesNoGameAndHidesTheRank() {
+        val ticket = "11111111-1111-1111-1111-111111111111"
+        val start = PlayerRecordFile(RankState.newPlayer(RankLadder.season(0)).copy(placementGames = 1), rankedTicket = ticket)
+        val (played, change) = start.recording(0, PlayMode.RANKED, RankOutcome.WIN, listOf(MatchOpponent("AI", null, true)), 2, 3, "d", "Deck", null,
+            emptyList(), 2, 9)
+        assertEquals(RankChangeKind.PLACED, change!!.kind)
+        val held = played.settlingRanked(ticket, "too_soon", null, null, 0).matches.first().rankChange!!
+        assertEquals(RankChangeKind.PLACING, held.kind)
+        assertEquals("Placement 4 of 5", held.placementTitle)
     }
 
     /** Season badges (Caleb, 2026-10-26): numbering from October 2026, the season in play first, the best finished peak. */

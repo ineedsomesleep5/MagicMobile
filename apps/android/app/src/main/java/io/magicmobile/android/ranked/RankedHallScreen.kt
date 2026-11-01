@@ -129,7 +129,7 @@ fun RankedHallScreen(account: PlayerAccount, rank: RankState, play: () -> Unit, 
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     Column(Modifier.weight(1f).fillMaxHeight().arenaScrollFade().verticalScroll(rememberScrollState()).testTag("lobby.scroll")
                         .padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        TierLadder(rank.position.tier, wide = true, shown)
+                        TierLadder(rank.shownPosition.tier, wide = true, shown)
                         SeasonStrip(rank)
                     }
                     Box(Modifier.width(250.dp)) { HallEntrance(shown, 80) { CurrentRank(rank, 104.dp, teaser, appeared) } }
@@ -138,7 +138,7 @@ fun RankedHallScreen(account: PlayerAccount, rank: RankState, play: () -> Unit, 
                 Column(Modifier.fillMaxSize().arenaScrollFade().verticalScroll(rememberScrollState()).testTag("lobby.scroll")
                     .padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     HallEntrance(shown, 80) { CurrentRank(rank, 120.dp, teaser, appeared) }
-                    TierLadder(rank.position.tier, wide = false, shown)
+                    TierLadder(rank.shownPosition.tier, wide = false, shown)
                     SeasonStrip(rank)
                 }
             }
@@ -231,11 +231,14 @@ private fun CurrentRank(rank: RankState, badge: Dp, teaser: RankedLeaderboard?, 
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         ArenaCaps("Current rank")
         Box(Modifier.padding(top = 4.dp), contentAlignment = Alignment.Center) {
-            RankGlow(rank.position.tier, badge * 1.45f)
-            RankBadge(rank.position, badge, showsPips = true, showsTitle = true, spinKey = appeared)
+            RankGlow(rank.shownPosition.tier, badge * 1.45f)
+            RankBadge(rank.shownPosition, badge, showsPips = true, showsTitle = true, spinKey = appeared, unplaced = rank.isPlacing)
         }
+        if (rank.isPlacing) Text(rank.shownTitle, color = ArenaMenuStyle.text, style = sf(17f, SfWeight.black, SfDesign.SERIF))
         Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            HallStat("Wins", "${rank.wins}"); HallStat("Losses", "${rank.losses}"); HallStat("Peak", rank.peak.title)
+            HallStat("Wins", "${rank.wins}"); HallStat("Losses", "${rank.losses}")
+            if (rank.isPlacing) HallStat("Placement", "${RankLadder.PLACEMENT_MATCHES - rank.placementLeft + 1}/${RankLadder.PLACEMENT_MATCHES}")
+            else HallStat("Peak", rank.peak.title)
             teaser?.me?.let { HallStat("Place", "#${it.position}") }
         }
     }

@@ -62,6 +62,9 @@ def main():
     for item in sorted(source.iterdir()):
         if item.suffix == ".m4a" or item.name == "CREDITS.txt":
             shutil.copyfile(item, audio_out / item.name)
+        elif item.name.startswith("world-"):
+            # A table world's air: Android draws Walnut, and these loops are IMA4, not linear PCM.
+            continue
         elif item.suffix == ".caf":
             caf_to_wav(item, audio_out / (item.stem + ".wav"))
     print(f"staged {len(list(audio_out.iterdir()))} audio files")

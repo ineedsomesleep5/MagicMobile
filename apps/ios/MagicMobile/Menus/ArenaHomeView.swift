@@ -32,6 +32,8 @@ struct ArenaHomeContent {
     var tiles: [ArenaHomeTile]
     var deck: ArenaDeckBoxModel?
     var rank: RankPosition
+    /// Set while placing, in place of the rank's own title.
+    var rankTitle: String? = nil
     var wins: Int
     var losses: Int
     var friendsOnline: Int
@@ -383,10 +385,10 @@ struct ArenaProgressRail: View {
                         .clipShape(Circle())
                 }
             }
-            medallion(progress: Double(pips) / Double(RankPosition.pipsPerDivision), title: rank.title,
-                      subtitle: rank.tier == .mythic ? String(localized: "Mythic") : String(localized: "\(pips) of \(RankPosition.pipsPerDivision) pips"),
+            medallion(progress: Double(pips) / Double(RankPosition.pipsPerDivision), title: content.rankTitle ?? rank.title,
+                      subtitle: content.rankTitle != nil ? "" : rank.tier == .mythic ? String(localized: "Mythic") : String(localized: "\(pips) of \(RankPosition.pipsPerDivision) pips"),
                       action: content.openRank, identifier: "home.rank") {
-                RankEmblem(tier: rank.tier, size: 32)
+                RankEmblem(tier: rank.tier, size: 32).saturation(content.rankTitle == nil ? 1 : 0)
             }
             if !compact || content.deck == nil {
                 medallion(progress: played == 0 ? 0 : Double(content.wins) / Double(played),

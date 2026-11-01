@@ -268,7 +268,7 @@ final class PlayerRecordStore: ObservableObject {
         fileURL = directory?.appendingPathComponent("player-record.json")
         gameRecordsURL = directory?.appendingPathComponent("GameRecords", isDirectory: true)
         let season = RankLadder.season(for: now())
-        var loaded = File(rank: .fresh(season: season), matches: [])
+        var loaded = File(rank: .newPlayer(season: season), matches: [])
         if let fileURL, let data = try? Data(contentsOf: fileURL), let file = try? JSONDecoder.record.decode(File.self, from: data) {
             loaded = file
         }
@@ -407,10 +407,13 @@ final class PlayerRecordStore: ObservableObject {
         match.settlementCheck = check
         if let before = change?.pointsBefore, let after = change?.pointsAfter {
             match.rankChange = RankChange(outcome: match.outcome, before: RankPosition(points: before), after: RankPosition(points: after),
-                                          bonuses: (change?.bonuses ?? []).compactMap(RankChange.Bonus.init(rawValue:)))
+                                          bonuses: (change?.bonuses ?? []).compactMap(RankChange.Bonus.init(rawValue:)),
+                                          placementLeft: change?.placementLeft)
         } else if RankSettlement.held(settlement), let local = match.rankChange {
             let stands = points.map { RankPosition(points: $0) } ?? local.before
-            match.rankChange = RankChange(outcome: local.outcome, before: stands, after: stands, bonuses: [])
+            // A held placement win gives its game back, so it can't reveal a rank or finish placements.
+            match.rankChange = RankChange(outcome: local.outcome, before: stands, after: stands, bonuses: [],
+                                          placementLeft: local.placementLeft.map { $0 + 1 })
         }
         guard match != matches[index] else { return }
         matches[index] = match
@@ -435,6 +438,7 @@ final class PlayerRecordStore: ObservableObject {
         next.losses = standing.losses
         next.draws = standing.draws
         next.winStreak = standing.winStreak
+        if let left = standing.placementLeft { next.placementGames = left }
         // The server's past seasons replace the phone's for the same month.
         for record in standing.history ?? [] {
             let season = SeasonRecord(season: record.season, final: RankPosition(points: record.finalPoints),
@@ -468,6 +472,7 @@ final class PlayerRecordStore: ObservableObject {
             let fixture = SocialFixtures.matches(now: now(), season: rank.season)
             matches = fixture.matches
             rank = fixture.rank
+            rank.placementGames = environment["MAGICMOBILE_UI_TEST_PLACEMENT"].flatMap(Int.init)
             favoriteCommander = nil
             return
         }
@@ -484,6 +489,7 @@ final class PlayerRecordStore: ObservableObject {
                 if parts.count >= 4, let streak = Int(parts[3]) { rank.winStreak = streak }
             }
         }
+        if let left = environment["MAGICMOBILE_UI_TEST_PLACEMENT"].flatMap(Int.init) { rank.placementGames = left }
         if let count = environment["MAGICMOBILE_UI_TEST_MATCHES"].flatMap(Int.init), count > 0 {
             let decks = AIDeckPool.all
             for index in 0..<count {

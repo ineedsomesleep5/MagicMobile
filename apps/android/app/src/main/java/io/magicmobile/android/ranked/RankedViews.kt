@@ -93,6 +93,7 @@ import io.magicmobile.android.game.ProfileGame
 import io.magicmobile.android.game.ProfileSummary
 import io.magicmobile.android.game.RankBonus
 import io.magicmobile.android.game.RankChange
+import io.magicmobile.android.game.RankChangeKind
 import io.magicmobile.android.game.RankLadder
 import io.magicmobile.android.game.RankOutcome
 import io.magicmobile.android.game.RankPosition
@@ -143,6 +144,7 @@ import io.magicmobile.android.ui.TavernSealButton
 import io.magicmobile.android.ui.TavernSheetBackground
 import io.magicmobile.android.ui.TavernStepper
 import io.magicmobile.android.ui.TavernTag
+import io.magicmobile.android.ui.colorAdjust
 import io.magicmobile.android.ui.engraved
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.rgb
@@ -283,16 +285,23 @@ fun RankPips(filled: Int, tier: RankTier, size: Dp = 14.dp, highlight: Int? = nu
     }
 }
 
-/** The emblem with its division on a brass plate, optionally its title and pips; `spinKey` turns it in first. */
+/** The emblem with its division on a brass plate, optionally its title and pips; `spinKey` turns it in first. `unplaced`: a grey emblem alone. */
 @Composable
 fun RankBadge(position: RankPosition, size: Dp = 96.dp, showsPips: Boolean = true, showsTitle: Boolean = false,
-              spinKey: Any? = null, spinTurns: Float = 1f, spinMillis: Int = 1200, spinReverse: Boolean = false, modifier: Modifier = Modifier) {
+              spinKey: Any? = null, spinTurns: Float = 1f, spinMillis: Int = 1200, spinReverse: Boolean = false, modifier: Modifier = Modifier,
+              unplaced: Boolean = false) {
     Column(modifier.semantics(mergeDescendants = true) {
-        contentDescription = if (position.tier == RankTier.MYTHIC) "Rank ${position.title}, ${position.pips} points" else "Rank ${position.title}, ${position.pips} of 4 pips"
+        contentDescription = when {
+            unplaced -> "In placement matches"
+            position.tier == RankTier.MYTHIC -> "Rank ${position.title}, ${position.pips} points"
+            else -> "Rank ${position.title}, ${position.pips} of 4 pips"
+        }
     }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(size * 0.06f)) {
         Box(contentAlignment = Alignment.BottomCenter) {
-            if (spinKey != null) RankSpinEmblem(position.tier, size, spinKey, spinTurns, spinMillis, reverse = spinReverse) else RankEmblem(position.tier, size)
-            if (position.tier != RankTier.MYTHIC) {
+            Box(Modifier.colorAdjust(saturation = if (unplaced) 0f else 1f).alpha(if (unplaced) 0.6f else 1f)) {
+                if (spinKey != null) RankSpinEmblem(position.tier, size, spinKey, spinTurns, spinMillis, reverse = spinReverse) else RankEmblem(position.tier, size)
+            }
+            if (position.tier != RankTier.MYTHIC && !unplaced) {
                 Text(position.divisionNumeral, Modifier.offset(y = size * 0.06f).defaultMinSize(minWidth = size * 0.3f, minHeight = size * 0.2f)
                     .glow(Color.Black.copy(alpha = 0.5f), 2.dp, size)
                     .background(Brush.verticalGradient(listOf(rgb(1.0, 0.88, 0.56), TavernPalette.brass, rgb(0.55, 0.36, 0.12))), CircleShape)
@@ -300,9 +309,9 @@ fun RankBadge(position: RankPosition, size: Dp = 96.dp, showsPips: Boolean = tru
                     color = rgb(0.25, 0.12, 0.04), style = sf(max(10f, size.value * 0.15f), SfWeight.black, SfDesign.SERIF), textAlign = TextAlign.Center)
             }
         }
-        if (showsTitle) Text(position.title, style = sf(max(13f, size.value * 0.17f), SfWeight.black, SfDesign.SERIF)
+        if (showsTitle && !unplaced) Text(position.title, style = sf(max(13f, size.value * 0.17f), SfWeight.black, SfDesign.SERIF)
             .copy(brush = Brush.verticalGradient(listOf(rgb(1.0, 0.9, 0.62), position.tier.tint))).engraved())
-        if (showsPips) {
+        if (showsPips && !unplaced) {
             if (position.tier == RankTier.MYTHIC) Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 SfImage("flame.fill", position.tier.tint, 12.dp)
                 Text("${position.pips}", color = position.tier.tint, style = sf(max(11f, size.value * 0.13f), SfWeight.heavy, SfDesign.SERIF))
@@ -516,9 +525,34 @@ private fun Modifier.matchParentSizeCompat(): Modifier = this.fillMaxSize()
 
 // MARK: - Result strip and rank moments
 
-/** The result screen's rank strip: the badge, then each pip filling or emptying in turn, with any bonuses. */
+/** The result screen's rank strip: placement progress while the climb is hidden, then the ladder itself. */
 @Composable
 fun RankProgressPanel(change: RankChange) {
+    val placement = change.placementTitle
+    if (placement != null) PlacementPanel(placement, RankLadder.PLACEMENT_MATCHES - (change.placementLeft ?: 0)) else LadderPanel(change)
+}
+
+/** A placement match: how far through, with the climb kept for the end. */
+@Composable
+private fun PlacementPanel(title: String, played: Int) {
+    Row(Modifier.fillMaxWidth().arenaGlassPanel(12.dp, 0.95f).padding(12.dp).testTag("rank.placement")
+        .semantics(mergeDescendants = true) { contentDescription = title },
+        horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        RankBadge(RankPosition.START, 64.dp, showsPips = false, unplaced = true)
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(title, color = ArenaMenuStyle.text, style = sf(18f, SfWeight.black, SfDesign.SERIF))
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                repeat(RankLadder.PLACEMENT_MATCHES) { game ->
+                    Box(Modifier.size(10.dp).background(if (game < played) ArenaMenuStyle.gold else Color.White.copy(alpha = 0.14f), CircleShape))
+                }
+            }
+        }
+    }
+}
+
+/** The badge, then each pip filling or emptying in turn, with any bonuses. */
+@Composable
+private fun LadderPanel(change: RankChange) {
     var shown by remember(change) { mutableIntStateOf(change.before.points) }
     val position = RankPosition.ofPoints(shown)
     LaunchedEffect(change) {
@@ -559,10 +593,12 @@ fun RankProgressPanel(change: RankChange) {
 /**
  * A full-screen moment for moving up or down a division or tier: up, the old badge charges and bursts into
  * embers while the new one spins in under turning light; down, it cracks and falls away and the lower one settles.
+ * The last placement match plays the climb from the grey emblem to the rank it earned.
  */
 @Composable
 fun RankCeremonyOverlay(change: RankChange, done: () -> Unit) {
-    val promoted = change.after > change.before
+    val placed = change.kind == RankChangeKind.PLACED
+    val promoted = placed || change.after > change.before
     val tierChange = change.after.tier != change.before.tier
     var stage by remember(change) { mutableIntStateOf(0) }
     var finished by remember(change) { mutableStateOf(false) }
@@ -580,7 +616,7 @@ fun RankCeremonyOverlay(change: RankChange, done: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (stage > 0) 0.9f else 0f))
         // Only Continue closes it, so a stray tap never skips the moment.
         .clickable(remember { MutableInteractionSource() }, null) {}
-        .testTag("rank.ceremony").semantics { contentDescription = if (promoted) "Ranked up to ${change.after.title}" else "Ranked down to ${change.after.title}" },
+        .testTag("rank.ceremony").semantics { contentDescription = if (placed) "Placed in ${change.after.title}" else if (promoted) "Ranked up to ${change.after.title}" else "Ranked down to ${change.after.title}" },
         contentAlignment = Alignment.Center) {
         if (promoted && stage >= 2) LightRays(change.after.tier.tint)
         if (burstKey > 0) EmberBurst(burstKey, if (promoted) change.after.tier.tint else rgb(0.55, 0.55, 0.55), promoted)
@@ -591,7 +627,8 @@ fun RankCeremonyOverlay(change: RankChange, done: () -> Unit) {
                         val s = if (stage == 1) (if (promoted) 1.1f else 0.96f) else 1f; scaleX = s; scaleY = s
                         translationX = if (stage == 1) shake.value * (if (promoted) 3f else 7f) * density else 0f
                     }.alpha(if (!promoted && stage >= 1) 0.75f else 1f)) {
-                        RankBadge(change.before, 170.dp, showsPips = false, spinKey = if (stage == 1 && promoted) change else null, spinTurns = 1f, spinMillis = 900)
+                        RankBadge(if (placed) RankPosition.START else change.before, 170.dp, showsPips = false, spinKey = if (stage == 1 && promoted) change else null,
+                            spinTurns = 1f, spinMillis = 900, unplaced = placed)
                         if (!promoted && stage >= 1) Cracks(Modifier.size(150.dp).align(Alignment.Center))
                     }
                 } else {
@@ -605,10 +642,10 @@ fun RankCeremonyOverlay(change: RankChange, done: () -> Unit) {
                 }
             }
             Column(Modifier.alpha(if (stage >= 3) 1f else 0f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(if (promoted) (if (tierChange) "NEW RANK" else "RANKED UP") else "RANKED DOWN",
+                Text(if (placed) "PLACED" else if (promoted) (if (tierChange) "NEW RANK" else "RANKED UP") else "RANKED DOWN",
                     color = if (promoted) TavernPalette.brass else rgb(0.85, 0.4, 0.35), style = sf(15f, SfWeight.black, tracking = 4f))
                 Text(change.after.title, style = sf(40f, SfWeight.black, SfDesign.SERIF).copy(brush = Brush.verticalGradient(listOf(Color.White, change.after.tier.tint))))
-                Text(if (promoted) "Your opponents grow stronger." else "Win your next games to climb back.", color = TavernPalette.parchment.copy(alpha = 0.8f),
+                Text(if (placed) "Your season starts here." else if (promoted) "Your opponents grow stronger." else "Win your next games to climb back.", color = TavernPalette.parchment.copy(alpha = 0.8f),
                     style = ArenaMenuStyle.font(14f, SfWeight.medium), textAlign = TextAlign.Center)
             }
             if (finished) ArenaButton({ done() }, Modifier.width(180.dp), ArenaButtonKind.PRIMARY, identifier = "rank.ceremony.continue",

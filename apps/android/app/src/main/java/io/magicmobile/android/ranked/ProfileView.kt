@@ -281,12 +281,12 @@ private fun Identity(store: PlayerRecordStore, trophies: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         ArenaCaps("${RankLadder.seasonName(rank.season)} · Season rank")
         Row(Modifier.arenaCard(12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            RankBadge(rank.position, 64.dp, showsPips = false)
+            RankBadge(rank.shownPosition, 64.dp, showsPips = false, unplaced = rank.isPlacing)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(rank.position.title, color = ArenaMenuStyle.text, style = sf(20f, SfWeight.bold, SfDesign.SERIF))
-                if (rank.position.tier != RankTier.MYTHIC) RankPips(rank.position.pips, rank.position.tier, 10.dp)
+                Text(rank.shownTitle, color = ArenaMenuStyle.text, style = sf(20f, SfWeight.bold, SfDesign.SERIF))
+                if (rank.position.tier != RankTier.MYTHIC && !rank.isPlacing) RankPips(rank.position.pips, rank.position.tier, 10.dp)
                 Text("${rank.wins}–${rank.losses}", color = ArenaMenuStyle.gold, style = ArenaMenuStyle.font(13f, SfWeight.bold).copy(fontFeatureSettings = "tnum"))
-                if (rank.peak != rank.position) Text("Peak ${rank.peak.title}", color = ArenaMenuStyle.dim, style = ArenaMenuStyle.font(11.5f, SfWeight.semibold))
+                if (rank.peak != rank.position && !rank.isPlacing) Text("Peak ${rank.peak.title}", color = ArenaMenuStyle.dim, style = ArenaMenuStyle.font(11.5f, SfWeight.semibold))
             }
         }
         ArenaCaps("Progression", modifier = Modifier.padding(top = 4.dp))

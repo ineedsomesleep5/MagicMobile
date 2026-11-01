@@ -160,7 +160,7 @@ struct OnDeviceRootView: View {
     /// Seats for the intro: the table's own players when known, else the chosen decks.
     private func makeVersusIntro() -> VersusIntro {
         let name = playerDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tier = profileRecord.rank.position.tier
+        let tier = profileRecord.rank.shownPosition.tier
         let you = VersusIntroOverlay.Seat(id: "you", name: name.isEmpty ? "You" : name,
                                           commander: selectedDeck?.commander?.cardName, tier: tier)
         // A table knows everyone's commander before its first snapshot shows the command zones.
@@ -625,9 +625,10 @@ struct OnDeviceRootView: View {
                 "tierUp": (RankPosition(tier: .silver, division: 1, pips: 3), RankPosition(tier: .gold, division: 4, pips: 0), .win),
                 "tierDown": (RankPosition(tier: .gold, division: 4, pips: 0), RankPosition(tier: .silver, division: 1, pips: 3), .loss),
                 "divisionUp": (RankPosition(tier: .diamond, division: 3, pips: 3), RankPosition(tier: .diamond, division: 2, pips: 0), .win),
+                "placed": (RankPosition(tier: .silver, division: 2, pips: 0), RankPosition(tier: .gold, division: 2, pips: 0), .win),
                 "divisionDown": (RankPosition(tier: .platinum, division: 2, pips: 0), RankPosition(tier: .platinum, division: 3, pips: 3), .loss)]
             if let (before, after, outcome) = samples[kind] {
-                ceremony = RankChange(outcome: outcome, before: before, after: after, bonuses: [])
+                ceremony = RankChange(outcome: outcome, before: before, after: after, bonuses: [], placementLeft: kind == "placed" ? 0 : nil)
             }
         }
         #endif
@@ -1379,7 +1380,8 @@ struct OnDeviceRootView: View {
                         .padding(.top, ArenaMenuStyle.barHeight)
                         .transition(reduceMotion ? .opacity : .move(edge: compact ? .bottom : .trailing).combined(with: .opacity))
                 }
-                ArenaTopBar(selected: menuTab, compact: compact, select: selectMenuTab, rank: profileRecord.rank.position,
+                ArenaTopBar(selected: menuTab, compact: compact, select: selectMenuTab, rank: profileRecord.rank.shownPosition,
+                            rankTitle: profileRecord.rank.isPlacing ? profileRecord.rank.shownTitle : nil,
                             openRank: { selectMenuTab(.ranked) },
                             unread: account.incomingCount + account.unreadMessages > 0,
                             messages: { showFriends = true }, updates: { showUpdates = true },
@@ -1461,7 +1463,7 @@ struct OnDeviceRootView: View {
                               action: { showHowToPlay = true }),
             ],
             deck: selectedDeckBox,
-            rank: rank.position, wins: rank.wins, losses: rank.losses,
+            rank: rank.shownPosition, rankTitle: rank.isPlacing ? rank.shownTitle : nil, wins: rank.wins, losses: rank.losses,
             friendsOnline: account.onlineFriendCount, unread: account.incomingCount + account.unreadMessages > 0,
             play: { openPlayPanel() }, friends: { showFriends = true }, updates: { showUpdates = true },
             downloads: { showDownloads = true }, openDeck: { openPlayPanel() }, openRank: { selectMenuTab(.ranked) })
@@ -1640,7 +1642,7 @@ struct OnDeviceRootView: View {
     /// Ranked: a person from the queue when one is searching near your rank, else an AI at your tier.
     private func findRankedMatch() {
         guard let deck = selectedDeck, let bracket = selectedDeckBracket,
-              bracket.rawValue <= profileRecord.rank.position.tier.maxDeckBracket, mayStartSolo else { return }
+              bracket.rawValue <= profileRecord.rank.deckLimitTier.maxDeckBracket, mayStartSolo else { return }
         do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
         catch { setup.errorMessage = error.localizedDescription; return }
         profileRecord.refreshSeason()
@@ -1724,7 +1726,7 @@ struct OnDeviceRootView: View {
             bannerError = String(localized: "Choose a deck and let the engine finish loading, then try again.")
             return nil
         }
-        if ranked, bracket.rawValue > profileRecord.rank.position.tier.maxDeckBracket {
+        if ranked, bracket.rawValue > profileRecord.rank.deckLimitTier.maxDeckBracket {
             bannerError = String(localized: "Your deck's bracket is above what your rank allows in Ranked.")
             return nil
         }
@@ -2031,7 +2033,7 @@ struct OnDeviceRootView: View {
                 rankNote = settled.rankNote
             }
         }
-        if let change, [.divisionUp, .divisionDown, .tierUp, .tierDown].contains(change.kind) {
+        if let change, [.divisionUp, .divisionDown, .tierUp, .tierDown, .placed].contains(change.kind) {
             // After the result screen's own reveal.
             Task { try? await Task.sleep(for: .milliseconds(1500)); if rankChange == change { ceremony = change } }
         }

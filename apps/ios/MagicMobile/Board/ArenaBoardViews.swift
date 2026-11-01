@@ -3155,9 +3155,9 @@ struct ArenaGameResultView: View {
             }
             if let rankChange {
                 HStack(spacing: 10) {
-                    RankEmblem(tier: rankChange.after.tier, size: landscape ? 40 : 52)
+                    RankEmblem(tier: rankEmblemTier(rankChange), size: landscape ? 40 : 52).saturation(rankChange.kind == .placing ? 0 : 1)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(rankChange.after.title).font(ArenaMenuStyle.title(20, .bold)).foregroundStyle(ArenaGlass.text)
+                        Text(rankChange.placementTitle ?? rankChange.after.title).font(ArenaMenuStyle.title(20, .bold)).foregroundStyle(ArenaGlass.text)
                         Text(rankLine(rankChange)).font(ArenaMenuStyle.font(13, .semibold)).foregroundStyle(ArenaMenuStyle.gold)
                     }
                 }
@@ -3195,8 +3195,13 @@ struct ArenaGameResultView: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// The climb stays hidden until the last placement match.
+    private func rankEmblemTier(_ change: RankChange) -> RankTier { change.kind == .placing ? RankPosition.start.tier : change.after.tier }
+
     private func rankLine(_ change: RankChange) -> String {
         switch change.kind {
+        case .placing: String(localized: "Ranked")
+        case .placed: String(localized: "Placed")
         case .tierUp: String(localized: "Promoted")
         case .tierDown: String(localized: "Demoted")
         case .divisionUp: String(localized: "Division up")

@@ -452,6 +452,8 @@ export interface RankedStanding {
   losses: number;
   draws: number;
   winStreak: number;
+  /** Placement matches still to play; absent from a server before placements. */
+  placementLeft?: number;
   history?: RankedSeason[];
   /** How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped, unverified or abandoned. */
   settlement?: string;
@@ -473,11 +475,13 @@ export const RankedStanding = {
     // A change without its points (an older server's) is left out rather than losing the standing with it.
     const moved = get(json, "change");
     const pointsBefore = int(get(moved, "pointsBefore")), pointsAfter = int(get(moved, "pointsAfter")), bonuses = strings(get(moved, "bonuses"));
+    const movedLeft = int(get(moved, "placementLeft")), placementLeft = optional(get(json, "placementLeft"), int);
     const change: ServerRankChange | undefined = pointsBefore !== undefined && pointsAfter !== undefined
-      ? { pointsBefore, pointsAfter, ...(bonuses ? { bonuses } : {}) } : undefined;
+      ? { pointsBefore, pointsAfter, ...(bonuses ? { bonuses } : {}), ...(movedLeft !== undefined ? { placementLeft: movedLeft } : {}) } : undefined;
     return {
       seeded: required(get(json, "seeded"), bool), unsettled: n("unsettled"), season: required(get(json, "season"), str), points: n("points"),
       peakPoints: n("peakPoints"), wins: n("wins"), losses: n("losses"), draws: n("draws"), winStreak: n("winStreak"),
+      ...(placementLeft !== undefined ? { placementLeft } : {}),
       ...(history ? { history } : {}), ...(settlement !== undefined ? { settlement } : {}),
       ...(change ? { change } : {}), ...(check !== undefined ? { check } : {}),
     };
@@ -487,7 +491,8 @@ export const RankedStanding = {
 const positionsEqual = RankPosition.equal;
 const rankEqual = (a: RankState, b: RankState) =>
   a.season === b.season && positionsEqual(a.position, b.position) && positionsEqual(a.peak, b.peak) && a.wins === b.wins &&
-  a.losses === b.losses && a.draws === b.draws && a.winStreak === b.winStreak && a.history.length === b.history.length &&
+  a.losses === b.losses && a.draws === b.draws && a.winStreak === b.winStreak && a.placementGames === b.placementGames &&
+  a.history.length === b.history.length &&
   a.history.every((s, i) => {
     const t = b.history[i];
     return s.season === t.season && positionsEqual(s.final, t.final) && positionsEqual(s.peak, t.peak) && s.wins === t.wins && s.losses === t.losses;
@@ -516,6 +521,7 @@ export function adoptStanding(rank: RankState, standing: RankedStanding, pending
   const next: RankState = {
     ...base, position, peak: RankPosition.max(RankPosition.fromPoints(standing.peakPoints), position),
     wins: standing.wins, losses: standing.losses, draws: standing.draws, winStreak: standing.winStreak, history,
+    ...(standing.placementLeft !== undefined ? { placementGames: standing.placementLeft } : {}),
   };
   return rankEqual(next, rank) ? undefined : next;
 }

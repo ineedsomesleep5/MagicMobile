@@ -105,14 +105,26 @@ export type RankOutcome = "win" | "loss" | "draw";
 
 /** A third straight win below Gold (declared, never awarded: parity case "no streak bonus"), or a win with a deck below the tier's opponent brackets. */
 export type RankBonus = "streak" | "underdog";
-export type RankChangeKind = "none" | "pipUp" | "pipDown" | "divisionUp" | "divisionDown" | "tierUp" | "tierDown";
+export type RankChangeKind = "none" | "pipUp" | "pipDown" | "divisionUp" | "divisionDown" | "tierUp" | "tierDown" | "placing" | "placed";
 
 /** How one ranked result moved you. */
-export interface RankChange { outcome: RankOutcome; before: RankPosition; after: RankPosition; bonuses: RankBonus[] }
+export interface RankChange {
+  outcome: RankOutcome; before: RankPosition; after: RankPosition; bonuses: RankBonus[];
+  /** A placement match: the placements still to play after it. */
+  placementLeft?: number;
+}
 export const RankChange = {
   pipDelta: (change: RankChange) => RankPosition.points(change.after) - RankPosition.points(change.before),
+  /** What the game did on the ladder itself: placements don't move you pip by pip. */
+  ladderDelta: (change: RankChange) => (change.placementLeft === undefined ? RankChange.pipDelta(change) : undefined),
+  /** "Placement 3 of 5", counting the game just played, while the climb stays hidden; undefined on the last game, when the rank shows. */
+  placementTitle(change: RankChange): string | undefined {
+    const left = change.placementLeft;
+    return left === undefined || left <= 0 ? undefined : `Placement ${RankLadder.placementMatches - left} of ${RankLadder.placementMatches}`;
+  },
   kind(change: RankChange): RankChangeKind {
     const { before, after } = change;
+    if (change.placementLeft !== undefined) return change.placementLeft === 0 ? "placed" : "placing";
     if (after.tier !== before.tier) return RankTier.index(after.tier) > RankTier.index(before.tier) ? "tierUp" : "tierDown";
     if (after.division !== before.division) return after.division < before.division ? "divisionUp" : "divisionDown";
     if (after.pips !== before.pips) return after.pips > before.pips ? "pipUp" : "pipDown";
@@ -120,13 +132,15 @@ export const RankChange = {
   },
   /** A game's move on the ladder in words (ProfileGame.rankLine): "Gold II: 3 → 5 pips", or "Gold II → Gold I" across a title and in Mythic. */
   line(change: RankChange): string {
+    const placement = RankChange.placementTitle(change);
+    if (placement !== undefined) return placement;
     const before = RankPosition.title(change.before), after = RankPosition.title(change.after);
     return before === after && change.after.tier !== "mythic" ? `${after}: ${change.before.pips} → ${change.after.pips} pips` : `${before} → ${after}`;
   },
 } as const;
 
 /** The server's move on the ladder for a ranked AI result (RankedStanding.Change). */
-export interface ServerRankChange { pointsBefore: number; pointsAfter: number; bonuses?: string[] }
+export interface ServerRankChange { pointsBefore: number; pointsAfter: number; bonuses?: string[]; placementLeft?: number }
 
 /** The server's word on a ranked AI result (iOS RankSettlement), for the result screen and the game history. */
 export const RankSettlement = {
@@ -160,10 +174,25 @@ export interface RankState {
   draws: number;
   winStreak: number;
   history: SeasonRecord[];
+  /** Placement matches still to play. Optional because profiles saved before placements have no such field. */
+  placementGames?: number;
 }
 export const RankState = {
   fresh: (season: string): RankState =>
     ({ season, position: RankPosition.start, peak: RankPosition.start, wins: 0, losses: 0, draws: 0, winStreak: 0, history: [] }),
+  /** A new player's first season starts with placements too. */
+  newPlayer: (season: string): RankState => ({ ...RankState.fresh(season), placementGames: RankLadder.placementMatches }),
+
+  placementLeft: (state: RankState) => state.placementGames ?? 0,
+  isPlacing: (state: RankState) => RankState.placementLeft(state) > 0,
+  /** The rank to show: while placing, the climb stays hidden until the last game. */
+  shownPosition: (state: RankState) => (RankState.isPlacing(state) ? RankPosition.start : state.position),
+  /** "Placement 2 of 5", counting the game about to be played, or the rank's own title. */
+  shownTitle: (state: RankState) => (RankState.isPlacing(state)
+    ? `Placement ${RankLadder.placementMatches - RankState.placementLeft(state) + 1} of ${RankLadder.placementMatches}`
+    : RankPosition.title(state.position)),
+  /** The tier whose deck limit applies. Placements start low, so they take decks up to the highest place they can reach. */
+  deckLimitTier: (state: RankState): RankTier => (RankState.isPlacing(state) ? RankLadder.placementTier : state.position.tier),
 } as const;
 
 const DAY = 86_400_000;
@@ -233,9 +262,15 @@ export const RankLadder = {
   },
 
   /**
-   * A new month: last season goes into history and everyone drops one tier (Mythic to Diamond IV), keeping their
-   * division, with empty pips. The same season returns `state` itself.
+   * Placement matches open every season (Caleb, 2026-11-01). A win climbs two divisions and a loss or draw changes nothing,
+   * so five wins reach Gold II. Making Mythic starts you two divisions higher, so five wins reach Platinum IV. Opponents
+   * follow your climb. Server: mm_ranked_apply.
    */
+  placementMatches: 5,
+  placementWinPips: 2 * RankPosition.pipsPerDivision,
+  placementTier: "gold" as RankTier,
+
+  /** A new season: last season goes into history and you start your placements. The same season returns `state` itself. */
   rollover(state: RankState, season: string): RankState {
     if (state.season === season) return state;
     const next = RankState.fresh(season);
@@ -244,14 +279,27 @@ export const RankLadder = {
       ? [{ season: state.season, final: state.position, peak: state.peak, wins: state.wins, losses: state.losses }, ...state.history]
       : [...state.history];
     next.history = next.history.slice(0, 24);
-    next.position = RankPosition.atStep(RankPosition.step(state.position) - RankPosition.divisions);
+    next.position = state.peak.tier === "mythic" ? RankPosition.fromPoints(RankLadder.placementWinPips) : RankPosition.start;
     next.peak = next.position;
+    next.placementGames = RankLadder.placementMatches;
     return next;
   },
 
   /** One ranked result. `deckBracket` is your deck's bracket, for the underdog pip. */
   apply(outcome: RankOutcome, state: RankState, deckBracket: number): { state: RankState; change: RankChange } {
     const next: RankState = { ...state };
+    if (RankState.isPlacing(state)) {
+      const left = RankState.placementLeft(state) - 1;
+      if (outcome === "win") { next.wins += 1; next.winStreak += 1; }
+      else {
+        next.winStreak = 0;
+        if (outcome === "loss") next.losses += 1; else next.draws += 1;
+      }
+      next.position = RankPosition.fromPoints(RankPosition.points(state.position) + (outcome === "win" ? RankLadder.placementWinPips : 0));
+      next.peak = RankPosition.max(next.peak, next.position);
+      next.placementGames = left;
+      return { state: next, change: { outcome, before: state.position, after: next.position, bonuses: [], placementLeft: left } };
+    }
     const bonuses: RankBonus[] = [];
     const tier = state.position.tier;
     let delta = 0;
