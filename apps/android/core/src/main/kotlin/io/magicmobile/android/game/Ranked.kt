@@ -186,18 +186,25 @@ enum class RankOutcome(val raw: String) { WIN("win"), LOSS("loss"), DRAW("draw")
 enum class RankBonus(val raw: String) { STREAK("streak"), UNDERDOG("underdog") }
 
 enum class RankChangeKind(val raw: String) { NONE("none"), PIP_UP("pipUp"), PIP_DOWN("pipDown"), DIVISION_UP("divisionUp"),
-    DIVISION_DOWN("divisionDown"), TIER_UP("tierUp"), TIER_DOWN("tierDown") }
+    DIVISION_DOWN("divisionDown"), TIER_UP("tierUp"), TIER_DOWN("tierDown"), PLACING("placing"), PLACED("placed") }
 
 @Serializable
-data class RankChange(val outcome: RankOutcome, val before: RankPosition, val after: RankPosition, val bonuses: List<RankBonus>) {
+data class RankChange(val outcome: RankOutcome, val before: RankPosition, val after: RankPosition, val bonuses: List<RankBonus>,
+                      /** A placement match: the placements still to play after it. */
+                      val placementLeft: Int? = null) {
     val pipDelta: Int get() = after.points - before.points
+    /** What the game did on the ladder itself: placements don't move you pip by pip. */
+    val ladderDelta: Int? get() = if (placementLeft == null) pipDelta else null
+    /** "Placement 3 of 5", counting the game just played, while the climb stays hidden; null on the last game, when the rank shows. */
+    val placementTitle: String? get() = placementLeft?.takeIf { it > 0 }?.let { "Placement ${RankLadder.PLACEMENT_MATCHES - it} of ${RankLadder.PLACEMENT_MATCHES}" }
     val kind: RankChangeKind get() = when {
+        placementLeft != null -> if (placementLeft == 0) RankChangeKind.PLACED else RankChangeKind.PLACING
         after.tier != before.tier -> if (after.tier > before.tier) RankChangeKind.TIER_UP else RankChangeKind.TIER_DOWN
         after.division != before.division -> if (after.division < before.division) RankChangeKind.DIVISION_UP else RankChangeKind.DIVISION_DOWN
         after.pips != before.pips -> if (after.pips > before.pips) RankChangeKind.PIP_UP else RankChangeKind.PIP_DOWN
         else -> RankChangeKind.NONE
     }
-    val isMilestone: Boolean get() = kind in setOf(RankChangeKind.DIVISION_UP, RankChangeKind.DIVISION_DOWN, RankChangeKind.TIER_UP, RankChangeKind.TIER_DOWN)
+    val isMilestone: Boolean get() = kind in setOf(RankChangeKind.DIVISION_UP, RankChangeKind.DIVISION_DOWN, RankChangeKind.TIER_UP, RankChangeKind.TIER_DOWN, RankChangeKind.PLACED)
 }
 
 @Serializable
@@ -208,8 +215,24 @@ data class RankState(
     val season: String, val position: RankPosition, val peak: RankPosition,
     val wins: Int = 0, val losses: Int = 0, val draws: Int = 0, val winStreak: Int = 0,
     val history: List<SeasonRecord> = emptyList(),
+    /** Placement matches still to play. Optional because profiles saved before placements have no such field. */
+    val placementGames: Int? = null,
 ) {
-    companion object { fun fresh(season: String) = RankState(season, RankPosition.START, RankPosition.START) }
+    val placementLeft: Int get() = placementGames ?: 0
+    val isPlacing: Boolean get() = placementLeft > 0
+    /** The rank to show: while placing, the climb stays hidden until the last game. */
+    val shownPosition: RankPosition get() = if (isPlacing) RankPosition.START else position
+    /** "Placement 2 of 5", counting the game about to be played, or the rank's own title. */
+    val shownTitle: String get() =
+        if (isPlacing) "Placement ${RankLadder.PLACEMENT_MATCHES - placementLeft + 1} of ${RankLadder.PLACEMENT_MATCHES}" else position.title
+    /** The tier whose deck limit applies. Placements start low, so they take decks up to the highest place they can reach. */
+    val deckLimitTier: RankTier get() = if (isPlacing) RankLadder.PLACEMENT_TIER else position.tier
+
+    companion object {
+        fun fresh(season: String) = RankState(season, RankPosition.START, RankPosition.START)
+        /** A new player's first season starts with placements too. */
+        fun newPlayer(season: String) = fresh(season).copy(placementGames = RankLadder.PLACEMENT_MATCHES)
+    }
 }
 
 object RankLadder {
@@ -257,16 +280,35 @@ object RankLadder {
         when { months >= 0 -> 2 + (months / 3).toInt(); months == -1L -> 1; else -> null }
     }.getOrNull()
 
-    /** A new month: last season goes into history and you drop one tier (Mythic to Diamond IV). */
+    /**
+     * Placement matches open every season (Caleb, 2026-11-01). A win climbs two divisions and a loss or draw changes nothing,
+     * so five wins reach Gold II. Making Mythic starts you two divisions higher, so five wins reach Platinum IV. Opponents
+     * follow your climb. Server: mm_ranked_apply.
+     */
+    const val PLACEMENT_MATCHES = 5
+    const val PLACEMENT_WIN_PIPS = 2 * RankPosition.PIPS_PER_DIVISION
+    val PLACEMENT_TIER = RankTier.GOLD
+
+    /** A new season: last season goes into history and you start your placements. */
     fun rollover(state: RankState, season: String): RankState {
         if (state.season == season) return state
         val played = state.wins + state.losses + state.draws > 0
         val history = (if (played) listOf(SeasonRecord(state.season, state.position, state.peak, state.wins, state.losses)) else emptyList()) + state.history
-        val position = RankPosition.atStep(state.position.step - RankPosition.DIVISIONS)
-        return RankState(season, position, position, history = history.take(24))
+        val position = if (state.peak.tier == RankTier.MYTHIC) RankPosition.ofPoints(PLACEMENT_WIN_PIPS) else RankPosition.START
+        return RankState(season, position, position, history = history.take(24), placementGames = PLACEMENT_MATCHES)
     }
 
     fun apply(outcome: RankOutcome, state: RankState, deckBracket: Int): Pair<RankState, RankChange> {
+        if (state.isPlacing) {
+            val left = state.placementLeft - 1
+            val position = RankPosition.ofPoints(state.position.points + if (outcome == RankOutcome.WIN) PLACEMENT_WIN_PIPS else 0)
+            val next = state.copy(position = position, peak = maxOf(state.peak, position), placementGames = left,
+                wins = state.wins + if (outcome == RankOutcome.WIN) 1 else 0,
+                losses = state.losses + if (outcome == RankOutcome.LOSS) 1 else 0,
+                draws = state.draws + if (outcome == RankOutcome.DRAW) 1 else 0,
+                winStreak = if (outcome == RankOutcome.WIN) state.winStreak + 1 else 0)
+            return next to RankChange(outcome, state.position, position, emptyList(), placementLeft = left)
+        }
         val bonuses = mutableListOf<RankBonus>()
         var delta = 0
         var wins = state.wins; var losses = state.losses; var draws = state.draws; var streak = state.winStreak
@@ -513,7 +555,7 @@ object RankSettlement {
     }
 
     /** "Gold II: 3 → 5 pips" within a division, "Gold II → Gold I" across one (ProfileGame.rankLine on iOS). */
-    fun line(change: RankChange): String =
+    fun line(change: RankChange): String = change.placementTitle ?:
         if (change.before.title == change.after.title && change.after.tier != RankTier.MYTHIC)
             "${change.after.title}: ${change.before.pips} → ${change.after.pips} pips"
         else "${change.before.title} → ${change.after.title}"
@@ -624,9 +666,11 @@ data class RankedStanding(
     val change: Change? = null,
     /** Why a win settled unverified: too_short, too_fast, no_record, … */
     val check: String? = null,
+    /** Placement matches still to play; null from a server before placements. */
+    val placementLeft: Int? = null,
 ) {
     data class Season(val season: String, val finalPoints: Int, val peakPoints: Int, val wins: Int, val losses: Int)
-    data class Change(val pointsBefore: Int, val pointsAfter: Int, val bonuses: List<String>)
+    data class Change(val pointsBefore: Int, val pointsAfter: Int, val bonuses: List<String>, val placementLeft: Int? = null)
 
     companion object {
         fun parse(value: JsonObject): RankedStanding {
@@ -641,9 +685,11 @@ data class RankedStanding(
                 value["settlement"]?.jsonPrimitive?.takeIf { it.isString }?.content,
                 (value["change"] as? JsonObject)?.takeIf { it["pointsBefore"] != null && it["pointsAfter"] != null }?.let { c ->
                     Change(i(c, "pointsBefore"), i(c, "pointsAfter"),
-                        (c["bonuses"] as? JsonArray).orEmpty().mapNotNull { b -> b.jsonPrimitive.takeIf { it.isString }?.content })
+                        (c["bonuses"] as? JsonArray).orEmpty().mapNotNull { b -> b.jsonPrimitive.takeIf { it.isString }?.content },
+                        c["placementLeft"]?.jsonPrimitive?.content?.toIntOrNull())
                 },
-                value["check"]?.jsonPrimitive?.takeIf { it.isString }?.content)
+                value["check"]?.jsonPrimitive?.takeIf { it.isString }?.content,
+                value["placementLeft"]?.jsonPrimitive?.content?.toIntOrNull())
         }
     }
 }
@@ -777,9 +823,10 @@ data class PlayerRecordFile(
         val local = match.rankChange
         val rankChange = when {
             change != null -> RankChange(match.outcome, RankPosition.ofPoints(change.pointsBefore), RankPosition.ofPoints(change.pointsAfter),
-                change.bonuses.mapNotNull { raw -> RankBonus.entries.firstOrNull { it.raw == raw } })
+                change.bonuses.mapNotNull { raw -> RankBonus.entries.firstOrNull { it.raw == raw } }, change.placementLeft)
+            // A win held back doesn't use a placement, and the rank stays hidden while they last.
             RankSettlement.held(settlement) && local != null -> (points?.let(RankPosition::ofPoints) ?: local.before).let { stands ->
-                RankChange(local.outcome, stands, stands, emptyList()) }
+                RankChange(local.outcome, stands, stands, emptyList(), local.placementLeft?.plus(1)) }
             else -> local
         }
         val settled = match.copy(settlement = settlement, settlementCheck = check, rankChange = rankChange)
@@ -799,7 +846,8 @@ data class PlayerRecordFile(
             standing.history.map { SeasonRecord(it.season, RankPosition.ofPoints(it.finalPoints), RankPosition.ofPoints(it.peakPoints), it.wins, it.losses) })
             .sortedByDescending { it.season }.take(24)
         return copy(rank = base.copy(position = position, peak = maxOf(RankPosition.ofPoints(standing.peakPoints), position),
-            wins = standing.wins, losses = standing.losses, draws = standing.draws, winStreak = standing.winStreak, history = history))
+            wins = standing.wins, losses = standing.losses, draws = standing.draws, winStreak = standing.winStreak, history = history,
+            placementGames = standing.placementLeft ?: base.placementGames))
     }
 
     companion object {

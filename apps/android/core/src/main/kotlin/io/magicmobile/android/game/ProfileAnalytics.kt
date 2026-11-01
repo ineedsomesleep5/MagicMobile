@@ -51,7 +51,7 @@ data class ProfileGame(
     companion object {
         fun of(match: MatchRecord) = ProfileGame(match.id, match.date, match.mode, match.outcome, match.deckName,
             listOfNotNull(match.commander), match.colors, match.opponents.map { ProfileOpponent(it.name, it.commander, it.isAI) },
-            match.turns.takeIf { it > 0 }, match.rankChange?.pipDelta, match.engineMatchID,
+            match.turns.takeIf { it > 0 }, match.rankChange?.ladderDelta, match.engineMatchID,
             match.rankChange?.let(RankSettlement::line), match.rankNote, match.durationSeconds,
             match.rankChange?.before?.tier?.takeIf { match.mode == PlayMode.RANKED })
     }

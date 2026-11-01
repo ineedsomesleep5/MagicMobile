@@ -42,7 +42,7 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
 
     private fun load(): PlayerRecordFile = runCatching {
         PlayerRecordFile.json.decodeFromString(PlayerRecordFile.serializer(), file_.readText())
-    }.getOrElse { PlayerRecordFile(RankState.fresh(RankLadder.season(now()))) }
+    }.getOrElse { PlayerRecordFile(RankState.newPlayer(RankLadder.season(now()))) }
 
     val shownCommander: String? get() = file.favoriteCommander ?: PlayerStats(file.matches).commanders.firstOrNull()?.label
 
@@ -135,7 +135,7 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
         values["MAGICMOBILE_UI_TEST_RANK"]?.split("-")?.let { parts ->
             val tier = parts.getOrNull(0)?.let(RankTier::of) ?: return@let
             val position = RankPosition.make(tier, parts.getOrNull(1)?.toIntOrNull() ?: 4, parts.getOrNull(2)?.toIntOrNull() ?: 0)
-            file = file.copy(rank = file.rank.copy(position = position, peak = maxOf(file.rank.peak, position)))
+            file = file.copy(rank = file.rank.copy(position = position, peak = maxOf(file.rank.peak, position), placementGames = null))
         }
         val count = values["MAGICMOBILE_UI_TEST_MATCHES"]?.toIntOrNull() ?: 0
         if (count > 0 && file.matches.isEmpty()) {

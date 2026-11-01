@@ -5,7 +5,7 @@
  * this browser's record, which takes the server's standing when you have a profile; the live leaderboard opens beside it.
  */
 import type { PlayerRecordStore } from "../../core/playerRecord";
-import { RankLadder, RankPosition, type RankState, RankTier } from "../../core/rankLadder";
+import { RankLadder, RankPosition, RankState, RankTier } from "../../core/rankLadder";
 import { Caps, Pill, PlayButton } from "./kit";
 import { RankBadge } from "./PlayPanel";
 import { RankEmblem } from "./TopBar";
@@ -24,7 +24,9 @@ function seasonEnds(season: string) {
 export function RankedPage({ rank, play, leaderboard, profile }: {
   rank: RankState; record: PlayerRecordStore; play: () => void; leaderboard: () => void; profile: () => void;
 }) {
-  const tier = rank.position.tier;
+  const placing = RankState.isPlacing(rank);
+  const shown = RankState.shownPosition(rank);
+  const tier = shown.tier;
   const reachedIndex = RankTier.index(tier);
   return (
     <div className="mranked">
@@ -72,13 +74,15 @@ export function RankedPage({ rank, play, leaderboard, profile }: {
           <Caps text="Current rank" />
           <div className="mrankglowwrap">
             <i className="mrankglow" style={{ ["--tint" as string]: TINT[tier] }} />
-            <RankBadge position={rank.position} size={104} />
+            <RankBadge position={shown} size={104} unplaced={placing} />
           </div>
-          <b className="mranktitle">{RankPosition.title(rank.position)}</b>
+          <b className="mranktitle">{RankState.shownTitle(rank)}</b>
           <div className="mrankstats">
             <span><b>{rank.wins}</b><small>WINS</small></span>
             <span><b>{rank.losses}</b><small>LOSSES</small></span>
-            <span><b>{RankPosition.title(rank.peak)}</b><small>PEAK</small></span>
+            {placing
+              ? <span><b>{RankLadder.placementMatches - RankState.placementLeft(rank) + 1}/{RankLadder.placementMatches}</b><small>PLACEMENT</small></span>
+              : <span><b>{RankPosition.title(rank.peak)}</b><small>PEAK</small></span>}
           </div>
         </div>
       </div>

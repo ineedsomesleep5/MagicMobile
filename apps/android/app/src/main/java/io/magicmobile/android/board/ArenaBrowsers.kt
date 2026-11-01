@@ -109,6 +109,7 @@ import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.TavernPalette
 import io.magicmobile.android.ui.TavernTag
 import io.magicmobile.android.ui.TavernTextField
+import io.magicmobile.android.ui.colorAdjust
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.rgb
 import kotlinx.coroutines.delay
@@ -893,10 +894,13 @@ fun ArenaGameResultView(snapshot: GameSnapshot, stats: GameStats?, rankChange: R
                         }
                     }
                     rankChange?.let { change ->
+                        // While placing, the climb stays hidden: the title and a grey emblem until the last game.
+                        val placement = change.placementTitle
                         Row(Modifier.semantics(mergeDescendants = true) { }, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            io.magicmobile.android.ranked.RankEmblem(change.after.tier, if (landscape) 40.dp else 52.dp)
+                            io.magicmobile.android.ranked.RankEmblem(if (placement != null) io.magicmobile.android.game.RankPosition.START.tier else change.after.tier,
+                                if (landscape) 40.dp else 52.dp, Modifier.colorAdjust(saturation = if (placement != null) 0f else 1f))
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(change.after.title, color = ArenaGlass.text, style = ArenaMenuStyle.title(20f, SfWeight.bold))
+                                Text(placement ?: change.after.title, color = ArenaGlass.text, style = ArenaMenuStyle.title(20f, SfWeight.bold))
                                 Text(ArenaGameResult.rankLine(change), color = ArenaMenuStyle.gold, style = ArenaMenuStyle.font(13f, SfWeight.semibold))
                             }
                         }

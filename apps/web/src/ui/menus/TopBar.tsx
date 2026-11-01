@@ -19,13 +19,13 @@ export const MENU_TABS: { tab: MenuTab; title: string; symbol: string }[] = [
 ];
 
 /** A tier's emblem: the rendered badge art (RankEmblem). */
-export function RankEmblem({ tier, size = 96 }: { tier: RankTier; size?: number }) {
-  return <img className="mrankemblem" src={`/menus/tavern-rank-${tier}.webp`} width={size} height={size} alt="" draggable={false} />;
+export function RankEmblem({ tier, size = 96, grey = false }: { tier: RankTier; size?: number; grey?: boolean }) {
+  return <img className={`mrankemblem ${grey ? "grey" : ""}`} src={`/menus/tavern-rank-${tier}.webp`} width={size} height={size} alt="" draggable={false} />;
 }
 
 export function TopBar({ selected, select, rank, openRank, unread, messages, updates, settings, lit }: {
   selected?: MenuTab; select: (tab: MenuTab) => void;
-  rank?: { tier: RankTier; title: string }; openRank?: () => void;
+  rank?: { tier: RankTier; title: string; placing?: boolean }; openRank?: () => void;
   unread?: boolean; messages?: () => void; updates?: () => void; settings: () => void;
   /** The utility a panel is open for ("settings", "updates", "messages"). */
   lit?: string;
@@ -54,7 +54,7 @@ export function TopBar({ selected, select, rank, openRank, unread, messages, upd
       {rank && (
         <button type="button" className="mrankchip" aria-label={`Your rank, ${rank.title}`} data-id="menu.rank"
           onClick={() => { gameAudio.play("ui-open"); openRank?.(); }}>
-          <RankEmblem tier={rank.tier} size={22} /><span>{rank.title}</span>
+          <RankEmblem tier={rank.tier} size={22} grey={rank.placing} /><span>{rank.title}</span>
         </button>
       )}
       {messages && icon("messages", "messages", "Friends and messages", messages, unread)}

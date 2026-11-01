@@ -18,7 +18,7 @@ import { CardArtSync, CardArtSyncState, supabaseCardArtSync } from "../../core/c
 import { loadCustomArt, localCardArt, setCustomArtListeners } from "../customArt";
 import type { DeckList, DeckResolver } from "../../core/deckResolver";
 import { type MatchRecord, type PlayMode, PlayerRecordStore, rankNote, startingPlayerMode } from "../../core/playerRecord";
-import { type RankChange, RankLadder, RankPosition, RankTier } from "../../core/rankLadder";
+import { type RankChange, RankLadder, RankPosition, RankState, RankTier } from "../../core/rankLadder";
 import { type LocalEngine, localEngine } from "../../engine/localEngine";
 import type { FriendChallenge, RankedAITicket } from "../../core/account";
 import { FriendChallengeRules } from "../../core/matchmaking";
@@ -310,6 +310,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   const mayStart = engineReady && validPlayerName(name || "Player") && deck !== undefined && !game;
 
   const rank = record.rank;
+  const shownRank = RankState.shownPosition(rank);
   void recordVersion;
 
   // MARK: Starting and recording games
@@ -375,7 +376,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
    * (findRankedMatch).
    */
   const findRanked = () => {
-    if (!deck || deckBracket === undefined || deckBracket > RankTier.maxDeckBracket(rank.position.tier)) return;
+    if (!deck || deckBracket === undefined || deckBracket > RankTier.maxDeckBracket(RankState.deckLimitTier(rank))) return;
     record.refreshSeason();
     if (player.state.phase === "ready" && player.state.username) {
       void rankedQueue.search(relayProtocol, RankPosition.step(rank.position), deckBracket).then((outcome) => {
@@ -474,8 +475,8 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   const challengeFriend = async (friend: string, mode: "quick" | "ranked") => {
     if (!deck || deckBracket === undefined) return;
     record.refreshSeason();
-    if (mode === "ranked" && deckBracket > RankTier.maxDeckBracket(rank.position.tier)) {
-      setNotice(`${CommanderBracket.title(deckBracket)} is above ${RankTier.name(rank.position.tier)}'s limit. Choose another deck.`);
+    if (mode === "ranked" && deckBracket > RankTier.maxDeckBracket(RankState.deckLimitTier(rank))) {
+      setNotice(`${CommanderBracket.title(deckBracket)} is above ${RankTier.name(RankState.deckLimitTier(rank))}'s limit. Choose another deck.`);
       return;
     }
     const game = await openOnline({ host: { seats: 2, kind: "challenge" }, mode, waitingFor: friend });
@@ -645,7 +646,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
       { id: "learn", title: "How to Play", art: { asset: "home-art-giada", focus: { x: 0.6, y: 0.3 } }, action: () => setPanel("learn") },
     ],
     deck: deck ? box(selectedDeckID, deck) : undefined,
-    rank: { tier: rank.position.tier, title: RankPosition.title(rank.position), pips: rank.position.pips, pipsPerDivision: RankPosition.pipsPerDivision, mythic: rank.position.tier === "mythic" },
+    rank: { tier: shownRank.tier, title: RankState.shownTitle(rank), pips: shownRank.pips, pipsPerDivision: RankPosition.pipsPerDivision, mythic: shownRank.tier === "mythic", placing: RankState.isPlacing(rank) },
     wins: rank.wins, losses: rank.losses,
     play: () => openPlay(), openDeck: () => openPlay(), openRank: () => selectTab("ranked"),
     friends: () => setPanel("friends"), friendsOnline: player.state.onlineFriendCount, unread: player.state.incomingCount + player.state.unreadMessages > 0,
@@ -726,12 +727,12 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
 
   if (lessonGame) return <GameScreen key={lessonGame.key} table={lessonGame.table} />;
   if (game) {
-    const versus = { you: { id: "you", name: player.state.username ?? (name.trim() || "You"), commander: game.deck.commander || undefined, tier: rank.position.tier },
+    const versus = { you: { id: "you", name: player.state.username ?? (name.trim() || "You"), commander: game.deck.commander || undefined, tier: shownRank.tier },
       opponents: game.opponents.map((deck, index) => ({ id: `ai-${index}`, name: deck.name, commander: deck.commander || undefined })) };
     return <GameScreen key={game.key} table={game.table} versus={versus} voiceToken={voiceToken} rankChange={rankChange?.key === game.key ? rankChange.change : undefined}
       rankNote={rankChange?.key === game.key ? rankChange.note : undefined} />;
   }
-  if (online) return <OnlineScreen key={online.key} game={online} name={playerName()} tier={rank.position.tier} resolver={data.resolver} leave={() => leaveOnline(online)} cancelWait={() => challenges.cancelOutgoing()} />;
+  if (online) return <OnlineScreen key={online.key} game={online} name={playerName()} tier={shownRank.tier} resolver={data.resolver} leave={() => leaveOnline(online)} cancelWait={() => challenges.cancelOutgoing()} />;
 
   const lit = panel === "settings" ? "settings" : panel === "updates" ? "updates" : panel === "friends" ? "messages" : undefined;
   const covered = panel !== undefined;
@@ -772,7 +773,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
           play={(id) => { setStudio(undefined); libraryChanged(); setSelectedDeckID(id); openPlay(); }} />
       )}
       <TopBar selected={covered && lit ? undefined : panel === "learn" ? "learn" : custom ? undefined : menuTab} select={selectTab} lit={lit}
-        rank={{ tier: rank.position.tier, title: RankPosition.title(rank.position) }} openRank={() => selectTab("ranked")}
+        rank={{ tier: shownRank.tier, title: RankState.shownTitle(rank), placing: RankState.isPlacing(rank) }} openRank={() => selectTab("ranked")}
         updates={() => setPanel("updates")} settings={() => setPanel("settings")}
         messages={() => setPanel("friends")} unread={player.state.incomingCount + player.state.unreadMessages > 0} />
       {challenges.incoming[0] && !challenges.isWaiting && (

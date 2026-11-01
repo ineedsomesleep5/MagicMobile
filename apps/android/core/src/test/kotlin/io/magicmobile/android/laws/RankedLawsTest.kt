@@ -56,13 +56,15 @@ class RankedLawsTest {
         }
     }
 
-    @Test fun aNewSeasonNeverRaisesYourRank() = forAll("season rollover") { random ->
+    @Test fun aNewSeasonOnlyRaisesYouByTheMythicHeadStart() = forAll("season rollover") { random ->
         val position = RankPosition.ofPoints(random.nextInt(0, mythicPoints + 40))
         val wins = random.nextInt(0, 50); val losses = random.nextInt(0, 50)
         val state = RankState("2026-09", position, maxOf(position, RankPosition.ofPoints(random.nextInt(0, mythicPoints + 40))), wins, losses)
         assertEquals("the same month changes nothing", state, RankLadder.rollover(state, "2026-09"))
         val next = RankLadder.rollover(state, "2026-10")
-        assertTrue("never higher", next.position <= state.position)
+        // Only a Mythic's two-division head start can sit above where a low finish left them.
+        assertTrue("never higher", next.position <= maxOf(state.position, RankPosition.ofPoints(RankLadder.PLACEMENT_WIN_PIPS)))
+        assertEquals("placements open", RankLadder.PLACEMENT_MATCHES, next.placementLeft)
         assertEquals("a fresh peak", next.position, next.peak)
         assertEquals(0, next.wins + next.losses + next.draws)
         assertEquals("a played season is kept", if (wins + losses > 0) 1 else 0, next.history.size - state.history.size)

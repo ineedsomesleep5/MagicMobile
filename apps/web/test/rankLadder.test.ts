@@ -68,7 +68,58 @@ describe("rank ladder", () => {
       if (item.to !== item.season) {
         expect(next.wins + next.losses, item.name).toBe(0);
         expect(next.peak, item.name).toEqual(next.position);
+        expect(RankState.placementLeft(next), item.name).toBe(RankLadder.placementMatches);
       }
+    }
+  });
+
+  it("plays placements as ranked-cases.json says", () => {
+    for (const item of cases.placements) {
+      const start = position(item.start);
+      let state: RankState = { ...RankState.newPlayer("2026-11"), position: start, peak: start };
+      let last: RankChange | undefined;
+      for (const result of item.results) {
+        // A low bracket earns no underdog pip while placing; afterwards it would, so the ladder row plays a tier's own.
+        const applied = RankLadder.apply(result, state, RankState.isPlacing(state) ? 1 : 2);
+        state = applied.state;
+        last = applied.change;
+      }
+      expect(state.position, item.name).toEqual(position(item.after));
+      expect(RankState.placementLeft(state), item.name).toBe(item.left);
+      expect(RankChange.kind(last!), item.name).toBe(item.kind);
+      expect(last!.bonuses, item.name).toEqual([]);
+    }
+  });
+
+  it("shows placements, not the climb", () => {
+    let state = RankState.newPlayer("2026-11");
+    expect(RankState.shownTitle(state)).toBe("Placement 1 of 5");
+    expect(RankState.deckLimitTier(state)).toBe("gold");
+    const titles = [1, 2, 3, 4].map(() => {
+      const { state: next, change } = RankLadder.apply("win", state, 2);
+      state = next;
+      expect(RankState.shownPosition(state)).toEqual(RankPosition.start);
+      expect(RankChange.ladderDelta(change)).toBeUndefined();
+      expect(RankChange.line(change)).toBe(RankChange.placementTitle(change));
+      return RankChange.placementTitle(change);
+    });
+    expect(titles).toEqual(["Placement 1 of 5", "Placement 2 of 5", "Placement 3 of 5", "Placement 4 of 5"]);
+    expect(RankState.shownTitle(state)).toBe("Placement 5 of 5");
+    const last = RankLadder.apply("win", state, 2);
+    expect(RankChange.placementTitle(last.change)).toBeUndefined();
+    expect(RankChange.kind(last.change)).toBe("placed");
+    expect(RankState.shownTitle(last.state)).toBe("Gold II");
+    expect(RankState.deckLimitTier(last.state)).toBe("gold");
+  });
+
+  it("a new season only raises you by the Mythic head start", () => {
+    const headStart = RankPosition.fromPoints(RankLadder.placementWinPips);
+    for (let points = 0; points < 120; points += 3) {
+      const low = RankPosition.fromPoints(points);
+      const state: RankState = { ...RankState.fresh("2026-09"), position: low, peak: low };
+      const next = RankLadder.rollover(state, "2026-10");
+      expect(RankPosition.compare(next.position, RankPosition.max(low, headStart))).toBeLessThanOrEqual(0);
+      expect(RankState.placementLeft(next)).toBe(RankLadder.placementMatches);
     }
   });
 
