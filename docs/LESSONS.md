@@ -21,6 +21,20 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-11-01 (Claude, trophies on Android and web): the same scroller clips differently on each platform. iOS cuts all
+  four sides. CSS `overflow-x: auto` makes `overflow-y` clip too, at the padding box. Compose's `horizontalScroll` cuts only
+  left and right and leaves 30 dp above and below (`clipScrollableContainer`, read from foundation 1.7.6), so the season
+  shelf's glow clipped on iOS and web but not Android. **Rule:** check the platform before copying a glow fix. Compose's
+  `Modifier.padding` also refuses negative values, so the iOS fix doesn't port as written. On Android, `colorAdjust` and
+  `alpha` layers cut at the box's bounds: a greyed medal's layer is 78 dp around a 46 dp medal to keep its glow. On web,
+  `.mprofilecoin > span` styles the label and would also catch `AwardMedal`'s `<span>`, so the medal sits in an `<em>`.
+  Filtering `shelf` rows out of the Awards row must decide the card too, or a player with only trophies gets an empty card.
+  `apps/web/node_modules` can be a symlink into another checkout, where `npm ci` would rewrite that checkout's packages.
+  In a fresh worktree, vitest fails with ENOENT on `public/generated` until `python3 apps/web/scripts/prepare_data.py` runs
+  (offline, git-ignored). Put `env JAVA_HOME=...` before `zsh scripts/dev/heavy.sh`, not after `--`, so `--stop-gradle` finds
+  Java. `heavy.sh`'s lock isn't first come, first served: a later job can jump ahead of one already waiting.
+  Where: `ranked/ProfileVisuals.kt`, `apps/web/src/ui/menus/profile.css`.
+
 - 2026-10-30 (Claude, profile frame rate): `.shadow` on a view that holds other views is worked out from all of them, again
   on every frame a scroll moves it, and `ArenaGlassPanel` did that to every card on the profile's long plain `VStack`.
   **Rule:** a panel's shadow goes on its background shape; a shadow on a picture with transparency gets flattened with
@@ -1216,3 +1230,12 @@ contradicting one.
 - 2026-11-01 (Claude, placements on Android and web): (1) `RankChange.placementLeft` set means a placement game, and 0 means placed, so a win the server holds back must not keep the old count. Web's spread kept 0 and would have played PLACED for a game that never counted. **Rule:** a held placement win adds one back (`placementLeft + 1`), so it shows "Placement 4 of 5", not the hidden position. (2) `parity/ranked-cases.json`'s "after placing the ladder counts as usual" row expects Gold II with 2 pips, so its sixth game needs a Gold deck: bracket 1 earns the underdog pip there. Play bracket 1 only while placing. (3) Web has no rank ceremony, only `.rankstrip`, so "placed" is its own overlay in `GameResult.tsx`. (4) Any screen that names `change.after` shows the climb: check the Arena result as well as the strip. Where: `Ranked.kt`, `rankLadder.ts`, `playerRecord.ts`, `ArenaBrowsers.kt`.
 
 - 2026-11-01 (Claude, audio): `scripts/android/prepare_audio.py` converts every `.caf` in the iOS audio folder and accepts only 16-bit PCM, so an IMA4 file breaks every Android build, and iOS-only PRs don't catch it because CI skips the `app` job when no Android files change. New iOS audio needs `prepare_audio.py` run by hand, or a rule in it.
+
+- 2026-11-01 (Claude, trophies): (1) `mm_ranked_apply` updates the standing before it inserts the result, so a rule that reads
+  `ranked_results` from the standings trigger sees one game short: Flawless needed a trigger on `ranked_results` too. (2) A launch
+  argument like `-quick.level 3` overrides `@AppStorage` for the whole run, so taps can't change it and a test looks like a broken
+  picker. (3) A class inserted above an existing `@MainActor` line takes that mark, and the class it came from fails to build. A
+  harness `build=1` with no error, though, means a file changed mid-build: leave Swift alone until it finishes.
+  (4) `swift test` builds a package without the SwiftUI board views, so a test naming one passes the app harness and fails
+  there as `error: fatalError`, which is a compile failure despite the name: read the lines above it. (5) A UI test seeding a rank
+  must also count as placed (`MAGICMOBILE_UI_TEST_RANK` now does), or the home button says Placements.

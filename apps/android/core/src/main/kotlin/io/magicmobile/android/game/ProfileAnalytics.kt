@@ -194,6 +194,8 @@ data class Award(
     val tint: Int,
     /** 1 plain, 2 a soft glow, 3 a strong glow and a gold ring. */
     val rarity: Int, val note: String?, val awardedAt: Long?,
+    /** A trophy, which stands on the Trophies shelf rather than among the awards. */
+    val shelf: Boolean = false,
     /** False until the player's app has shown it, which it does with a ceremony. */
     val seen: Boolean = true,
 ) {
@@ -208,7 +210,7 @@ data class Award(
             val name = text("name")?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
             Award(id, name, text("description") ?: "", text("imageUrl")?.takeIf { it.startsWith("https://") }, color(text("tint")),
                 ((fields["rarity"] as? JsonPrimitive)?.intOrNull ?: 1).coerceIn(1, 3), text("note"), text("awardedAt")?.let(PublicProfile::timestamp),
-                (fields["seen"] as? JsonPrimitive)?.booleanOrNull ?: true)
+                (fields["shelf"] as? JsonPrimitive)?.booleanOrNull ?: false, (fields["seen"] as? JsonPrimitive)?.booleanOrNull ?: true)
         }
 
         /** "#RRGGBB"; anything else is gold. */

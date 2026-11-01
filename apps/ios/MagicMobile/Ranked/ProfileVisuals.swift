@@ -519,28 +519,51 @@ struct StreakRow: View {
 /// Tapping one reads what it is for.
 struct TrophyShelf: View {
     let unlocked: Set<Achievement>
-    @State private var chosen: Achievement?
+    /// Trophies from the server, after the built-in ones (mm_trophies).
+    var server: [Award] = []
+    @State private var chosen: String?
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 5)
+    private enum Item: Identifiable {
+        case local(Achievement)
+        case server(Award)
+        var id: String {
+            switch self {
+            case .local(let achievement): achievement.rawValue
+            case .server(let award): award.id
+            }
+        }
+        var note: String {
+            switch self {
+            case .local(let achievement): "\(achievement.title): \(achievement.detail)"
+            case .server(let award): "\(award.name): \(award.detail)"
+            }
+        }
+    }
+
+    private var items: [Item] { Achievement.allCases.map(Item.local) + server.map(Item.server) }
 
     var body: some View {
         VStack(spacing: 10) {
-            let rows = Achievement.allCases.chunked(into: 5)
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+            ForEach(Array(items.chunked(into: 5).enumerated()), id: \.offset) { _, row in
                 VStack(spacing: 0) {
                     HStack(alignment: .bottom, spacing: 6) {
-                        ForEach(row) { achievement in coin(achievement) }
+                        ForEach(row) { item in
+                            switch item {
+                            case .local(let achievement): coin(achievement)
+                            case .server(let award): coin(award)
+                            }
+                        }
                         ForEach(0..<(5 - row.count), id: \.self) { _ in Color.clear.frame(maxWidth: .infinity) }
                     }
                     Rectangle()
-                        .fill(LinearGradient(colors: [Color(red: 0.55, green: 0.34, blue: 0.16), Color(red: 0.28, green: 0.15, blue: 0.06)],
+                        .fill(LinearGradient(colors: [Color(red: 0.55, green: 0.34, blue: 0.16), Color(red: 0.28, green: 0.15, blue: 0.07)],
                                              startPoint: .top, endPoint: .bottom))
                         .frame(height: 7)
                         .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.22)).frame(height: 1) }
                         .shadow(color: .black.opacity(0.6), radius: 3, y: 2)
                 }
             }
-            Text(chosen.map { "\($0.title): \($0.detail)" } ?? String(localized: "Tap a coin to read what it is for."))
+            Text(items.first { $0.id == chosen }?.note ?? String(localized: "Tap a coin to read what it is for."))
                 .font(ArenaMenuStyle.font(12, .semibold)).opacity(chosen == nil ? 0.55 : 0.9)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(minHeight: 32, alignment: .topLeading)
@@ -548,9 +571,33 @@ struct TrophyShelf: View {
         }
     }
 
+    /// A trophy from the server: its art, in the dark until earned.
+    private func coin(_ award: Award) -> some View {
+        let earned = award.awardedAt != nil
+        return Button { chosen = award.id } label: {
+            VStack(spacing: 3) {
+                AwardMedal(award: award, size: 46)
+                    .saturation(earned ? 1 : 0)
+                    .opacity(earned ? 1 : 0.32)
+                    .frame(width: 46, height: 46)
+                Text(award.name).font(ArenaMenuStyle.font(9, .heavy)).lineLimit(2).multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.7).opacity(earned ? 0.95 : 0.45).frame(height: 24, alignment: .top)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(award.name). \(award.detail)")
+        .accessibilityValue(earned ? String(localized: "Earned") : String(localized: "Locked"))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("profile.trophy.\(award.id)")
+    }
+
     private func coin(_ achievement: Achievement) -> some View {
         let earned = unlocked.contains(achievement)
-        return Button { chosen = achievement } label: {
+        return Button { chosen = achievement.rawValue } label: {
             VStack(spacing: 3) {
                 ZStack {
                     Circle().fill(earned ? AnyShapeStyle(RadialGradient(colors: [Color(red: 1, green: 0.9, blue: 0.62), Color(red: 0.72, green: 0.48, blue: 0.16), Color(red: 0.36, green: 0.22, blue: 0.08)],

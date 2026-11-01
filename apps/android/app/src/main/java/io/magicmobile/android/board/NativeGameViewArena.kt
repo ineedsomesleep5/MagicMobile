@@ -917,14 +917,16 @@ private fun ArenaOpponentSeat(host: ArenaBoardHost, canvas: ArenaCanvas, lean: A
         Modifier.centerAt(handAt.x, handAt.y))
     val library = canvas.point(layout.opponentLibrary)
     Box(Modifier.centerAt(library.x, library.y)) {
-        ArenaDeckPile(opponent.zones.visibleLibraryCount, pileSize, "$name's library, ${opponent.zones.visibleLibraryCount} cards", lean = leanAt(library))
+        ArenaDeckPile(opponent.zones.visibleLibraryCount, pileSize, "$name's library, ${opponent.zones.visibleLibraryCount} cards", lean = leanAt(library),
+            pileLean = layout.pileLean(layout.opponentLibrary))
         // A revealed top card (Courser of Kruphix, Future Sight…) lies face up on the deck.
         ArenaTableRules.revealedTop(opponent)?.let { top ->
             TopOfLibraryCard(top, "$name's", Modifier.align(Alignment.Center), height = pile.height.dp) { host.viewZone("Top of $name's library", listOf(top)) }
         }
     }
     val graveyard = canvas.point(layout.opponentGraveyard)
-    ArenaGraveyardPile(opponent.zones.graveyard, pileSize, "$name's graveyard", Modifier.centerAt(graveyard.x, graveyard.y), lean = leanAt(graveyard)) {
+    ArenaGraveyardPile(opponent.zones.graveyard, pileSize, "$name's graveyard", Modifier.centerAt(graveyard.x, graveyard.y), lean = leanAt(graveyard),
+        pileLean = layout.pileLean(layout.opponentGraveyard)) {
         host.inspectBoardZone(BoardZoneReference.Player(opponent.playerId, BoardZoneReference.PlayerZone.GRAVEYARD))
     }
     val medallion = canvas.point(layout.opponentMedallion)
@@ -932,7 +934,8 @@ private fun ArenaOpponentSeat(host: ArenaBoardHost, canvas: ArenaCanvas, lean: A
     ArenaEffectOrbit(PlayerStatusSummary(opponent, snapshot), medallion, diameter / 2 + 14, if (layout.landscape) 90f else 45f, if (layout.landscape) 5 else 3)
     if (opponent.zones.exile.isNotEmpty()) {
         val exile = canvas.point(layout.opponentExile)
-        ArenaGraveyardPile(opponent.zones.exile, pileSize, "$name's exile", Modifier.centerAt(exile.x, exile.y), exile = true, lean = leanAt(exile)) {
+        ArenaGraveyardPile(opponent.zones.exile, pileSize, "$name's exile", Modifier.centerAt(exile.x, exile.y), exile = true, lean = leanAt(exile),
+            pileLean = layout.pileLean(layout.opponentExile)) {
             host.inspectBoardZone(BoardZoneReference.Player(opponent.playerId, BoardZoneReference.PlayerZone.EXILE))
         }
     }
@@ -990,7 +993,8 @@ private fun ArenaViewerSeat(host: ArenaBoardHost, canvas: ArenaCanvas, lean: Are
     val library = canvas.point(layout.viewerLibrary)
     // On the portrait rail, over the rail drawn across a resting hand.
     Box(Modifier.zIndex(64f).centerAt(library.x, library.y)) {
-        ArenaDeckPile(human.zones.visibleLibraryCount, pileSize, "Your library, ${human.zones.visibleLibraryCount} cards", lean = leanAt(library))
+        ArenaDeckPile(human.zones.visibleLibraryCount, pileSize, "Your library, ${human.zones.visibleLibraryCount} cards", lean = leanAt(library),
+            pileLean = layout.pileLean(layout.viewerLibrary))
         ArenaTableRules.revealedTop(human)?.let { top ->
             TopOfLibraryCard(top, "your", Modifier.align(Alignment.Center), playable = BoardZoneReference.PlayerZone.LIBRARY in castable, height = pile.height.dp) {
                 host.viewZone("Top of your library", listOf(top))
@@ -998,12 +1002,14 @@ private fun ArenaViewerSeat(host: ArenaBoardHost, canvas: ArenaCanvas, lean: Are
         }
     }
     val graveyard = canvas.point(layout.viewerGraveyard)
-    ArenaGraveyardPile(human.zones.graveyard, pileSize, "Your graveyard", Modifier.zIndex(64f).centerAt(graveyard.x, graveyard.y), lean = leanAt(graveyard)) {
+    ArenaGraveyardPile(human.zones.graveyard, pileSize, "Your graveyard", Modifier.zIndex(64f).centerAt(graveyard.x, graveyard.y), lean = leanAt(graveyard),
+        pileLean = layout.pileLean(layout.viewerGraveyard)) {
         host.inspectBoardZone(BoardZoneReference.Player(human.playerId, BoardZoneReference.PlayerZone.GRAVEYARD))
     }
     if (human.zones.exile.isNotEmpty()) {
         val exile = canvas.point(layout.viewerExile)
-        ArenaGraveyardPile(human.zones.exile, pileSize, "Your exile", Modifier.zIndex(64f).centerAt(exile.x, exile.y), exile = true, lean = leanAt(exile)) {
+        ArenaGraveyardPile(human.zones.exile, pileSize, "Your exile", Modifier.zIndex(64f).centerAt(exile.x, exile.y), exile = true, lean = leanAt(exile),
+            pileLean = layout.pileLean(layout.viewerExile)) {
             host.inspectBoardZone(BoardZoneReference.Player(human.playerId, BoardZoneReference.PlayerZone.EXILE))
         }
     }

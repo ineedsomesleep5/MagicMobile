@@ -251,6 +251,20 @@ final class AIDeckPoolTests: XCTestCase {
     }
 }
 
+final class ServerTrophyTests: XCTestCase {
+    func testTrophyRowsParseAndOnlyShelfOnesLeaveTheAwardsRow() {
+        let rows: [[String: Any]] = [
+            ["id": "lightning", "name": "Lightning Strike", "description": "Win by turn 8.", "shelf": true, "awardedAt": "2026-11-01T12:00:00Z"],
+            ["id": "mythic", "name": "Mythic", "description": "Reached Mythic."],
+            ["id": "marathon", "name": "Marathon", "description": "Win a long game.", "shelf": true],
+        ]
+        let awards = Award.parse(rows)
+        XCTAssertEqual(awards.filter { !$0.shelf }.map(\.id), ["mythic"])
+        XCTAssertNotNil(awards[0].awardedAt)
+        XCTAssertNil(awards[2].awardedAt, "A trophy not yet earned is still listed, with no date")
+    }
+}
+
 @MainActor
 final class PlayerRecordStoreTests: XCTestCase {
     private func directory() -> URL {

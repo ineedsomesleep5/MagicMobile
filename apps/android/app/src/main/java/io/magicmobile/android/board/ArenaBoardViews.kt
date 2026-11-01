@@ -112,6 +112,7 @@ import io.magicmobile.android.game.ArenaCanvas
 import io.magicmobile.android.game.ArenaCardLook
 import io.magicmobile.android.game.ArenaGlowTone
 import io.magicmobile.android.game.ArenaPhaseStripRules
+import io.magicmobile.android.game.ArenaPileLean
 import io.magicmobile.android.game.ArenaTableRules
 import io.magicmobile.android.game.BoardFXLevel
 import io.magicmobile.android.game.BoardRect
@@ -511,10 +512,11 @@ fun ArenaCardBack(modifier: Modifier = Modifier) {
  * contact shadow, leaning with the table, and the count on a lozenge.
  */
 @Composable
-fun ArenaPileStack(count: Int, size: DpSize, modifier: Modifier = Modifier, lean: (Modifier) -> Modifier = { it }, top: @Composable () -> Unit) {
-    val thickness = if (count > 0) max(1.5f, count * size.height.value * 0.0055f) else 0f
+fun ArenaPileStack(count: Int, size: DpSize, modifier: Modifier = Modifier, lean: (Modifier) -> Modifier = { it }, pileLean: ArenaPileLean = ArenaPileLean(),
+                   top: @Composable () -> Unit) {
+    val thickness = (if (count > 0) max(1.5f, count * size.height.value * 0.0055f) else 0f) * pileLean.rise
     val layers = min(16, (thickness / 1.1f).roundToInt())
-    Box(modifier.requiredSize(size)) {
+    Box(modifier.offset(y = pileLean.sink(thickness).dp).requiredSize(size)) {
         Box(lean(Modifier.fillMaxSize()).drawBehind {
             val w = this.size.width; val h = this.size.height
             if (count > 0) drawIntoCanvas { canvas ->
@@ -530,13 +532,13 @@ fun ArenaPileStack(count: Int, size: DpSize, modifier: Modifier = Modifier, lean
                 val fraction = if (layers > 1) index.toFloat() / (layers - 1) else 1f
                 val brightness = (0.62f + 0.26f * fraction + if (index % 2 == 0) 0f else 0.05f).coerceAtMost(1f)
                 val color = Color(android.graphics.Color.HSVToColor(floatArrayOf(0.105f * 360, 0.32f, brightness)))
-                val dx = -thickness * 0.22f * index / max(layers, 1) * density
+                val dx = thickness * pileLean.drift * index / max(layers, 1) * density
                 val dy = -thickness * index / max(layers, 1) * density
                 drawRoundRect(color, Offset(dx, dy), this.size, corner)
                 drawRoundRect(Color.Black.copy(alpha = 0.35f), Offset(dx, dy), this.size, corner, style = Stroke(0.5.dp.toPx()))
             }
         }) {
-            if (count > 0) Box(Modifier.fillMaxSize().offset((-thickness * 0.22f).dp, (-thickness).dp)) { top() }
+            if (count > 0) Box(Modifier.fillMaxSize().offset((thickness * pileLean.drift).dp, (-thickness).dp)) { top() }
         }
         if (count > 0) ArenaCountBadge(count, Modifier.align(Alignment.BottomEnd).offset(8.dp, (-2).dp))
     }
@@ -544,8 +546,8 @@ fun ArenaPileStack(count: Int, size: DpSize, modifier: Modifier = Modifier, lean
 
 /** A library as a real stack of cards, the back on top. */
 @Composable
-fun ArenaDeckPile(count: Int, size: DpSize, label: String, modifier: Modifier = Modifier, lean: (Modifier) -> Modifier = { it }) {
-    ArenaPileStack(count, size, modifier.semantics { contentDescription = label }, lean) { ArenaCardBack(Modifier.fillMaxSize()) }
+fun ArenaDeckPile(count: Int, size: DpSize, label: String, modifier: Modifier = Modifier, lean: (Modifier) -> Modifier = { it }, pileLean: ArenaPileLean = ArenaPileLean()) {
+    ArenaPileStack(count, size, modifier.semantics { contentDescription = label }, lean, pileLean) { ArenaCardBack(Modifier.fillMaxSize()) }
 }
 
 /** A count on the Arena table: a white number on a dark oval in a thin gold line, as Arena marks counts. */
@@ -561,10 +563,10 @@ fun ArenaCountBadge(count: Int, modifier: Modifier = Modifier, size: Dp = 17.dp)
 /** A graveyard (or exile): a pile like the library with its top card face up, or an empty dashed slot; a tap opens the zone. */
 @Composable
 fun ArenaGraveyardPile(cards: List<ZoneCard>, size: DpSize, label: String, modifier: Modifier = Modifier, exile: Boolean = false,
-                       lean: (Modifier) -> Modifier = { it }, open: () -> Unit) {
+                       lean: (Modifier) -> Modifier = { it }, pileLean: ArenaPileLean = ArenaPileLean(), open: () -> Unit) {
     Box(modifier.defaultMinSize(44.dp, 44.dp).clickable(enabled = cards.isNotEmpty(), onClick = { GameAudio.play(GameSound.UI_OPEN); open() })
         .semantics { contentDescription = if (cards.isEmpty()) "$label, empty" else "$label, ${cards.size} cards" }, contentAlignment = Alignment.Center) {
-        ArenaPileStack(cards.size, size, lean = lean) {
+        ArenaPileStack(cards.size, size, lean = lean, pileLean = pileLean) {
             val top = cards.lastOrNull()
             if (top != null) Box(Modifier.fillMaxSize()) {
                 CardTile(top, selected = false, zoneName = if (exile) "Exile" else "Graveyard", width = size.width, height = size.height, ignoreTappedRotation = true)

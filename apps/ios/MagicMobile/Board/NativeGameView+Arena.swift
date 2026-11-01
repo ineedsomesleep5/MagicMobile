@@ -428,7 +428,7 @@ extension NativeGameView {
         ArenaOpponentHandFan(count: opponent.zones.visibleHandCount, card: canvas.size(layout.opponentHandCard),
                              pitch: canvas.length(layout.opponentHandPitch))
             .position(canvas.point(layout.opponentHand))
-        ArenaDeckPile(count: opponent.zones.visibleLibraryCount, size: canvas.size(layout.opponentPile),
+        ArenaDeckPile(count: opponent.zones.visibleLibraryCount, size: canvas.size(layout.opponentPile), lean: layout.pileLean(at: layout.opponentLibrary),
                       label: "\(snapshot.playerLabel(opponent.playerId))'s library, \(opponent.zones.visibleLibraryCount) cards")
             .overlay {
                 // A revealed top card (Courser of Kruphix, Future Sight…) lies face up on the deck.
@@ -439,7 +439,7 @@ extension NativeGameView {
                 }
             }
             .position(canvas.point(layout.opponentLibrary))
-        ArenaGraveyardPile(cards: opponent.zones.graveyard, size: canvas.size(layout.opponentPile),
+        ArenaGraveyardPile(cards: opponent.zones.graveyard, size: canvas.size(layout.opponentPile), lean: layout.pileLean(at: layout.opponentGraveyard),
                            label: "\(snapshot.playerLabel(opponent.playerId))'s graveyard") {
             inspectBoardZone(.player(playerID: opponent.playerId, zone: .graveyard))
         }
@@ -450,7 +450,7 @@ extension NativeGameView {
         TavernEffectOrbitBadges(summary: PlayerStatusSummary(player: opponent, snapshot: snapshot), center: medallionCenter,
                                 radius: medallionRadius + 14, bearingDegrees: layout.landscape ? 90 : 45, limit: layout.landscape ? 5 : 3)
         if !opponent.zones.exile.isEmpty {
-            ArenaGraveyardPile(cards: opponent.zones.exile, size: canvas.size(layout.opponentPile),
+            ArenaGraveyardPile(cards: opponent.zones.exile, size: canvas.size(layout.opponentPile), lean: layout.pileLean(at: layout.opponentExile),
                                label: "\(snapshot.playerLabel(opponent.playerId))'s exile", exile: true) {
                 inspectBoardZone(.player(playerID: opponent.playerId, zone: .exile))
             }
@@ -523,7 +523,7 @@ extension NativeGameView {
     @ViewBuilder
     private func arenaViewerSeat(snapshot: GameSnapshot, human: PlayerGameState, opponent: PlayerGameState, canvas: ArenaCanvas) -> some View {
         let layout = canvas.layout
-        ArenaDeckPile(count: human.zones.visibleLibraryCount, size: canvas.size(layout.viewerPile),
+        ArenaDeckPile(count: human.zones.visibleLibraryCount, size: canvas.size(layout.viewerPile), lean: layout.pileLean(at: layout.viewerLibrary),
                       label: "Your library, \(human.zones.visibleLibraryCount) cards")
             .overlay {
                 if let top = Self.arenaRevealedTop(human) {
@@ -537,13 +537,13 @@ extension NativeGameView {
             .position(canvas.point(layout.viewerLibrary))
             // On the portrait rail, over the rail drawn across a resting hand.
             .zIndex(64)
-        ArenaGraveyardPile(cards: human.zones.graveyard, size: canvas.size(layout.viewerPile), label: "Your graveyard") {
+        ArenaGraveyardPile(cards: human.zones.graveyard, size: canvas.size(layout.viewerPile), lean: layout.pileLean(at: layout.viewerGraveyard), label: "Your graveyard") {
             inspectBoardZone(.player(playerID: human.playerId, zone: .graveyard))
         }
         .position(canvas.point(layout.viewerGraveyard))
         .zIndex(64)
         if !human.zones.exile.isEmpty {
-            ArenaGraveyardPile(cards: human.zones.exile, size: canvas.size(layout.viewerPile), label: "Your exile", exile: true) {
+            ArenaGraveyardPile(cards: human.zones.exile, size: canvas.size(layout.viewerPile), lean: layout.pileLean(at: layout.viewerExile), label: "Your exile", exile: true) {
                 inspectBoardZone(.player(playerID: human.playerId, zone: .exile))
             }
             .position(canvas.point(layout.viewerExile))

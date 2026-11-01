@@ -1,7 +1,7 @@
 /** The Arena board's geometry: any window shape fills, the nearest plate lies under it, rows and the hand keep their places. */
 import { describe, expect, it } from "vitest";
 import type { ZoneCard } from "../src/core/models";
-import { battlefieldPlaces, geometry, handPlaces, PLATES, STAGE } from "../src/ui/arena/layout";
+import { ARENA, battlefieldPlaces, geometry, handPlaces, pileLean, pileThickness, PLATES, STAGE } from "../src/ui/arena/layout";
 
 const card = (id: string, name: string, typeLine: string, extra: Partial<ZoneCard> = {}): ZoneCard =>
   ({ instanceId: id, card: { name, typeLine } as ZoneCard["card"], ...extra });
@@ -63,6 +63,39 @@ describe("arena geometry", () => {
       expect(geo.height - tucked.y).toBeLessThan(tucked.h / 2);
       expect(raised.y).toBeLessThan(tucked.y);
     }
+  });
+});
+
+describe("piles", () => {
+  // testPilesLeanAwayFromTheMiddleOfTheTable, on the only board the web has: landscape.
+  it("lean away from the point under the camera, whichever side they stand on, and far ones stand shorter", () => {
+    expect(pileLean(ARENA.opponentPiles.library).drift).toBeGreaterThan(0);
+    expect(pileLean(ARENA.viewerPiles.library).drift).toBeLessThan(0);
+    expect(pileLean(ARENA.opponentPiles.library).rise).toBeLessThan(1);
+    expect(pileLean(ARENA.viewerPiles.library).rise).toBe(1);
+  });
+
+  it("drift by how far they stand from the camera, up to the old sideways shift", () => {
+    expect(pileLean({ x: 900, y: 30 }).drift).toBe(0.22);
+    expect(pileLean({ x: 80, y: 404 }).drift).toBe(-0.22);
+    expect(pileLean({ x: 478, y: 30 }).drift).toBe(0);
+    // A further opponent's piles stand 170 points left of the first's, so they cross the camera and turn round.
+    expect(pileLean({ x: ARENA.opponentPiles.library.x - 170, y: 30 }).drift).toBeCloseTo(56 / 566);
+    expect(pileLean({ x: ARENA.opponentPiles.library.x - 340, y: 30 }).drift).toBeCloseTo(-114 / 566);
+  });
+
+  it("sink when a full deck would pass the top of the screen, and near ones have room to rise", () => {
+    const far = pileLean(ARENA.opponentPiles.library);
+    const { thickness } = pileThickness(92, ARENA.opponentPiles.size.h, far.rise);
+    expect(ARENA.opponentPiles.library.y - ARENA.opponentPiles.size.h / 2 - thickness + Math.max(0, thickness - far.headroom)).toBeGreaterThanOrEqual(0);
+    expect(pileLean(ARENA.viewerPiles.library).headroom).toBe(Infinity);
+  });
+
+  it("stand as tall as their rise", () => {
+    const near = pileThickness(40, 50), far = pileThickness(40, 50, 0.6);
+    expect(far.thickness).toBeCloseTo(near.thickness * 0.6);
+    expect(far.layers).toBeLessThan(near.layers);
+    expect(pileThickness(0, 50, 0.6)).toEqual({ thickness: 0, layers: 0 });
   });
 });
 

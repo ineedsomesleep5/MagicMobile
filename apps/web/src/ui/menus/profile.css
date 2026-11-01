@@ -131,6 +131,9 @@
 .mprofilecoin > span { height: 24px; font: 800 9px/1.3 var(--sans); text-align: center; opacity: .45; overflow: hidden; }
 .mprofilecoin.earned > span { opacity: .95; }
 .mprofilecoin:hover > i { filter: brightness(1.1); }
+/* A trophy from the server: its art, in the dark until earned. */
+.mprofilemedal { display: block; width: 46px; height: 46px; }
+.mprofilecoin:not(.earned) > .mprofilemedal { filter: grayscale(1); opacity: .32; }
 .mprofileplank { display: block; height: 7px; background: linear-gradient(rgb(140,87,41), rgb(71,38,15)); box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 2px 3px rgba(0,0,0,.6); }
 .mprofiletrophynote { margin: 0; min-height: 32px; font: 600 12px/1.35 var(--sans); opacity: .9; }
 
@@ -208,7 +211,8 @@
 /* Season badges (SeasonBadges.tsx; iOS SeasonBadgeView / SeasonBadgeShelf): the peak tier's emblem over a ribbon naming the
    season, Season 1 in gold with a soft gold glow, the season in play dimmed under a dashed ring. The best finished badge
    leads the shelf, a little larger, pinned, then a hairline and the rest newest first. */
-.mseasonshelf { display: flex; align-items: flex-start; gap: 12px; overflow-x: auto; scrollbar-width: none; padding: 4px 2px; }
+/* overflow-x clips the y axis too, so the padding makes room for the founder's glow and the margin takes it back. */
+.mseasonshelf { display: flex; align-items: flex-start; gap: 12px; overflow-x: auto; scrollbar-width: none; padding: 24px 2px; margin: -20px 0; }
 .mseasonshelf::-webkit-scrollbar { display: none; }
 .mseasonshelfrule { flex: none; width: 1px; align-self: center; background: var(--hair); opacity: .6; }
 .mseasonbadge { position: relative; flex: none; display: flex; flex-direction: column; align-items: center; gap: calc(var(--size) * .05); }

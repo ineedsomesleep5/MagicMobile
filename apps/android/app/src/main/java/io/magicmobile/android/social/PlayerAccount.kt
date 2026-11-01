@@ -91,6 +91,8 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
     var isSigningIn by mutableStateOf(false); private set
     /** This player's awards, best first (mm_my_awards). */
     var awards by mutableStateOf<List<io.magicmobile.android.game.Award>>(emptyList()); private set
+    /** The Trophies shelf's server rows (mm_trophies): every trophy, with `awardedAt` on the ones this player holds. */
+    var trophies by mutableStateOf<List<io.magicmobile.android.game.Award>>(emptyList()); private set
     /** Runs after each refresh while the app is open: the app sends games that could not be sent before. */
     var afterRefresh: (suspend () -> Unit)? = null
 
@@ -153,7 +155,7 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
     /** Signs out on this phone. The profile stays on the account; this phone starts a fresh one until the player signs in again. */
     suspend fun signOut() {
         api.forgetSession()
-        username = null; friends = emptyList(); blocked = emptyList(); friendRanks = emptyMap(); linkedIdentities = emptyList(); awards = emptyList(); unreadMessages = 0
+        username = null; friends = emptyList(); blocked = emptyList(); friendRanks = emptyMap(); linkedIdentities = emptyList(); awards = emptyList(); trophies = emptyList(); unreadMessages = 0
         visibility = ProfileVisibility.PUBLIC; visibilityKnown = false
         phase = Phase.IDLE
         start()
@@ -369,11 +371,13 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
         return io.magicmobile.android.game.AppConfig.parse(reply)
     }
 
-    /** Quiet about a server without awards: the profile just shows none. */
+    /** Quiet about a server without awards or trophies: the profile just shows none, and the built-in coins. */
     suspend fun refreshAwards() {
         if (phase != Phase.READY) return
         val reply = runCatching { api.rpc("mm_my_awards") }.getOrNull() ?: return
         awards = io.magicmobile.android.game.Award.parse(runCatching { Json.parseToJsonElement(reply) }.getOrNull())
+        val shelf = runCatching { api.rpc("mm_trophies") }.getOrNull() ?: return
+        trophies = io.magicmobile.android.game.Award.parse(runCatching { Json.parseToJsonElement(shelf) }.getOrNull())
     }
 
     /** Its ceremony has played, here and on the player's other devices. */
@@ -539,7 +543,7 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
     suspend fun deleteAccount(): Boolean = try {
         api.rpc("mm_delete_account")
         api.forgetSession()
-        username = null; friends = emptyList(); blocked = emptyList(); hosting = null; awards = emptyList(); phase = Phase.IDLE
+        username = null; friends = emptyList(); blocked = emptyList(); hosting = null; awards = emptyList(); trophies = emptyList(); phase = Phase.IDLE
         true
     } catch (error: Exception) { notice = PlayerAccountRules.message(SupabaseLite.code(error)); false }
 

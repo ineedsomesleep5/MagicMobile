@@ -13,6 +13,20 @@ enum SocialFixtures {
     private static var environment: [String: String] { ProcessInfo.processInfo.environment }
 
     static var isActive: Bool { environment["MAGICMOBILE_UI_TEST_SOCIAL"] != nil }
+
+    /// Server trophies for the shelf, one earned and one locked. MAGICMOBILE_TROPHY_ART points at local art before it's on main.
+    static func trophies() -> [Award] {
+        let base = environment["MAGICMOBILE_TROPHY_ART"].map { URL(fileURLWithPath: $0) }
+            ?? URL(string: "https://raw.githubusercontent.com/ineedsomesleep5/MagicMobile/main/design/awards")!
+        let row: (String, String, String, Date?) -> Award = { id, name, detail, earned in
+            Award(id: id, name: name, detail: detail, imageURL: base.appendingPathComponent("\(id).png"), tint: Award.gold, rarity: 2,
+                  note: nil, awardedAt: earned, shelf: true)
+        }
+        return [row("lightning", "Lightning Strike", "Win a game by turn 8.", Date()),
+                row("marathon", "Marathon", "Win a game that lasts 30 turns or more.", Date()),
+                row("grand-collector", "Grand Collector", "Win with 15 different commanders.", nil),
+                row("five-colors", "Five Colors", "Win with a five-color deck.", nil)]
+    }
     static var openScreen: String? { isActive ? environment["MAGICMOBILE_UI_TEST_OPEN"] : nil }
     static var signedIn: Bool { isActive && environment["MAGICMOBILE_UI_TEST_SIGNED_IN"] != nil }
 

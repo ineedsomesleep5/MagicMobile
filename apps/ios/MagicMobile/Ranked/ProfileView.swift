@@ -49,6 +49,7 @@ struct PlayerProfileView: View {
     }
 
     private var unlocked: Set<Achievement> { record.achievements }
+    private var earnedServerTrophies: Int { account.trophies.filter { $0.awardedAt != nil }.count }
 
     /// Arena's profile (the judge, 2026-10-22, against Arena's own Profile): the player's name as the headline, the season
     /// rank and the progression under it, the chosen commander as full-height hero art on the right with the cosmetics
@@ -129,10 +130,12 @@ struct PlayerProfileView: View {
     /// The rest of the player's story, under the season rank: the season's chart and past seasons, the record and its
     /// charts, trophies, games, then the account and who can see it all.
     @ViewBuilder private func playerStory(_ summary: ProfileSummary, scoped: [MatchRecord]) -> some View {
-        if !account.awards.isEmpty {
+        // Trophies stand on their own shelf; they stay in `awards` for the ceremony.
+        let awards = account.awards.filter { !$0.shelf }
+        if !awards.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 ProfileSectionTitle(text: String(localized: "Awards"))
-                AwardShelf(awards: account.awards)
+                AwardShelf(awards: awards)
             }.modifier(TavernLeatherCard()).accessibilityIdentifier("profile.awards")
         }
         seasonCard(summary)
@@ -232,7 +235,7 @@ struct PlayerProfileView: View {
                 progressTile("\(all.games)", String(localized: "Games"), symbol: "gamecontroller.fill")
                 progressTile(all.games == 0 ? "–" : "\(Int((Double(all.wins) / Double(all.games) * 100).rounded()))%", String(localized: "Win rate"),
                              symbol: "chart.pie.fill")
-                progressTile("\(unlocked.count)", String(localized: "Trophies"), symbol: "trophy.fill")
+                progressTile("\(unlocked.count + earnedServerTrophies)", String(localized: "Trophies"), symbol: "trophy.fill")
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("profile.career")
@@ -688,8 +691,9 @@ struct PlayerProfileView: View {
 
     private var trophyCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ProfileSectionTitle(text: String(localized: "Trophies"), trailing: "\(unlocked.count)/\(Achievement.allCases.count)")
-            TrophyShelf(unlocked: unlocked)
+            ProfileSectionTitle(text: String(localized: "Trophies"),
+                                trailing: "\(unlocked.count + earnedServerTrophies)/\(Achievement.allCases.count + account.trophies.count)")
+            TrophyShelf(unlocked: unlocked, server: account.trophies)
         }
         .modifier(TavernLeatherCard())
         .accessibilityElement(children: .contain)

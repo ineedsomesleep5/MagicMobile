@@ -592,6 +592,28 @@ final class ArenaBoardModelTests: XCTestCase {
         XCTAssertNil(ArenaSweepRecap.text(spell: "Murder", events: Array(deaths.prefix(1))), "one removal needs no recap")
     }
 
+    /// Piles lean away from the point under the camera, whichever side they stand on, and far ones stand shorter.
+    func testPilesLeanAwayFromTheMiddleOfTheTable() {
+        let wide = ArenaLayout.landscapeLayout
+        XCTAssertGreaterThan(wide.pileLean(at: wide.opponentLibrary).drift, 0)
+        XCTAssertLessThan(wide.pileLean(at: wide.viewerLibrary).drift, 0)
+        XCTAssertLessThan(wide.pileLean(at: wide.opponentLibrary).rise, 1)
+        XCTAssertEqual(wide.pileLean(at: wide.viewerLibrary).rise, 1)
+        let tall = ArenaLayout.portraitLayout
+        XCTAssertLessThan(tall.pileLean(at: tall.opponentLibrary).drift, 0)
+    }
+
+    /// A full deck at the top of the screen sinks rather than leaving it. Near piles have room to rise.
+    func testAFullFarDeckStaysOnTheScreen() {
+        for layout in [ArenaLayout.landscapeLayout, ArenaLayout.portraitLayout] {
+            let lean = layout.pileLean(at: layout.opponentLibrary)
+            let thickness = 92 * layout.opponentPile.height * 0.0055 * lean.rise
+            let top = layout.opponentLibrary.y - layout.opponentPile.height / 2 - thickness + lean.sink(under: thickness)
+            XCTAssertGreaterThanOrEqual(top, 0)
+            XCTAssertEqual(layout.pileLean(at: layout.viewerLibrary).sink(under: 40), 0)
+        }
+    }
+
     /// The landscape stack card sits under the opponent's piles and above the raised phase strip and its pills.
     func testLandscapeStackCardClearsThePilesAndTheCorner() {
         let layout = ArenaLayout.landscapeLayout

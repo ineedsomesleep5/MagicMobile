@@ -84,6 +84,33 @@ delete from public.player_awards where award_id = 'mythic' and user_id = (select
 update public.ranked_profiles set title = null where user_id = (select id from public.profiles where username = 'PlayerName');
 ```
 
+### Trophies
+
+A trophy is an award with `shelf` set. It stands on the profile's Trophies shelf after the built-in coins, dark until earned, and
+`shelf_order` places it (lower first). It opens with the same ceremony, and needs no build (the shelf itself needs TestFlight 77 /
+Android 54). A plain award stays in the Awards row, and an old app shows every trophy there once earned.
+
+Rules for trophies run after every game a player reports, ranked or not, as well as when standings move:
+
+| Rule | Earned by |
+| --- | --- |
+| `{"kind": "games", "count": 10}` | That many games matching its filters. |
+| `{"kind": "commanders", "count": 5}` | Winning with that many different commanders. |
+| `{"kind": "placement_wins", "count": 5}` | That many placement wins in one season. |
+
+Filters for `games`, all optional: `mode` (`quick`, `ranked`, `casual`), `result` (`win`, `loss`, `draw`), `maxTurns`, `minTurns`,
+`maxSeconds`, `minColors`, `human` (`true` for games against people only).
+
+```sql
+-- Art first, on main. Then the row, then give it to everyone who has already earned it.
+insert into public.awards (id, name, description, image_url, tint, rarity, rule, shelf, shelf_order)
+values ('quick-draw', 'Quick Draw', 'Win a game by turn 6.', 'https://raw.githubusercontent.com/ineedsomesleep5/MagicMobile/main/design/awards/quick-draw.png',
+        '#FFE36B', 3, '{"kind": "games", "count": 1, "result": "win", "maxTurns": 6}', true, 170);
+select public.mm_awards_backfill('quick-draw');
+-- Backfilled players get the ceremony on their next launch. To skip it for a trophy they earned long ago:
+update public.player_awards set seen_at = now() where award_id = 'quick-draw' and seen_at is null;
+```
+
 ## Voice chat
 
 The `agora-token` edge function mints voice tokens; it needs the Supabase secret `AGORA_APP_CERTIFICATE` (Caleb sets it in

@@ -761,7 +761,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
           leaderboard={() => setLeaderboard(true)} profile={() => selectTab("profile")} />}
         {page === "ranked" && leaderboard && <Leaderboard account={player} onBack={() => setLeaderboard(false)}
           openProfile={(username) => setSocial({ kind: "profile", username })} />}
-        {page === "profile" && <ProfilePage awards={player.state.awards} record={record} remote={remoteGames} playerName={player.state.username ?? (name.trim() || "Player")}
+        {page === "profile" && <ProfilePage awards={player.state.awards} trophies={player.state.trophies} record={record} remote={remoteGames} playerName={player.state.username ?? (name.trim() || "Player")}
           deckCommanders={pool.all.map((d) => d.commander)} onChange={() => { setRecordVersion((v) => v + 1); server.publish(); }}
           account={<><AccountSignInCard /><PrivacyCard /></>} />}
       </div>

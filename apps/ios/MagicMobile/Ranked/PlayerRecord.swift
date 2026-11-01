@@ -486,6 +486,7 @@ final class PlayerRecordStore: ObservableObject {
                let division = Int(parts[1]), let pips = Int(parts[2]) {
                 rank.position = RankPosition(tier: tier, division: division, pips: pips)
                 rank.peak = max(rank.peak, rank.position)
+                rank.placementGames = 0
                 if parts.count >= 4, let streak = Int(parts[3]) { rank.winStreak = streak }
             }
         }

@@ -310,6 +310,8 @@ export interface Award {
   rarity: number;
   note?: string;
   awardedAt?: number;
+  /** A trophy, which stands on the Trophies shelf rather than among the awards. */
+  shelf: boolean;
   /** False until the player's app has shown it, which it does with a ceremony. */
   seen: boolean;
 }
@@ -324,7 +326,7 @@ export const Award = {
       const imageUrl = str(row.imageUrl), tint = str(row.tint), note = str(row.note), at = Date.parse(str(row.awardedAt) ?? "");
       return [{
         id, name, detail: str(row.description) ?? "", tint: tint && /^#[0-9a-f]{6}$/i.test(tint) ? tint : Award.gold,
-        rarity: Math.min(Math.max(num(row.rarity) ?? 1, 1), 3), seen: bool(row.seen) ?? true,
+        rarity: Math.min(Math.max(num(row.rarity) ?? 1, 1), 3), shelf: bool(row.shelf) ?? false, seen: bool(row.seen) ?? true,
         ...(imageUrl?.startsWith("https://") ? { imageUrl } : {}), ...(note ? { note } : {}), ...(Number.isNaN(at) ? {} : { awardedAt: at }),
       }];
     });
@@ -796,6 +798,8 @@ export interface AccountState {
   friends: PlayerFriend[];
   /** This player's awards, best first (mm_my_awards). */
   awards: Award[];
+  /** The Trophies shelf's server rows (mm_trophies): every trophy, with `awardedAt` on the ones this player holds. */
+  trophies: Award[];
   blocked: string[];
   /** Friends' ranked standings by username (mm_friend_ranks), for their badges. */
   friendRanks: Record<string, RankPosition>;
@@ -821,7 +825,7 @@ export interface AccountState {
 }
 
 const initialState = (): AccountState => ({
-  phase: "idle", friends: [], awards: [], blocked: [], friendRanks: {}, visibility: "public", visibilityKnown: false, searchAvailable: true,
+  phase: "idle", friends: [], awards: [], trophies: [], blocked: [], friendRanks: {}, visibility: "public", visibilityKnown: false, searchAvailable: true,
   profilesAvailable: true, unreadMessages: 0, messagesAvailable: true, linkedIdentities: [], isSigningIn: false, incomingCount: 0,
   onlineFriendCount: 0,
 });
@@ -959,7 +963,7 @@ export class PlayerAccount {
   async signOut(): Promise<void> {
     this.api.forgetSession();
     this.set({
-      username: undefined, friends: [], awards: [], blocked: [], friendRanks: {}, linkedIdentities: [], unreadMessages: 0, visibility: "public",
+      username: undefined, friends: [], awards: [], trophies: [], blocked: [], friendRanks: {}, linkedIdentities: [], unreadMessages: 0, visibility: "public",
       visibilityKnown: false, phase: "idle",
     });
     await this.start();
@@ -1228,10 +1232,13 @@ export class PlayerAccount {
     try { appConfig.store(await this.api.rpc("mm_app_config", { p_platform: "web", p_build: 0 })); } catch { /* the last copy stays */ }
   }
 
-  /** Quiet about a server without awards: the profile just shows none. */
+  /** Quiet about a server without awards or trophies: the profile just shows none, and the built-in coins. */
   async refreshAwards(): Promise<void> {
     if (this.state.phase !== "ready") return;
-    try { this.set({ awards: Award.parse(await this.api.rpc("mm_my_awards")) }); } catch { /* keeps what it had */ }
+    try {
+      this.set({ awards: Award.parse(await this.api.rpc("mm_my_awards")) });
+      this.set({ trophies: Award.parse(await this.api.rpc("mm_trophies")) });
+    } catch { /* keeps what it had */ }
   }
 
   /** Its ceremony has played, here and on the player's other devices. */
@@ -1303,7 +1310,7 @@ export class PlayerAccount {
     try {
       await this.api.rpc("mm_delete_account");
       this.api.forgetSession();
-      this.set({ username: undefined, friends: [], awards: [], blocked: [], hosting: undefined, phase: "idle" });
+      this.set({ username: undefined, friends: [], awards: [], trophies: [], blocked: [], hosting: undefined, phase: "idle" });
       return true;
     } catch (error) {
       this.fail(error);
