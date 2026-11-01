@@ -411,7 +411,9 @@ final class PlayerRecordStore: ObservableObject {
                                           placementLeft: change?.placementLeft)
         } else if RankSettlement.held(settlement), let local = match.rankChange {
             let stands = points.map { RankPosition(points: $0) } ?? local.before
-            match.rankChange = RankChange(outcome: local.outcome, before: stands, after: stands, bonuses: [])
+            // A held placement win gives its game back, so it can't reveal a rank or finish placements.
+            match.rankChange = RankChange(outcome: local.outcome, before: stands, after: stands, bonuses: [],
+                                          placementLeft: local.placementLeft.map { $0 + 1 })
         }
         guard match != matches[index] else { return }
         matches[index] = match

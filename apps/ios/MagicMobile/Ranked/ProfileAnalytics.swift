@@ -77,6 +77,7 @@ struct ProfileGame: Identifiable, Equatable, Sendable {
     }
 
     static func rankLine(_ change: RankChange) -> String {
+        if let placement = change.placementTitle { return placement }
         let before = change.before, after = change.after
         if before.title == after.title, after.tier != .mythic {
             return String(localized: "\(after.title): \(before.pips) → \(after.pips) pips")
