@@ -319,6 +319,7 @@ struct SeasonBadgeView: View {
 struct SeasonBadgeShelf: View {
     let badges: [SeasonBadge]
     var size: CGFloat = 60
+    private static let glowRoom: CGFloat = 24
 
     var body: some View {
         let best = SeasonBadge.best(badges)
@@ -334,8 +335,10 @@ struct SeasonBadgeShelf: View {
                 }
                 ForEach(badges.filter { $0.id != best?.id }) { SeasonBadgeView(badge: $0, size: size) }
             }
-            .padding(.horizontal, 2)
+            // Room inside the scroll view for the glow, which it would otherwise cut off in a hard square.
+            .padding(Self.glowRoom)
         }
+        .padding(-Self.glowRoom + 2)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("seasonBadges")
     }

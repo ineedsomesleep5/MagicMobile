@@ -592,6 +592,17 @@ final class ArenaBoardModelTests: XCTestCase {
         XCTAssertNil(ArenaSweepRecap.text(spell: "Murder", events: Array(deaths.prefix(1))), "one removal needs no recap")
     }
 
+    /// Piles lean away from the point under the camera, whichever side they stand on, and far ones stand shorter.
+    func testPilesLeanAwayFromTheMiddleOfTheTable() {
+        let wide = ArenaLayout.landscapeLayout
+        XCTAssertGreaterThan(wide.pileLean(at: wide.opponentLibrary).drift, 0)
+        XCTAssertLessThan(wide.pileLean(at: wide.viewerLibrary).drift, 0)
+        XCTAssertLessThan(wide.pileLean(at: wide.opponentLibrary).rise, 1)
+        XCTAssertEqual(wide.pileLean(at: wide.viewerLibrary).rise, 1)
+        let tall = ArenaLayout.portraitLayout
+        XCTAssertLessThan(tall.pileLean(at: tall.opponentLibrary).drift, 0)
+    }
+
     /// The landscape stack card sits under the opponent's piles and above the raised phase strip and its pills.
     func testLandscapeStackCardClearsThePilesAndTheCorner() {
         let layout = ArenaLayout.landscapeLayout

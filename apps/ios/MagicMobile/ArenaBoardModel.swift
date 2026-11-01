@@ -30,6 +30,15 @@ enum CardFramesPreference {
     static let arenaDefault = false
 }
 
+/// How a pile stands on the table. Uprights fan out from the point under the camera, so a pile left of it leans left and one
+/// right of it leans right (Caleb, 2026-11-01: the opponent's library leaned the wrong way). Far piles stand shorter.
+struct ArenaPileLean: Equatable {
+    /// Sideways shift per point of height.
+    var drift: CGFloat = -0.22
+    /// The pile's height, as a share of a near pile's.
+    var rise: CGFloat = 1
+}
+
 /// The Arena board's design canvases: landscape 956 × 440 (an iPhone 17 Pro Max held sideways) and portrait 440 × 956.
 /// Every number was tuned in the Duel Board Prototype (Claude artifact) against the reference gameplay video, then moved
 /// clear of the Dynamic Island and the home indicator. Other screens scale both axes; sizes scale by the smaller axis.
@@ -133,6 +142,13 @@ struct ArenaLayout: Equatable {
     /// landscape a popped card already sits over your land row). A wiggle or a short slide along the hand puts it back.
     static let dropLift: CGFloat = 24
     static let dropCarry: CGFloat = 80
+
+    /// A pile at `point`: the table camera stands over board (478, 596) in landscape and (220, 744) in portrait.
+    func pileLean(at point: CGPoint) -> ArenaPileLean {
+        let under = landscape ? CGPoint(x: 478, y: 596) : CGPoint(x: 220, y: 744)
+        let drift = (point.x - under.x) / max(abs(point.y - under.y), 1)
+        return ArenaPileLean(drift: min(0.22, max(-0.22, drift)), rise: point.y < canvas.height / 2 ? 0.6 : 1)
+    }
 
     /// The landscape table (scripts/brand/arena_layout.json "landscape").
     static let landscapeLayout = ArenaLayout(

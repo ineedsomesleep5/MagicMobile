@@ -160,6 +160,8 @@ final class PlayerAccount: ObservableObject {
     @Published private(set) var isSigningIn = false
     /// This player's awards, best first (mm_my_awards).
     @Published private(set) var awards: [Award] = []
+    /// The Trophies shelf's server rows (mm_trophies): every trophy, with `awardedAt` on the ones this player holds.
+    @Published private(set) var trophies: [Award] = []
     /// Runs after each refresh while the app is open: the app sends games that could not be sent before.
     var afterRefresh: (() async -> Void)?
 
@@ -281,7 +283,7 @@ final class PlayerAccount: ObservableObject {
     /// until the player signs in again.
     func signOut() async {
         api.forgetSession()
-        username = nil; friends = []; blocked = []; friendRanks = [:]; linkedIdentities = []; awards = []; unreadMessages = 0
+        username = nil; friends = []; blocked = []; friendRanks = [:]; linkedIdentities = []; awards = []; trophies = []; unreadMessages = 0
         visibility = .public; visibilityKnown = false
         phase = .idle
         await start()
@@ -617,6 +619,10 @@ final class PlayerAccount: ObservableObject {
         guard phase == .ready, let data = try? await api.rpc("mm_my_awards"),
               let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
         awards = Award.parse(rows)
+        if let data = try? await api.rpc("mm_trophies"),
+           let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            trophies = Award.parse(rows)
+        }
     }
 
     /// Its ceremony has played, here and on the player's other devices.
@@ -695,7 +701,7 @@ final class PlayerAccount: ObservableObject {
         do {
             _ = try await api.rpc("mm_delete_account")
             api.forgetSession()
-            username = nil; friends = []; blocked = []; hosting = nil; awards = []
+            username = nil; friends = []; blocked = []; hosting = nil; awards = []; trophies = []
             phase = .idle
             return true
         } catch {

@@ -383,10 +383,11 @@ struct ArenaCardBack: View {
 struct ArenaDeckPile: View {
     let count: Int
     let size: CGSize
+    var lean = ArenaPileLean()
     let label: String
 
     var body: some View {
-        ArenaPileStack(count: count, size: size) { ArenaCardBack() }
+        ArenaPileStack(count: count, size: size, lean: lean) { ArenaCardBack() }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(label)
     }
@@ -398,6 +399,7 @@ struct ArenaDeckPile: View {
 struct ArenaPileStack<Top: View>: View {
     let count: Int
     let size: CGSize
+    var lean = ArenaPileLean()
     @ViewBuilder let top: Top
     @Environment(\.arenaTableTheme) private var theme
 
@@ -406,7 +408,7 @@ struct ArenaPileStack<Top: View>: View {
     }
 
     var body: some View {
-        let thickness = Self.thickness(count: count, height: size.height)
+        let thickness = Self.thickness(count: count, height: size.height) * lean.rise
         let layers = min(16, Int((thickness / 1.1).rounded()))
         ZStack {
             Ellipse().fill(count > 0 ? theme.pileShadow : .clear).blur(radius: 4)
@@ -419,11 +421,11 @@ struct ArenaPileStack<Top: View>: View {
                 RoundedRectangle(cornerRadius: size.width * 0.08)
                     .fill(Color(hue: 0.105, saturation: 0.32, brightness: 0.62 + 0.26 * fraction + (index % 2 == 0 ? 0 : 0.05)))
                     .overlay(RoundedRectangle(cornerRadius: size.width * 0.08).strokeBorder(Color.black.opacity(0.35), lineWidth: 0.5))
-                    .offset(x: -thickness * 0.22 * CGFloat(index) / CGFloat(max(layers, 1)),
+                    .offset(x: thickness * lean.drift * CGFloat(index) / CGFloat(max(layers, 1)),
                             y: -thickness * CGFloat(index) / CGFloat(max(layers, 1)))
             }
             if count > 0 {
-                top.offset(x: -thickness * 0.22, y: -thickness)
+                top.offset(x: thickness * lean.drift, y: -thickness)
             }
         }
         .frame(width: size.width, height: size.height)
@@ -491,6 +493,7 @@ struct ArenaCountBadge: View {
 struct ArenaGraveyardPile: View {
     let cards: [ZoneCard]
     let size: CGSize
+    var lean = ArenaPileLean()
     let label: String
     /// An exile pile: the same top card under a cool, ghostly veil with the exile mark.
     var exile = false
@@ -498,7 +501,7 @@ struct ArenaGraveyardPile: View {
 
     var body: some View {
         Button(action: open) {
-            ArenaPileStack(count: cards.count, size: size) {
+            ArenaPileStack(count: cards.count, size: size, lean: lean) {
                 if let top = cards.last {
                     CardTile(card: top, selected: false, zoneName: exile ? "Exile" : "Graveyard", width: size.width, height: size.height,
                              ignoreTappedRotation: true)

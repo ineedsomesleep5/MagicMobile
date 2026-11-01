@@ -13,6 +13,8 @@ struct Award: Equatable, Identifiable, Sendable {
     var rarity: Int
     var note: String?
     var awardedAt: Date?
+    /// A trophy, which stands on the Trophies shelf rather than among the awards.
+    var shelf = false
     /// False until the player's app has shown it, which it does with a ceremony.
     var seen = true
 
@@ -26,7 +28,7 @@ struct Award: Equatable, Identifiable, Sendable {
             return Award(id: id, name: name, detail: row["description"] as? String ?? "", imageURL: image,
                          tint: color(row["tint"] as? String), rarity: min(max((row["rarity"] as? NSNumber)?.intValue ?? 1, 1), 3),
                          note: row["note"] as? String, awardedAt: (row["awardedAt"] as? String).flatMap(PublicProfile.timestamp),
-                         seen: row["seen"] as? Bool ?? true)
+                         shelf: row["shelf"] as? Bool ?? false, seen: row["seen"] as? Bool ?? true)
         }
     }
 

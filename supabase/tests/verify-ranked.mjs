@@ -68,6 +68,9 @@ try {
   await db.exec(await readFile(new URL('./ranked_diamond_retune.sql', import.meta.url), 'utf8'));
   await db.exec(await migration('20261101120000_ranked_placements.sql'));
   await db.exec(await readFile(new URL('./ranked_placements.sql', import.meta.url), 'utf8'));
+  await db.exec(await migration('20261030180000_profile_awards.sql'));
+  await db.exec(await migration('20261101180000_trophies.sql'));
+  await db.exec(await readFile(new URL('./trophies.sql', import.meta.url), 'utf8'));
   console.log('PASS PGlite: ranked queue pairing (rank, bracket, protocol, blocks), host/guest table hand-off, late cancel, reports');
   console.log('PASS PGlite: ranked cards for friends and profile cards, blocked players hidden, no direct table access, account deletion');
   console.log('PASS PGlite: friend challenges (friends only, same-tier ranked with season rollover, replace, accept/decline/expiry, ranked reports, blocks, no direct access)');
@@ -85,6 +88,7 @@ try {
   console.log('PASS PGlite: crushing losses (the AI kept 30+ life: two pips, its life kept; a close loss or no record: one; Bronze still free)');
   console.log('PASS PGlite: Diamond retune (a tier may set its AI skill; Diamond skill 6 at Power 8–9, Mythic 9.25, other tiers keep the ladder skill, tickets carry and store it, an older app\'s skill-5 win counts, skill 4 does not)');
   console.log('PASS PGlite: placements (five games, two divisions a win, Gold II at most, Platinum IV after Mythic, no seed past them, hidden from the leaderboard until placed)');
+  console.log('PASS PGlite: trophies (rules read games and placements, players without a standing earn, the shelf in order with earned marks, a new row just appears)');
   console.log('Scope: single-process PostgreSQL; auth.uid is a test stub; no live writes, no concurrent-session proof.');
 } catch (error) {
   console.error('FAIL', error.message, error.detail ?? '', error.where ?? '', error.hint ?? '', error.position ?? '', error.routine ?? '');
