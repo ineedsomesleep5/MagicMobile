@@ -69,6 +69,8 @@ Every world moves, and the board never pays for it. `Board/ArenaWorldLife.swift`
   the GPU at a time, so a slow frame is skipped and can't stall the board.
 - **Last a whole game.** Anything built on the clock has to look the same an hour in. `arenaHash` folds its lattice to stay in range;
   a new noise needs the same. Check with `MAGICMOBILE_WORLD_CLOCK=3000`.
+- **Sound:** each world has one quiet loop from `scripts/audio/build_world_ambience.py`, played while its table is on screen. Field
+  recordings are mostly rumble a phone can't play, so level them on what's heard from 300 Hz to 8 kHz. Caleb judges them in Sound Lab.
 - **Judge it moving.** Record the simulator, and use `MAGICMOBILE_WORLD_DEMO=1` to play every reaction (`=dread` shows the low-life
   edge).
 
@@ -84,6 +86,8 @@ Every world moves, and the board never pays for it. `Board/ArenaWorldLife.swift`
 
 ## Limits
 
+- **Tables are drawn, not chosen:** `ArenaTableDraw` picks each game's table from its match ID. Only Quick Match's Advanced and Custom
+  Table can pick one (`ArenaTableRow`), and that pick is pinned to its match. There's no Theme setting in Options or the game menu.
 - **Keep:** source art outside the repo in `~/Movies/motion-assets/magicmobile-boards/`. The repo is public, so Fab sources never
   go in it, and `design/arena-boards/` is too large to commit. Only the installed plates and scripts are committed.
 - **Run:** Blender and simulators through `scripts/dev/heavy.sh`, one at a time. Worlds never touch `packages/ondevice-engine`.

@@ -113,6 +113,11 @@ struct OnDeviceRootView: View {
     @AppStorage("magicmobile.quick.level") private var quickLevel = "medium"
     /// The game being played from Quick Match or Ranked, for its result.
     @State private var activeMatch: ActiveMatch?
+    @AppStorage(ArenaTableDraw.pickKey) private var tablePick = ArenaTableDraw.random
+    @AppStorage(ArenaTableTheme.key) private var pinnedTable = ArenaTableTheme.defaultValue
+    @AppStorage(ArenaTableDraw.pinnedMatchKey) private var pinnedTableMatch = ""
+    /// The table a starting game asked for, until its match exists.
+    @State private var pendingTable: String?
     /// How the last ranked result moved the ladder (the result screen's rank strip).
     @State private var rankChange: RankChange?
     /// Why the last ranked win left the ladder alone, once the server answers.
@@ -668,7 +673,10 @@ struct OnDeviceRootView: View {
         }
         .onAppear { if scenePhase == .active { account.setForeground(true) } }
         // Each engine match's start, for the game's length on the profile.
-        .onChange(of: session.matchID) { _, id in gameStartedAt = id == nil ? nil : Date() }
+        .onChange(of: session.matchID) { _, id in
+            gameStartedAt = id == nil ? nil : Date()
+            pinTable(to: id)
+        }
     }
 
     private var lifecycleContent: some View {
@@ -1601,8 +1609,20 @@ struct OnDeviceRootView: View {
             && !setup.isBusy && !setup.needsLeave && !matchmaker.isSearching
     }
 
+    /// A game you set up yourself keeps the table you picked; every other game draws its own (ArenaTableDraw). A table
+    /// online or on Game Center has no start of its own here, so it's known by being neither Ranked nor a friend's challenge.
+    private func pinTable(to match: String?) {
+        guard let match else { return }
+        if pendingTable == nil, setup.usingMultiplayer, activeMatch?.isPersonTable != true { pendingTable = tablePick }
+        guard let table = pendingTable else { return }
+        pendingTable = nil
+        pinnedTable = table
+        pinnedTableMatch = match
+    }
+
     private func startQuickMatch() {
         guard let deck = selectedDeck, let bracket = selectedDeckBracket else { return }
+        pendingTable = quickLevel == "advanced" ? tablePick : nil
         if let level = AIDeckPool.power?.quickMatch[quickLevel],
            let opponent = AIDeckPool.pick(targetPower: level.power, maxBracket: nil, avoidingCommander: deck.commander?.cardName,
                                           recent: profileRecord.recentAIDecks) {
@@ -1945,7 +1965,7 @@ struct OnDeviceRootView: View {
                                 deckID: selectedDeckID, aiDeckIDs: [foe.id],
                                 startingPlayerMode: mode.startingPlayerMode(preference: aiStartingPlayerMode),
                                 mode: mode, deckBracket: deckBracket.rawValue, seed: seed, aiMistakePercent: mistakes)
-            if session.matchID == nil { activeMatch = nil }
+            if session.matchID == nil { activeMatch = nil; pendingTable = nil }
         }
     }
 
@@ -2173,13 +2193,15 @@ struct OnDeviceRootView: View {
                 HStack(alignment: .top, spacing: 18) {
                     VStack(alignment: .leading, spacing: 10) { setupPlayers; setupRule; ArenaCaps(text: String(localized: "Seats")); setupSeats }
                         .padding(.bottom, 20)
-                    VStack(alignment: .leading, spacing: 10) { setupSkill; setupRule; setupFirst }
+                    VStack(alignment: .leading, spacing: 10) { setupSkill; setupRule; setupFirst; setupRule; ArenaTableRow() }
                         .frame(maxWidth: 240)
                 }
             } else {
                 setupPlayers
                 if playWithFriends {
                     setupFriendsTable
+                    setupRule
+                    ArenaTableRow()
                 } else {
                     setupRule
                     ArenaCaps(text: String(localized: "Seats"))
@@ -2188,6 +2210,8 @@ struct OnDeviceRootView: View {
                     setupSkill
                     setupRule
                     setupFirst
+                    setupRule
+                    ArenaTableRow()
                 }
             }
             setupRecovery
@@ -2558,13 +2582,15 @@ struct OnDeviceRootView: View {
         diagnostics.beginAttempt()
         guard let deck = selectedDeck, aiPrecons.count == opponentCount else { return }
         activeMatch = nil; rankChange = nil; rankNote = nil
+        pendingTable = tablePick
         let opponentDecks = aiPrecons.map(\.deckList)
         Task {
             do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
-            catch { setup.errorMessage = error.localizedDescription; return }
+            catch { setup.errorMessage = error.localizedDescription; pendingTable = nil; return }
             await setup.startAI(name: playerDisplayName, deck: deck, aiDecks: opponentDecks, aiSkill: aiSkill,
                                 deckID: selectedDeckID, aiDeckIDs: aiPrecons.map(\.id),
                                 startingPlayerMode: aiStartingPlayerMode)
+            if session.matchID == nil { pendingTable = nil }
         }
     }
 

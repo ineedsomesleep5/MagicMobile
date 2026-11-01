@@ -126,7 +126,8 @@ struct NativeGameView: View {
     @State var isLogOpen = false
     @State var isGameMenuOpen = false
     @State var isTavernStackOpen = false
-    @AppStorage(ArenaTableTheme.key) var arenaTable = ArenaTableTheme.defaultValue
+    @AppStorage(ArenaTableTheme.key) var pinnedTable = ArenaTableTheme.defaultValue
+    @AppStorage(ArenaTableDraw.pinnedMatchKey) var pinnedTableMatch = ""
     @AppStorage(BoardAppearancePreference.key) var boardAppearance = BoardAppearancePreference.defaultValue
     @State var isPromptInspectorOpen = false
     @State var protocolDebug: XmageProtocolDebug?

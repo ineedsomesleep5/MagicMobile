@@ -179,7 +179,7 @@ The full rules and steps are in `docs/ARENA_WORLDS.md`. A world is a real place,
 - **Portrait needs a front wall:** the hand tucks away at `railTop` (815), where `ArenaFrontRail` redraws the plate over it. A world puts a full-width wall's highest visible point exactly on that line (`front_wall` in its file), so the cards stop at the top of the wall and never overlap it. Walnut's is the table's edge.
 - **Bright tables:** `isBright` puts dark glass behind thin controls drawn straight on the table, such as the phase strip.
 - **Method (Caleb, 2026-10-31):** Blender fixes the camera, zones and seats; a Codex repaint with the concept as a style image gives the finish. Re-check the zones and the wall line on the painted plate, because the 3D checks can't see it.
-- **A theme is the table, not the UI:** `ArenaTableTheme` (`GameBoardTheme.swift`) holds the plate, whether the walnut lamp shows, the light on a card and the shadow under it. Walnut stays the default with no card shadow. A shadow follows the world's moon or sun. Install plates with `scripts/brand/install_arena_world.sh`; the choice is `magicmobile.arenaTable`, shown under Board on Arena only.
+- **A theme is the table, not the UI:** `ArenaTableTheme` (`GameBoardTheme.swift`) holds the plate, whether the walnut lamp shows, the light on a card and the shadow under it. Walnut has no card shadow; a world's shadow follows its moon or sun. Each game draws its table (`ArenaTableDraw`), Walnut included, and the only places to pick one are Quick Match's Advanced and a Custom Table (`ArenaTableRow`, on Arena only). Install plates with `scripts/brand/install_arena_world.sh`.
 
 ## Timing (the reference's pace)
 

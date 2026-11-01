@@ -50,6 +50,24 @@ struct BattlefieldBackdropArt: View {
     }
 }
 
+/// The table a game is played on. Every game draws one from its match ID, so a resumed game keeps its table and two phones
+/// in one match agree. Only Quick Match's Advanced and a Custom Table can choose instead: that pick is pinned to the match.
+enum ArenaTableDraw {
+    static let random = "random"
+    /// What those two screens show, remembered between games.
+    static let pickKey = "magicmobile.arenaTablePick"
+    /// The match the pinned table belongs to. Left empty, the pin holds for every game, which fixtures and screenshots use.
+    static let pinnedMatchKey = "magicmobile.arenaTableMatch"
+
+    static func table(match: String?, pinned: String, pinnedMatch: String) -> ArenaTableTheme {
+        if pinnedMatch.isEmpty || pinnedMatch == match, let table = ArenaTableTheme(rawValue: pinned) { return table }
+        guard let match else { return .walnut }
+        // FNV-1a, because Swift's own hash changes with every launch.
+        let hash = match.utf8.reduce(UInt64(0xcbf2_9ce4_8422_2325)) { ($0 ^ UInt64($1)) &* 0x0000_0100_0000_01B3 }
+        return ArenaTableTheme.allCases[Int(hash % UInt64(ArenaTableTheme.allCases.count))]
+    }
+}
+
 /// The Arena board's table themes (docs/ARENA_STYLE.md "Table worlds"): a theme holds the plate, its light and how cards
 /// sit in that light; the Arena UI stays the same on every table. Stored values will be shared with Android and the web.
 enum ArenaTableTheme: String, CaseIterable, Identifiable {
@@ -77,14 +95,17 @@ enum ArenaTableTheme: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The table pinned to a match (ArenaTableDraw.pinnedMatchKey).
     static let key = "magicmobile.arenaTable"
-    static let defaultValue = ArenaTableTheme.walnut.rawValue
-    static func resolved(_ value: String) -> Self { Self(rawValue: value) ?? .walnut }
+    static let defaultValue = ArenaTableDraw.random
 
     func plate(landscape: Bool) -> String {
         let name = self == .walnut ? "tavern-arena" : "arena-world-\(rawValue)"
         return "\(name)-\(landscape ? "landscape" : "portrait")"
     }
+
+    /// The table's own air (scripts/audio/build_world_ambience.py). The tavern has its music.
+    var ambience: String? { self == .walnut ? nil : "world-\(rawValue)" }
 
     /// The warm lamp drawn over the walnut mat. A world's lamps are in its plate.
     var hasTableLamp: Bool { self == .walnut }

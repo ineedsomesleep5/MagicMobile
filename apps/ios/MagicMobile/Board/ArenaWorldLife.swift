@@ -264,6 +264,7 @@ final class ArenaWorldLifeView: UIView {
         let before = state
         state = next
         if before?.dread != next.dread { setDread(next.dread) }
+        if before?.theme != next.theme { playAir() }
         rebuildIfNeeded()
         if before?.resting != next.resting || before?.hot != next.hot { settle() }
     }
@@ -276,7 +277,14 @@ final class ArenaWorldLifeView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        playAir()
         settle()
+    }
+
+    /// The table's sound plays while the table is on screen. It doesn't rest with the picture.
+    private func playAir() {
+        guard let state, state.band == .table else { return }
+        GameAudio.shared.playWorld(window == nil ? nil : state.theme.ambience)
     }
 
     @objc private func leftScreen() { link?.isPaused = true }
@@ -993,7 +1001,7 @@ enum ArenaWorldSprites {
 extension NativeGameView {
     /// The world answers the game: each effect's moment, sent straight to the world's layers.
     func arenaWorldReactions(_ scheduled: [ScheduledBoardFX], viewerID: String?) {
-        guard isArenaBoard, ArenaTableTheme.resolved(arenaTable) != .walnut else { return }
+        guard isArenaBoard, worldTable != .walnut else { return }
         var moments: [(at: TimeInterval, event: ArenaWorldEvent)] = []
         let leaving = scheduled.filter { if case .leftBattlefield = $0.event { return true } else { return false } }
         if leaving.count >= 3, let first = leaving.first { moments.append((first.delay, .wipe)) }

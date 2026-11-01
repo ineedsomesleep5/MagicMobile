@@ -163,3 +163,13 @@ Bin round 14). Voices now keep their tails (`library(gentle=True)`, up to 1.6x t
 Downloaded but unused so far: the rest of `pixabay-raw/` (135 clips) and `oga-raw/`, all on the Sound Bin. The
 Sonniss GDC 2026 bundle's Google Drive mirror honours HTTP Range (single members can be pulled from the 1.3-1.9 GB
 zips), but it throttled every request on 2026-10-19.
+
+## Arena world air
+
+`build_world_ambience.py` turns these into `world-<slug>.caf`. All come from the same Sonniss bundles and mirror.
+
+- GDC 2018 / Discover Oregon - Lava from the Kilauea Volcano in Hawaii / `Lava Lava Windy.WAV`, `Lava Lava Short Windy Crackles.WAV`
+- GDC 2017 / Articulated Sounds - 100 Fountains / `FOUNTAIN Small, Splashes of Multiple Squirts on the Ground, Close.wav`
+- GDC 2020 / Bluezone - Nightfall - Scary Sound Effects And Ambiences / `Bluezone_BC0255_ambience_texture_004.wav`
+- GDC 2019 / Borys Peter - Blowing winds / `wind blowing mike v1.wav`
+- GDC 2020 / Bluezone - Interception - Radio Transmission / `Bluezone_BC0266_radio_transmission_interference_noise_transmitter_008.wav`, `Bluezone_BC0266_radio_transmission_radio_chatter_voice_interference_002_03.wav`

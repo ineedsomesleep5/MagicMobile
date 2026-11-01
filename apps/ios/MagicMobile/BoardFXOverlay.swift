@@ -1038,34 +1038,6 @@ struct BoardModePicker: View {
     }
 }
 
-/// The Arena board's table (ArenaTableTheme). Hearth keeps its own table, so the choice shows only on Arena.
-struct ArenaTablePicker: View {
-    @AppStorage(BoardMode.key) private var mode = BoardMode.defaultValue
-    @AppStorage(ArenaTableTheme.key) private var table = ArenaTableTheme.defaultValue
-
-    var body: some View {
-        if BoardMode.resolved(mode) == .arena {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Theme").font(.system(size: 16, weight: .semibold, design: .serif))
-                // One row where the names fit at full size; on a narrow panel two rows, so none has to shrink.
-                let options = ArenaTableTheme.allCases.map { ($0.title, $0.rawValue) }
-                ViewThatFits(in: .horizontal) {
-                    themeRow(options).fixedSize(horizontal: true, vertical: false)
-                    VStack(spacing: 0) {
-                        themeRow(Array(options.prefix(3)))
-                        themeRow(Array(options.dropFirst(3)))
-                    }
-                }
-            }
-            .modifier(TavernSettingsPanel())
-        }
-    }
-
-    private func themeRow(_ options: [(String, String)]) -> some View {
-        ArenaSegmented(options: options.map { (label: $0.0, value: $0.1) }, selection: $table, identifier: "settings.arenaTable", stretch: true)
-    }
-}
-
 struct BoardEffectsPicker: View {
     /// Off where sound has a page of its own (the menu's Options).
     var includesAudio = true
@@ -1104,6 +1076,7 @@ struct BoardEffectsPicker: View {
 struct GameAudioSettings: View {
     @Environment(\.arenaOpenSoundLab) private var openSoundLab
     @AppStorage(GameAudio.effectsKey, store: MagicMobilePreferences.current) private var effects = true
+    @AppStorage(GameAudio.worldSoundsKey, store: MagicMobilePreferences.current) private var worldSounds = true
     @AppStorage(GameAudio.musicKey, store: MagicMobilePreferences.current) private var music = true
     @AppStorage(GameAudio.effectsVolumeKey, store: MagicMobilePreferences.current) private var effectsVolume = 0.9
     @AppStorage(GameAudio.musicVolumeKey, store: MagicMobilePreferences.current) private var musicVolume = GameAudio.defaultMusicVolume
@@ -1123,6 +1096,7 @@ struct GameAudioSettings: View {
             TavernToggle(title: "Effect Sounds", isOn: $effects, identifier: "settings.boardSounds")
             if effects {
                 TavernSlider(value: $effectsVolume, label: "Effects volume", identifier: "settings.effectsVolume")
+                TavernToggle(title: "World Sounds", isOn: $worldSounds, identifier: "settings.worldSounds")
             }
             TavernToggle(title: "Music", isOn: musicOn, identifier: "settings.music")
             if musicOn.wrappedValue {
@@ -1141,7 +1115,11 @@ struct GameAudioSettings: View {
                 .accessibilityIdentifier("settings.soundLab")
             }
         }
-        .onChange(of: effects) { _, on in if on { GameAudio.shared.play(.uiToggle) } }
+        .onChange(of: effects) { _, on in
+            GameAudio.shared.settingsChanged()
+            if on { GameAudio.shared.play(.uiToggle) }
+        }
+        .onChange(of: worldSounds) { _, _ in GameAudio.shared.settingsChanged() }
         .onChange(of: music) { _, _ in GameAudio.shared.settingsChanged() }
         .onChange(of: musicVolume) { _, _ in GameAudio.shared.settingsChanged() }
         .onChange(of: effectsVolume) { _, _ in GameAudio.shared.play(.uiTick) }

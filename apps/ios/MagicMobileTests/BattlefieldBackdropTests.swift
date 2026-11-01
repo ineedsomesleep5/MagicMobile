@@ -35,18 +35,31 @@ final class BattlefieldBackdropTests: XCTestCase {
     }
 
     func testTableThemesFallBackToWalnutAndWalnutStaysAsItWas() {
-        XCTAssertEqual(ArenaTableTheme.resolved("radio-night"), .radioNight)
-        XCTAssertEqual(ArenaTableTheme.resolved("utopia"), .utopia)
-        XCTAssertEqual(ArenaTableTheme.resolved("halloween"), .halloween)
-        XCTAssertEqual(ArenaTableTheme.resolved("volcano"), .volcano)
-        XCTAssertEqual(ArenaTableTheme.resolved("gone"), .walnut)
-        XCTAssertEqual(ArenaTableTheme.defaultValue, "walnut")
+        XCTAssertEqual(ArenaTableTheme.defaultValue, ArenaTableDraw.random)
         XCTAssertTrue(ArenaTableTheme.utopia.isBright)
         XCTAssertFalse(ArenaTableTheme.walnut.isBright)
         XCTAssertNil(ArenaTableTheme.walnut.cardShadow)
         XCTAssertTrue(ArenaTableTheme.walnut.hasTableLamp)
         XCTAssertEqual(ArenaTableTheme.walnut.plate(landscape: true), "tavern-arena-landscape")
         XCTAssertEqual(ArenaTableTheme.walnut.plate(landscape: false), "tavern-arena-portrait")
+    }
+
+    func testEachGameDrawsItsOwnTableAndKeepsIt() {
+        let draw = { (match: String) in ArenaTableDraw.table(match: match, pinned: ArenaTableDraw.random, pinnedMatch: "") }
+        XCTAssertEqual(draw("match-a"), draw("match-a"), "A resumed game keeps its table")
+        var drawn: [ArenaTableTheme: Int] = [:]
+        for index in 0..<5000 { drawn[draw("\(UUID())-\(index)"), default: 0] += 1 }
+        XCTAssertEqual(drawn.count, ArenaTableTheme.allCases.count)
+        for (table, count) in drawn { XCTAssertGreaterThan(count, 800, "\(table) came up too rarely") }
+    }
+
+    func testAPickedTableStaysWithItsOwnMatch() {
+        let pinned = { (match: String?) in ArenaTableDraw.table(match: match, pinned: "volcano", pinnedMatch: "chosen") }
+        XCTAssertEqual(pinned("chosen"), .volcano)
+        let others = Set((0..<200).map { pinned("ranked-\($0)") })
+        XCTAssertGreaterThan(others.count, 1, "The next game draws again")
+        XCTAssertEqual(ArenaTableDraw.table(match: "any", pinned: "volcano", pinnedMatch: ""), .volcano, "Fixtures pin every game")
+        XCTAssertEqual(ArenaTableDraw.table(match: nil, pinned: ArenaTableDraw.random, pinnedMatch: ""), .walnut)
     }
 
     func testEveryTableThemeShipsBothPlates() throws {

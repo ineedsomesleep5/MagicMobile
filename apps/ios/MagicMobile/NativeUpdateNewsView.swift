@@ -171,15 +171,16 @@ struct ArenaInboxMessage: View {
 struct UpdateNewsMessage: Identifiable {
     let id: String
     let title: String
-    /// The day in October 2026 the release notes were written.
+    /// The day in `month` of 2026 the release notes were written.
     let day: Int
+    var month = 10
     let art: String
     let colors: [String]
     let lede: String
     let notes: [String]
 
     var date: String {
-        let components = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 10, day: day)
+        let components = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: month, day: day)
         return components.date?.formatted(date: .long, time: .omitted) ?? ""
     }
 }
@@ -187,6 +188,14 @@ struct UpdateNewsMessage: Identifiable {
 /// The releases' notes, newest first, dated by the day they were written (git history of this file).
 enum UpdateNews {
     static let messages: [UpdateNewsMessage] = [
+        UpdateNewsMessage(id: "living-worlds", title: String(localized: "Living worlds"), day: 1, month: 11,
+                          art: "Valakut, the Molten Pinnacle", colors: ["R"],
+                          lede: String(localized: "Four new tables that move, sound alive and answer the game: Volcano, Utopia, Halloween and Radio Night."),
+                          notes: [
+                            String(localized: "Every game draws a table at random. To pick one, choose Advanced in Quick Match or set up a Custom Table."),
+                            String(localized: "Tap a lit corner of the table and it answers."),
+                            String(localized: "World Sounds has its own switch in Options, under Audio."),
+                          ]),
         UpdateNewsMessage(id: "own-art", title: String(localized: "Your own card art"), day: 27,
                           art: "Zur the Enchanter", colors: ["W", "U", "B"],
                           lede: String(localized: "Put your own picture on any card in Deck Studio. It becomes the whole card, follows you to every phone and browser you sign in on, and only you see it."),

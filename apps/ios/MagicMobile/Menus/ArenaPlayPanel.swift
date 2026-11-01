@@ -126,6 +126,43 @@ struct ArenaPlayPanelModel {
     }
 }
 
+/// The table for a game you set up yourself: Random, or one by name. Hearth keeps its own table, so this shows only on Arena.
+struct ArenaTableRow: View {
+    @AppStorage(ArenaTableDraw.pickKey) private var pick = ArenaTableDraw.random
+    @AppStorage(BoardMode.key) private var mode = BoardMode.defaultValue
+
+    var body: some View {
+        if BoardMode.resolved(mode) == .arena {
+            let chosen = ArenaTableTheme(rawValue: pick)
+            TavernMenu(arrowEdge: .top, scrollHeight: 300, scrollAnchor: AnyHashable(pick)) {
+                TavernMenuItem(title: String(localized: "Random"), systemImage: chosen == nil ? "diamond.fill" : nil) {
+                    pick = ArenaTableDraw.random
+                }
+                .id(AnyHashable(ArenaTableDraw.random))
+                ForEach(ArenaTableTheme.allCases) { table in
+                    TavernMenuItem(title: table.title, systemImage: table == chosen ? "diamond.fill" : nil) { pick = table.rawValue }
+                        .id(AnyHashable(table.rawValue))
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(String(localized: "Table")).font(ArenaMenuStyle.font(14, .medium)).foregroundStyle(ArenaMenuStyle.text)
+                        .lineLimit(1).fixedSize()
+                    Spacer(minLength: 6)
+                    Text(chosen?.title ?? String(localized: "Random")).font(ArenaMenuStyle.font(13, .bold)).foregroundStyle(ArenaMenuStyle.gold)
+                        .lineLimit(1).minimumScaleFactor(0.75)
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .heavy)).foregroundStyle(ArenaMenuStyle.gold.opacity(0.8))
+                }
+                .padding(.horizontal, 4)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1) }
+                .contentShape(Rectangle())
+            }
+            .accessibilityLabel(String(localized: "Table, \(chosen?.title ?? String(localized: "Random"))"))
+            .accessibilityIdentifier("table.pick")
+        }
+    }
+}
+
 /// Arena's Play panel (Caleb, 2026-10-22): the room darkened, your decks as boxes on the left, and on the right the
 /// blade, lit along its seam, with the tabs, the ways to play, their options and the Play plaque. In portrait the
 /// blade is a sheet along the bottom. A search waits inside the blade: Play turns into Cancel under a timer.
@@ -564,6 +601,7 @@ struct ArenaPlayBlade: View {
                 }
             }
             opponentDeckRow
+            ArenaTableRow()
         }
         HStack(spacing: 8) {
             if advanced {

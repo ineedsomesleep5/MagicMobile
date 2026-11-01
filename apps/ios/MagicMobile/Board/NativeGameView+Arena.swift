@@ -45,7 +45,7 @@ extension NativeGameView {
         let canvas = ArenaCanvas(screen: screen)
         return ZStack {
             ArenaTableBackdrop()
-            ArenaWorldLife(theme: ArenaTableTheme.resolved(arenaTable), dread: arenaWorldDread(human), covered: arenaScreenUp(snapshot))
+            ArenaWorldLife(theme: worldTable, dread: arenaWorldDread(human), covered: arenaScreenUp(snapshot))
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture { location in
@@ -66,7 +66,7 @@ extension NativeGameView {
         .persistentSystemOverlays(.hidden)
         .environment(\.tavernBoard, true)
         .environment(\.arenaBoard, true)
-        .environment(\.arenaTableTheme, ArenaTableTheme.resolved(arenaTable))
+        .environment(\.arenaTableTheme, worldTable)
         .environment(\.arenaTableLean, ArenaTableLean(canvas: canvas))
         .environment(\.arenaSafeArea, ArenaSafeArea(insets: rootProxy.safeAreaInsets))
         // Every new answer from XMage steps the helpers: its revision, a new prompt or the pending answer clearing.
@@ -1208,6 +1208,11 @@ extension NativeGameView {
     private func arenaControlsOnTop(snapshot: GameSnapshot) -> Bool {
         InlinePaymentPromptState.isActive(in: snapshot) || !snapshot.stackTopFirst.isEmpty || arenaCombatPhase(snapshot) != nil
             || !GameBoardInteractionState.boardTargetableIds(for: snapshot).isEmpty
+    }
+
+    /// This game's table.
+    var worldTable: ArenaTableTheme {
+        ArenaTableDraw.table(match: snapshot?.id, pinned: pinnedTable, pinnedMatch: pinnedTableMatch)
     }
 
     /// How close the viewer is to losing, for the world's mood: it gathers from ten life.
