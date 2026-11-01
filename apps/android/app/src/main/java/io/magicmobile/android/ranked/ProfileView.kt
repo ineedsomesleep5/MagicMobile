@@ -121,6 +121,7 @@ fun PlayerProfileScreen(store: PlayerRecordStore, account: PlayerAccount, player
     val file = store.file
     val stats = remember(file.matches) { PlayerStats(file.matches) }
     val unlocked = remember(file.matches, file.rank) { Achievement.unlocked(file.matches, file.rank) }
+    val earnedTrophies = unlocked.size + account.trophies.count { it.awardedAt != null }
     var deckFilter by remember { mutableStateOf<String?>(null) }
     var resultFilter by remember { mutableStateOf(ResultFilter.ALL) }
     var showAll by remember { mutableStateOf(false) }
@@ -152,9 +153,11 @@ fun PlayerProfileScreen(store: PlayerRecordStore, account: PlayerAccount, player
     /** The rest of the player's story, under the season rank. */
     @Composable
     fun ColumnScope.playerStory() {
-        if (account.awards.isNotEmpty()) Column(Modifier.leatherCard().testTag("profile.awards"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Trophies stand on their own shelf; they stay in `account.awards` for the ceremony.
+        val awards = account.awards.filterNot { it.shelf }
+        if (awards.isNotEmpty()) Column(Modifier.leatherCard().testTag("profile.awards"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ProfileSectionTitle("Awards")
-            AwardShelf(account.awards)
+            AwardShelf(awards)
         }
         SeasonCard(store, summary)
         SeasonBadgesCard(store.file.rank)
@@ -175,8 +178,8 @@ fun PlayerProfileScreen(store: PlayerRecordStore, account: PlayerAccount, player
             ColorPie(summary.colors)
         }
         Column(Modifier.leatherCard().testTag("profile.achievements"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            ProfileSectionTitle("Trophies", "${unlocked.size}/${Achievement.entries.size}")
-            TrophyShelf(unlocked)
+            ProfileSectionTitle("Trophies", "$earnedTrophies/${Achievement.entries.size + account.trophies.size}")
+            TrophyShelf(unlocked, account.trophies)
         }
         val visible = scoped.filter { resultFilter.includes(it.outcome) }
         Column(Modifier.leatherCard().testTag("profile.history"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -215,7 +218,7 @@ fun PlayerProfileScreen(store: PlayerRecordStore, account: PlayerAccount, player
                                     Column(Modifier.weight(1f).fillMaxHeight().arenaScrollFade().verticalScroll(rememberScrollState()).testTag("lobby.scroll")
                                         .padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                         nameBlock(34f)
-                                        Identity(store, unlocked.size)
+                                        Identity(store, earnedTrophies)
                                         playerStory()
                                     }
                                     ProfileHero(store, wide = true, nameBlock = { nameBlock(30f) }, Modifier.width(330.dp).fillMaxHeight().padding(bottom = 4.dp),
@@ -226,7 +229,7 @@ fun PlayerProfileScreen(store: PlayerRecordStore, account: PlayerAccount, player
                                     .padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                     ProfileHero(store, wide = false, nameBlock = { nameBlock(30f) }, Modifier.fillMaxWidth().height(300.dp),
                                         pickPortrait = { choose(Chooser.PICTURE) }, pickTitle = { choose(Chooser.TITLE) })
-                                    Identity(store, unlocked.size)
+                                    Identity(store, earnedTrophies)
                                     playerStory()
                                 }
                             }

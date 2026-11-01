@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -64,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 import io.magicmobile.android.CardArtwork
 import io.magicmobile.android.game.Achievement
+import io.magicmobile.android.game.Award
 import io.magicmobile.android.game.PlayMode
 import io.magicmobile.android.game.PlayerStats
 import io.magicmobile.android.game.ProfileGame
@@ -85,6 +88,7 @@ import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.TavernMaterial
 import io.magicmobile.android.ui.TavernPalette
 import io.magicmobile.android.ui.TavernTag
+import io.magicmobile.android.ui.colorAdjust
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
@@ -426,33 +430,28 @@ internal fun achievementIcon(a: Achievement): String = when (a) {
     Achievement.GIANT_SLAYER -> "bolt.shield.fill"; Achievement.QUICK_DRAW -> "hare.fill"; Achievement.HUMAN_WIN -> "person.2.fill"
 }
 
-/** The achievements as brass coins on a wooden shelf; earned ones shine, the rest wait in the dark. Tapping one reads what it is for. */
+/** One coin on the shelf: a built-in achievement, or a trophy from the server. */
+private sealed interface TrophyCoin {
+    val note: String
+    data class Local(val achievement: Achievement) : TrophyCoin { override val note get() = "${achievement.title}: ${achievement.detail}" }
+    data class Server(val award: Award) : TrophyCoin { override val note get() = "${award.name}: ${award.detail}" }
+}
+
+/**
+ * The achievements as brass coins on a wooden shelf, then the server's trophies (mm_trophies); earned ones shine, the rest
+ * wait in the dark. Tapping one reads what it is for.
+ */
 @Composable
-fun TrophyShelf(unlocked: Set<Achievement>) {
-    var chosen by remember { mutableStateOf<Achievement?>(null) }
+fun TrophyShelf(unlocked: Set<Achievement>, server: List<Award> = emptyList()) {
+    var chosen by remember { mutableStateOf<TrophyCoin?>(null) }
+    val coins = Achievement.entries.map<Achievement, TrophyCoin> { TrophyCoin.Local(it) } + server.map { TrophyCoin.Server(it) }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        for (row in Achievement.entries.chunked(5)) {
+        for (row in coins.chunked(5)) {
             Column {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom) {
-                    for (achievement in row) {
-                        val earned = achievement in unlocked
-                        Column(Modifier.weight(1f).clickable { chosen = achievement }.padding(bottom = 2.dp)
-                            .semantics(mergeDescendants = true) {
-                                contentDescription = "${achievement.title}. ${achievement.detail}"
-                                stateDescription = if (earned) "Earned" else "Locked"; role = Role.Button
-                            }.testTag("profile.trophy.${achievement.name}"),
-                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Box(Modifier.size(46.dp).glow(if (earned) ProfilePalette.win.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f), if (earned) 5.dp else 2.dp, 23.dp)
-                                .background(if (earned) Brush.radialGradient(listOf(rgb(1.0, 0.9, 0.62), rgb(0.72, 0.48, 0.16), rgb(0.36, 0.22, 0.08)))
-                                    else Brush.linearGradient(listOf(Color.Black.copy(alpha = 0.5f), Color.Black.copy(alpha = 0.5f))), CircleShape)
-                                .border(2.dp, if (earned) TavernPalette.brassLine else Brush.linearGradient(listOf(Color.Gray.copy(alpha = 0.5f), Color.Gray.copy(alpha = 0.5f))), CircleShape),
-                                contentAlignment = Alignment.Center) {
-                                SfImage(achievementIcon(achievement), if (earned) rgb(0.30, 0.15, 0.04) else Color.Gray.copy(alpha = 0.55f), 18.dp)
-                            }
-                            Box(Modifier.height(24.dp).alpha(if (earned) 0.95f else 0.45f)) {
-                                FitText(achievement.title, ArenaMenuStyle.font(9f, SfWeight.heavy), color = parchment, maxLines = 2, minimumScale = 0.7f, textAlign = TextAlign.Center)
-                            }
-                        }
+                    for (coin in row) when (coin) {
+                        is TrophyCoin.Local -> AchievementCoin(coin.achievement, coin.achievement in unlocked) { chosen = coin }
+                        is TrophyCoin.Server -> ServerTrophyCoin(coin.award) { chosen = coin }
                     }
                     repeat(5 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
@@ -460,8 +459,51 @@ fun TrophyShelf(unlocked: Set<Achievement>) {
                     .background(Brush.verticalGradient(listOf(rgb(0.55, 0.34, 0.16), rgb(0.28, 0.15, 0.06)))))
             }
         }
-        Text(chosen?.let { "${it.title}: ${it.detail}" } ?: "Tap a coin to read what it is for.", Modifier.fillMaxWidth().defaultMinSize(minHeight = 32.dp).alpha(if (chosen == null) 0.55f else 0.9f)
+        Text(chosen?.note ?: "Tap a coin to read what it is for.", Modifier.fillMaxWidth().defaultMinSize(minHeight = 32.dp).alpha(if (chosen == null) 0.55f else 0.9f)
             .testTag("profile.trophyNote"), color = parchment, style = ArenaMenuStyle.font(12f, SfWeight.semibold))
+    }
+}
+
+@Composable
+private fun RowScope.AchievementCoin(achievement: Achievement, earned: Boolean, choose: () -> Unit) {
+    Column(Modifier.weight(1f).clickable(onClick = choose).padding(bottom = 2.dp)
+        .semantics(mergeDescendants = true) {
+            contentDescription = "${achievement.title}. ${achievement.detail}"
+            stateDescription = if (earned) "Earned" else "Locked"; role = Role.Button
+        }.testTag("profile.trophy.${achievement.name}"),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Box(Modifier.size(46.dp).glow(if (earned) ProfilePalette.win.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f), if (earned) 5.dp else 2.dp, 23.dp)
+            .background(if (earned) Brush.radialGradient(listOf(rgb(1.0, 0.9, 0.62), rgb(0.72, 0.48, 0.16), rgb(0.36, 0.22, 0.08)))
+                else Brush.linearGradient(listOf(Color.Black.copy(alpha = 0.5f), Color.Black.copy(alpha = 0.5f))), CircleShape)
+            .border(2.dp, if (earned) TavernPalette.brassLine else Brush.linearGradient(listOf(Color.Gray.copy(alpha = 0.5f), Color.Gray.copy(alpha = 0.5f))), CircleShape),
+            contentAlignment = Alignment.Center) {
+            SfImage(achievementIcon(achievement), if (earned) rgb(0.30, 0.15, 0.04) else Color.Gray.copy(alpha = 0.55f), 18.dp)
+        }
+        Box(Modifier.height(24.dp).alpha(if (earned) 0.95f else 0.45f)) {
+            FitText(achievement.title, ArenaMenuStyle.font(9f, SfWeight.heavy), color = parchment, maxLines = 2, minimumScale = 0.7f, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+/** A trophy from the server: its art, in the dark until earned. */
+@Composable
+private fun RowScope.ServerTrophyCoin(award: Award, choose: () -> Unit) {
+    val earned = award.awardedAt != null
+    Column(Modifier.weight(1f).clickable(onClick = choose).padding(bottom = 2.dp)
+        .semantics(mergeDescendants = true) {
+            contentDescription = "${award.name}. ${award.detail}"
+            stateDescription = if (earned) "Earned" else "Locked"; role = Role.Button
+        }.testTag("profile.trophy.${award.id}"),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Box(Modifier.size(46.dp), contentAlignment = Alignment.Center) {
+            // These layers cut at their bounds, so they're larger than the medal to keep its glow.
+            Box(Modifier.requiredSize(78.dp).colorAdjust(saturation = if (earned) 1f else 0f).alpha(if (earned) 1f else 0.32f), contentAlignment = Alignment.Center) {
+                AwardMedal(award, 46.dp)
+            }
+        }
+        Box(Modifier.height(24.dp).alpha(if (earned) 0.95f else 0.45f)) {
+            FitText(award.name, ArenaMenuStyle.font(9f, SfWeight.heavy), color = parchment, maxLines = 2, minimumScale = 0.7f, textAlign = TextAlign.Center)
+        }
     }
 }
 

@@ -42,5 +42,20 @@ class AppConfigTest {
         assertEquals(Award.GOLD, awards[1].tint)
         assertEquals(3, awards[1].rarity)
         assertEquals(true, awards[1].seen)
+        assertEquals(false, awards[0].shelf)
+    }
+
+    /** mm_trophies' rows: every trophy, `awardedAt` null until earned. mm_my_awards marks the same ones with `shelf`. */
+    @Test fun trophiesParseWhatTheServerSends() {
+        val shelf = Award.parse(Json.parseToJsonElement("""[
+            {"id": "regular", "name": "Regular", "description": "Play 100 games.", "imageUrl": "https://example.com/r.png",
+             "tint": "#C9A15A", "rarity": 1, "awardedAt": "2026-10-30T17:55:30.075436+00:00"},
+            {"id": "lifer", "name": "Lifer", "description": "Play 500 games.", "tint": "#FFCC5C", "rarity": 2, "awardedAt": null}]"""))
+        assertEquals(listOf("regular", "lifer"), shelf.map { it.id })
+        assertEquals(1793382930075L, shelf[0].awardedAt)
+        assertEquals(null, shelf[1].awardedAt)
+        val mine = Award.parse(Json.parseToJsonElement("""[{"id": "regular", "name": "Regular", "shelf": true, "seen": false}]"""))
+        assertEquals(true, mine[0].shelf)
+        assertEquals(false, mine[0].seen)
     }
 }

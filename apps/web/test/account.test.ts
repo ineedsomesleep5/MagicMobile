@@ -436,6 +436,36 @@ describe("PlayerAccount", () => {
     expect(h.account.state.isSigningIn).toBe(false);
   });
 
+  it("reads the award rows and the Trophies shelf, and an old server just has no trophies", async () => {
+    const trophy = { id: "regular", name: "Regular", description: "Play 100 games.", awardedAt: null };
+    const h = harness(profileServer({ mm_my_awards: () => ok([{ id: "mythic", name: "Mythic" }]), mm_trophies: () => ok([trophy]) }));
+    await h.account.start();
+    await h.account.refreshAwards();
+    expect(h.account.state.awards.map((a) => a.id)).toEqual(["mythic"]);
+    expect(h.account.state.trophies.map((a) => a.id)).toEqual(["regular"]);
+
+    const old = harness(profileServer({ mm_my_awards: () => ok([{ id: "mythic", name: "Mythic" }]) }));
+    await old.account.start();
+    await old.account.refreshAwards();
+    expect(old.account.state.awards.map((a) => a.id)).toEqual(["mythic"]);
+    expect(old.account.state.trophies).toEqual([]);
+    expect(old.account.state.notice).toBeUndefined();
+  });
+
+  it("keeps the shelf through a failed call, and clears it on sign-out", async () => {
+    let up = true;
+    const h = harness(profileServer({
+      mm_my_awards: () => ok([]), mm_trophies: () => (up ? ok([{ id: "regular", name: "Regular" }]) : fail("down", 500)),
+    }), (path) => (path === "/auth/v1/signup" ? tokens("N1") : { status: 500 }));
+    await h.account.start();
+    await h.account.refreshAwards();
+    up = false;
+    await h.account.refreshAwards();
+    expect(h.account.state.trophies.map((a) => a.id)).toEqual(["regular"]);
+    await h.account.signOut();
+    expect(h.account.state.trophies).toEqual([]);
+  });
+
   it("signs out to a fresh anonymous profile", async () => {
     const h = harness(profileServer(), (path) => (path === "/auth/v1/signup" ? tokens("N1") : { status: 500 }));
     await h.account.start();

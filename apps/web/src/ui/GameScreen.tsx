@@ -24,8 +24,8 @@ import { useTable } from "./App";
 import { ArenaCard, type ArenaCardProps } from "./arena/ArenaCard";
 import { AmountPill, Browser, browserKind, cardNamed, CommanderBrowser, type Send, StackBrowser, ZoneBrowser } from "./arena/Browsers";
 import {
-  ARENA, BASE_GEOMETRY, battlefieldPlaces, drops, geometry, type Geometry, handPlaces, mulliganPlaces, opponentHandPlaces, phaseStrip, type Place, scrubHand, stackPlace,
-  STAGE,
+  ARENA, BASE_GEOMETRY, battlefieldPlaces, drops, geometry, type Geometry, handPlaces, mulliganPlaces, opponentHandPlaces, phaseStrip, pileLean, type Place, scrubHand,
+  stackPlace, STAGE,
 } from "./arena/layout";
 import { isStackAbility } from "./arena/AbilityCard";
 import { AutoPayRun, autoPayReady, manaUndoActions, paymentPrompt } from "./arena/autoPayRun";
@@ -1036,12 +1036,14 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
     // their count lozenges (Caleb, 2026-10-21, on iOS: the badges ran over the next pile).
     const anchor = mine ? ARENA.viewerMedallion.x : ARENA.opponentPiles.library.x;
     const at = (p: { x: number; y: number }) => ({ x: anchor + (p.x - anchor) * geo.grow + shift, y: mine ? B(p.y) : T(p.y) });
+    // Across the board where it really stands, so a further opponent's piles, shifted left, lean their own way.
+    const lean = (p: { x: number; y: number }) => pileLean({ x: at(p).x, y: p.y });
     const size = { w: spots.size.w * geo.grow, h: spots.size.h * geo.grow };
     const whose = mine ? "Your" : `${player.displayName ?? "Their"}’s`;
     const open = (zone: "graveyard" | "exile") => () => setZone({ title: `${whose} ${zone}`, cards: player.zones[zone] });
     return (
       <div key={`piles-${player.playerId}`}>
-        <ArenaPile {...at(spots.library)} size={size} count={player.zones.libraryCount ?? 0} kind="library" label={`${whose} library`} />
+        <ArenaPile {...at(spots.library)} pile={lean(spots.library)} size={size} count={player.zones.libraryCount ?? 0} kind="library" label={`${whose} library`} />
         {(() => {
           // A revealed top card (Courser of Kruphix, Future Sight…) lies face up on the deck (TopOfLibraryCard), lit when you can play it.
           const top = player.zones.library[0];
@@ -1058,10 +1060,10 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
             </button>
           );
         })()}
-        <ArenaPile {...at(spots.graveyard)} size={size} count={player.zones.graveyard.length} kind="graveyard" label={`${whose} graveyard`}
+        <ArenaPile {...at(spots.graveyard)} pile={lean(spots.graveyard)} size={size} count={player.zones.graveyard.length} kind="graveyard" label={`${whose} graveyard`}
           top={player.zones.graveyard.at(-1)} onOpen={open("graveyard")} reader={reader} />
         {player.zones.exile.length > 0 && (
-          <ArenaPile {...at(spots.exile)} size={size} count={player.zones.exile.length} kind="exile" label={`${whose} exile`}
+          <ArenaPile {...at(spots.exile)} pile={lean(spots.exile)} size={size} count={player.zones.exile.length} kind="exile" label={`${whose} exile`}
             top={player.zones.exile.at(-1)} onOpen={open("exile")} reader={reader} />
         )}
       </div>

@@ -7,11 +7,13 @@
 import type { ZoneCard } from "../../core/models";
 import { cardImageURL } from "../cardArt";
 import { type CardReader, readProps } from "./inspectGesture";
-import { leanTransform, pileThickness } from "./layout";
+import { leanTransform, type PileLean, pileThickness } from "./layout";
 import { CardBack, CountBadge } from "./Symbols";
 
-export function ArenaPile({ x, y, size, count, top, kind, label, onOpen, reader }: {
+export function ArenaPile({ x, y, size, count, top, kind, label, onOpen, reader, pile }: {
   x: number; y: number; size: { w: number; h: number }; count: number;
+  /** Which way it leans and how tall it stands (pileLean). */
+  pile: PileLean;
   /** The face-up top card (graveyard, exile); a library shows its back. */
   top?: ZoneCard;
   kind: "library" | "graveyard" | "exile";
@@ -20,10 +22,10 @@ export function ArenaPile({ x, y, size, count, top, kind, label, onOpen, reader 
   /** Right-click or a held press reads the top card. */
   reader?: CardReader;
 }) {
-  const { thickness, layers } = pileThickness(count, size.h);
+  const { thickness, layers } = pileThickness(count, size.h, pile.rise);
   const left = x - size.w / 2;
   const lean = { transform: leanTransform() };
-  const lift = (i: number) => `translate(${(-thickness * 0.22 * i / Math.max(layers, 1)).toFixed(2)}px, ${(-thickness * i / Math.max(layers, 1)).toFixed(2)}px)`;
+  const lift = (i: number) => `translate(${(thickness * pile.drift * i / Math.max(layers, 1)).toFixed(2)}px, ${(-thickness * i / Math.max(layers, 1)).toFixed(2)}px)`;
   return (
     <button type="button" className={`apile ${kind} ${count === 0 ? "empty" : ""}`} disabled={!onOpen || count === 0}
       style={{ left, top: y - size.h / 2, width: size.w, height: size.h, fontSize: size.w / 15 }}
@@ -39,7 +41,7 @@ export function ArenaPile({ x, y, size, count, top, kind, label, onOpen, reader 
           return <i key={i} className="sliver" style={{ background: `hsl(38 32% ${(brightness * 84).toFixed(0)}%)`, transform: lift(i) }} />;
         })}
         {count > 0 && (
-          <div className="ptop" style={{ transform: `translate(${(-thickness * 0.22).toFixed(2)}px, ${(-thickness).toFixed(2)}px)` }}>
+          <div className="ptop" style={{ transform: `translate(${(thickness * pile.drift).toFixed(2)}px, ${(-thickness).toFixed(2)}px)` }}>
             {kind === "library" || !top ? <CardBack /> : (
               <>
                 <img src={cardImageURL(top.card.name, "normal")} alt="" crossOrigin="anonymous" draggable={false} />

@@ -21,6 +21,20 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-11-01 (Claude, trophies on Android and web): the same scroller clips differently on each platform. iOS cuts all
+  four sides. CSS `overflow-x: auto` makes `overflow-y` clip too, at the padding box. Compose's `horizontalScroll` cuts only
+  left and right and leaves 30 dp above and below (`clipScrollableContainer`, read from foundation 1.7.6), so the season
+  shelf's glow clipped on iOS and web but not Android. **Rule:** check the platform before copying a glow fix. Compose's
+  `Modifier.padding` also refuses negative values, so the iOS fix doesn't port as written. On Android, `colorAdjust` and
+  `alpha` layers cut at the box's bounds: a greyed medal's layer is 78 dp around a 46 dp medal to keep its glow. On web,
+  `.mprofilecoin > span` styles the label and would also catch `AwardMedal`'s `<span>`, so the medal sits in an `<em>`.
+  Filtering `shelf` rows out of the Awards row must decide the card too, or a player with only trophies gets an empty card.
+  `apps/web/node_modules` can be a symlink into another checkout, where `npm ci` would rewrite that checkout's packages.
+  In a fresh worktree, vitest fails with ENOENT on `public/generated` until `python3 apps/web/scripts/prepare_data.py` runs
+  (offline, git-ignored). Put `env JAVA_HOME=...` before `zsh scripts/dev/heavy.sh`, not after `--`, so `--stop-gradle` finds
+  Java. `heavy.sh`'s lock isn't first come, first served: a later job can jump ahead of one already waiting.
+  Where: `ranked/ProfileVisuals.kt`, `apps/web/src/ui/menus/profile.css`.
+
 - 2026-10-30 (Claude, profile frame rate): `.shadow` on a view that holds other views is worked out from all of them, again
   on every frame a scroll moves it, and `ArenaGlassPanel` did that to every card on the profile's long plain `VStack`.
   **Rule:** a panel's shadow goes on its background shape; a shadow on a picture with transparency gets flattened with

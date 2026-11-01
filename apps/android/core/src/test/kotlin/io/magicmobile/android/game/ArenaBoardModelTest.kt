@@ -32,6 +32,17 @@ class ArenaBoardModelTest {
         assertFalse(CardFramesPreference.arenaDefault)
     }
 
+    /** Piles lean away from the point under the camera, whichever side they stand on, and far ones stand shorter. */
+    @Test fun pilesLeanAwayFromTheMiddleOfTheTable() {
+        val wide = ArenaLayout.landscapeLayout
+        assertTrue(wide.pileLean(wide.opponentLibrary).drift > 0)
+        assertTrue(wide.pileLean(wide.viewerLibrary).drift < 0)
+        assertTrue(wide.pileLean(wide.opponentLibrary).rise < 1)
+        assertEquals(1f, wide.pileLean(wide.viewerLibrary).rise)
+        val tall = ArenaLayout.portraitLayout
+        assertTrue(tall.pileLean(tall.opponentLibrary).drift < 0)
+    }
+
     @Test fun needReadsXMagePaymentText() {
         val need = ArenaAutoPay.need("Pay {2}{R}{R}")
         assertEquals(2, need.generic)
