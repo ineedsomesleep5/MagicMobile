@@ -399,7 +399,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         // A ranked game goes up after its result counts on the server, which records its rank points then.
         record.didRecord = { match -> if (match.mode != io.magicmobile.android.game.PlayMode.RANKED) scope.launch { upload() } }
         vm.account.afterRefresh = { vm.account.syncRank(record); upload() }
-        // Debug: MAGICMOBILE_UI_TEST_CEREMONY=tierUp|tierDown|divisionUp|divisionDown plays a rank moment (as on iOS).
+        // Debug: MAGICMOBILE_UI_TEST_CEREMONY=tierUp|tierDown|divisionUp|divisionDown|placed plays a rank moment (as on iOS).
         val P = io.magicmobile.android.game.RankPosition
         val win = io.magicmobile.android.game.RankOutcome.WIN; val loss = io.magicmobile.android.game.RankOutcome.LOSS
         when (LaunchEnvironment["MAGICMOBILE_UI_TEST_CEREMONY"]) {
@@ -407,6 +407,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             "tierDown" -> io.magicmobile.android.game.RankChange(loss, P.make(io.magicmobile.android.game.RankTier.GOLD, 4, 0), P.make(io.magicmobile.android.game.RankTier.SILVER, 1, 3), emptyList())
             "divisionUp" -> io.magicmobile.android.game.RankChange(win, P.make(io.magicmobile.android.game.RankTier.DIAMOND, 3, 3), P.make(io.magicmobile.android.game.RankTier.DIAMOND, 2, 0), emptyList())
             "divisionDown" -> io.magicmobile.android.game.RankChange(loss, P.make(io.magicmobile.android.game.RankTier.PLATINUM, 2, 0), P.make(io.magicmobile.android.game.RankTier.PLATINUM, 3, 3), emptyList())
+            "placed" -> io.magicmobile.android.game.RankChange(win, P.make(io.magicmobile.android.game.RankTier.SILVER, 2, 0), P.make(io.magicmobile.android.game.RankTier.GOLD, 2, 0), emptyList(), placementLeft = 0)
             else -> null
         }?.let { ceremony = it }
     }
@@ -456,7 +457,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
 
     fun makeVersusIntro(): Pair<VersusSeat, List<VersusSeat>> {
         val name = playerDisplayName.trim()
-        val tier = record.file.rank.position.tier
+        val tier = record.file.rank.shownPosition.tier
         val you = VersusSeat("you", name.ifEmpty { "You" }, selectedDeck?.commanderName, tier)
         // A table knows everyone's commander before its first snapshot shows the command zones.
         val tableSeats = (setup.multiplayer as? RelayTable)?.tableSeats.orEmpty()
@@ -652,7 +653,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun findRankedMatch() {
         val deck = selectedDeck ?: return
         val bracket = selectedDeckBracket ?: return
-        if (bracket.level > record.file.rank.position.tier.maxDeckBracket || !mayStartSolo) return
+        if (bracket.level > record.file.rank.deckLimitTier.maxDeckBracket || !mayStartSolo) return
         try { playerDisplayName = OnDeviceSetupModel.playerName(playerDisplayName) } catch (error: EngineError) { setup.errorMessage = error.message; return }
         record.refreshSeason()
         matchmaker.service = vm.account.rankedQueue
@@ -669,7 +670,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun personGameDeck(ranked: Boolean): Pair<Deck, io.magicmobile.android.game.CommanderBracket>? {
         val deck = selectedDeck; val bracket = selectedDeckBracket
         if (deck == null || bracket == null || !mayStartSolo) { bannerError = "Choose a deck and let the engine finish loading, then try again."; return null }
-        if (ranked && bracket.level > record.file.rank.position.tier.maxDeckBracket) { bannerError = "Your deck's bracket is above what your rank allows in Ranked."; return null }
+        if (ranked && bracket.level > record.file.rank.deckLimitTier.maxDeckBracket) { bannerError = "Your deck's bracket is above what your rank allows in Ranked."; return null }
         try { playerDisplayName = OnDeviceSetupModel.playerName(playerDisplayName) } catch (error: EngineError) { setup.errorMessage = error.message; return null }
         return deck to bracket
     }
@@ -1274,7 +1275,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 io.magicmobile.android.menus.ArenaHomeTile("learn", HowToPlayText.TITLE, "", art(io.magicmobile.android.R.drawable.home_art_giada, 0.6f, 0.3f)) {
                     showHowToPlay = true
                 }),
-            deck = selectedDeckBox, rank = rank.position, wins = rank.wins, losses = rank.losses,
+            deck = selectedDeckBox, rank = rank.shownPosition, rankTitle = rank.shownTitle.takeIf { rank.isPlacing }, wins = rank.wins, losses = rank.losses,
             friendsOnline = vm.account.onlineFriendCount, unread = vm.account.incomingCount + vm.account.unreadMessages > 0,
             play = { openPlayPanel() }, friends = { showFriends = true }, updates = { showUpdates = true }, downloads = { showDownloads = true },
             openDeck = { openPlayPanel() }, openRank = { selectMenuTab(io.magicmobile.android.game.ArenaMenuTab.RANKED) })
@@ -1510,7 +1511,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                                 }
                             }
                             if (!studioCovered) io.magicmobile.android.menus.ArenaTopBar(menuTab, compact, ::selectMenuTab, settings = { showAppearance = true },
-                                rank = record.file.rank.position, openRank = { selectMenuTab(io.magicmobile.android.game.ArenaMenuTab.RANKED) },
+                                rank = record.file.rank.shownPosition, rankTitle = record.file.rank.shownTitle.takeIf { record.file.rank.isPlacing }, openRank = { selectMenuTab(io.magicmobile.android.game.ArenaMenuTab.RANKED) },
                                 unread = vm.account.incomingCount + vm.account.unreadMessages > 0, messages = { showFriends = true },
                                 updates = { showUpdates = true }, downloads = { showDownloads = true },
                                 lit = io.magicmobile.android.game.ArenaTopBarLit.of(showAppearance, showUpdates, showDownloads, showFriends))

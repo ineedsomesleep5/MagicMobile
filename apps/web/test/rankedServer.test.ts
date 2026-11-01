@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { EngineJson } from "../src/core/json";
 import { type FinishedGame, PlayerRecordStore, rankNote } from "../src/core/playerRecord";
 import { ProfileGame } from "../src/core/profileSummary";
-import { RankChange, RankPosition, RankSettlement } from "../src/core/rankLadder";
+import { RankChange, RankPosition, RankSettlement, RankState } from "../src/core/rankLadder";
 import { soloConfiguration } from "../src/table/soloTable";
 
 const memory = () => { const map = new Map<string, string>(); return { get: (k: string) => map.get(k), set: (k: string, v: string) => { map.set(k, v); }, map }; };
@@ -77,7 +77,9 @@ describe("ranked results for the server", () => {
   });
 
   it("shows the rank line and the note on the profile's game card", () => {
-    const record = new PlayerRecordStore(memory(), now);
+    const backing = memory();
+    backing.set(PlayerRecordStore.key, JSON.stringify({ rank: RankState.fresh("2026-10"), matches: [] }));
+    const record = new PlayerRecordStore(backing, now);
     record.record({ mode: "ranked", outcome: "win", opponents: [{ name: "Foe", isAI: true }], deckID: "d", deckName: "D", colors: [], deckBracket: 2, turns: 3, rankedTicket: "t" });
     record.settleRanked("t", "unverified", "too_short", undefined);
     const game = ProfileGame.from(record.matches[0]);
@@ -87,6 +89,14 @@ describe("ranked results for the server", () => {
     record.record({ mode: "quick", outcome: "win", opponents: [], deckID: "d", deckName: "D", colors: [], deckBracket: 2, turns: 9 });
     expect(ProfileGame.from(record.matches[0])).not.toHaveProperty("rankLine");
     expect(ProfileGame.from(record.matches[0])).not.toHaveProperty("rankNote");
+  });
+
+  it("shows no pip delta for a placement game", () => {
+    const record = new PlayerRecordStore(memory(), now);
+    record.record({ mode: "ranked", outcome: "win", opponents: [{ name: "Foe", isAI: true }], deckID: "d", deckName: "D", colors: [], deckBracket: 2, turns: 9 });
+    const game = ProfileGame.from(record.matches[0]);
+    expect(game).not.toHaveProperty("rankDelta");
+    expect(game.rankLine).toBe("Placement 1 of 5");
   });
 
   it("sends a ticket's 64-bit seed exactly, only to engines that keep game records", () => {

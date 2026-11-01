@@ -87,6 +87,7 @@ import io.magicmobile.android.ui.GameSound
 import io.magicmobile.android.ui.LocalBrandAmbientMotion
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
+import io.magicmobile.android.ui.colorAdjust
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.rgb
 import kotlinx.coroutines.delay
@@ -127,6 +128,8 @@ data class ArenaHomeContent(
     val downloads: () -> Unit,
     val openDeck: () -> Unit,
     val openRank: () -> Unit,
+    /** Set while placing, in place of the rank's own title. */
+    val rankTitle: String? = null,
 )
 
 @Composable
@@ -349,8 +352,11 @@ fun ArenaProgressRail(content: ArenaHomeContent, compact: Boolean, modifier: Mod
                 ArenaArt(deck.commander ?: "", deck.colors, Modifier.fillMaxSize().clip(CircleShape))
             }
         }
-        Medallion(pips.toFloat() / perDivision, rank.title, if (rank.tier == RankTier.MYTHIC) "Mythic" else "$pips of $perDivision pips",
-            content.openRank, "home.rank", compact, cell) { RankEmblem(rank.tier, 32.dp) }
+        Medallion(pips.toFloat() / perDivision, content.rankTitle ?: rank.title,
+            if (content.rankTitle != null) "" else if (rank.tier == RankTier.MYTHIC) "Mythic" else "$pips of $perDivision pips",
+            content.openRank, "home.rank", compact, cell) {
+            RankEmblem(rank.tier, 32.dp, Modifier.colorAdjust(saturation = if (content.rankTitle != null) 0f else 1f))
+        }
         if (!compact || content.deck == null) {
             val share = if (played == 0) 0f else content.wins.toFloat() / played
             Medallion(share, "Season ${content.wins}–${content.losses}", if (played == 0) "No games yet" else "${(share * 100).roundToInt()}% won",

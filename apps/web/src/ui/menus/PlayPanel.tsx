@@ -7,7 +7,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AIDeck } from "../../core/aiDeckPool";
 import { CommanderBracket } from "../../core/brackets";
 import type { PlayMode } from "../../core/playerRecord";
-import { RankPosition, RankTier, type RankState } from "../../core/rankLadder";
+import { RankPosition, RankState, RankTier } from "../../core/rankLadder";
 import { type RankedPhase, RankedMatchmaker } from "../../core/matchmaking";
 import { gameAudio } from "../audio";
 import { boxGeometry, DeckArt, DeckBox, type DeckBoxModel } from "./DeckBox";
@@ -213,7 +213,7 @@ function Blade({ model }: { model: PlayModel }) {
             return (
               <button key={mode} type="button" className={on ? "on" : ""} aria-pressed={on} data-id={`play.${mode}`}
                 onClick={() => { gameAudio.play("ui-tap"); model.setMode(mode); }}>
-                <ModeGem mode={mode} tier={model.rank.position.tier} lit={on} /><span>{modeTitle[mode]}</span>
+                <ModeGem mode={mode} tier={RankState.shownPosition(model.rank).tier} lit={on} /><span>{modeTitle[mode]}</span>
               </button>
             );
           })}
@@ -253,7 +253,7 @@ function Primary({ model, friendWay }: { model: PlayModel; friendWay: FriendWay 
     return <PlayButton size={20} cancel id="ranked.cancel" onClick={() => model.cancelSearch?.()}>Cancel</PlayButton>;
   }
   if (model.mode === "ranked") {
-    const eligible = (model.deckBracket ?? 99) <= RankTier.maxDeckBracket(model.rank.position.tier);
+    const eligible = (model.deckBracket ?? 99) <= RankTier.maxDeckBracket(RankState.deckLimitTier(model.rank));
     return <PlayButton size={20} id="ranked.find" disabled={!model.mayStart || !eligible} onClick={model.findRanked}>Find Match</PlayButton>;
   }
   return <PlayButton size={20} id="play.start" onClick={model.openCustom}>Set Up Table</PlayButton>;
@@ -346,20 +346,20 @@ function OpponentDeckRow({ model }: { model: PlayModel }) {
 /** Ranked: your standing, the one format, and the ways to the season and the leaderboard side by side. */
 function RankedOptions({ model }: { model: PlayModel }) {
   const { rank } = model;
-  const position = rank.position;
-  const eligible = (model.deckBracket ?? 99) <= RankTier.maxDeckBracket(position.tier);
+  const limit = RankState.deckLimitTier(rank);
+  const eligible = (model.deckBracket ?? 99) <= RankTier.maxDeckBracket(limit);
   const searching = model.search !== undefined && model.search.kind !== "idle";
   return (
     <>
       <Caps text="Ranked Commander · 1v1" size={9.5} className="mhead" />
       <div className="mstanding" data-id="ranked.standing">
-        <RankBadge position={position} size={searching ? 30 : 42} />
-        <span><b>{RankPosition.title(position)}</b><small>{rank.wins} wins · {rank.losses} losses</small></span>
+        <RankBadge position={RankState.shownPosition(rank)} size={searching ? 30 : 42} unplaced={RankState.isPlacing(rank)} />
+        <span><b>{RankState.shownTitle(rank)}</b><small>{rank.wins} wins · {rank.losses} losses</small></span>
       </div>
       {searching && model.search && <RankedSearch phase={model.search} playAINow={() => model.playAINow?.()} />}
       {!searching && !eligible && model.deckBracket !== undefined && (
         <p className="mwarn" data-id="ranked.ineligible">
-          {CommanderBracket.title(model.deckBracket)} is above {RankTier.name(position.tier)}'s limit (Bracket {RankTier.maxDeckBracket(position.tier)}). Choose another deck.
+          {CommanderBracket.title(model.deckBracket)} is above {RankTier.name(limit)}'s limit (Bracket {RankTier.maxDeckBracket(limit)}). Choose another deck.
         </p>
       )}
       <div className="mpillrow">
@@ -415,13 +415,13 @@ function ModeGem({ mode, tier, lit }: { mode: ArenaPlayMode; tier: RankTier; lit
   );
 }
 
-/** The emblem with its division and pips (RankBadge, without the spin). */
-export function RankBadge({ position, size = 96, showsPips = true }: { position: RankPosition; size?: number; showsPips?: boolean }) {
+/** The emblem with its division and pips (RankBadge, without the spin). `unplaced`: in placement matches, a grey emblem alone. */
+export function RankBadge({ position, size = 96, showsPips = true, unplaced = false }: { position: RankPosition; size?: number; showsPips?: boolean; unplaced?: boolean }) {
   const mythic = position.tier === "mythic";
   return (
-    <span className="mrankbadge" style={{ width: size }}>
-      <RankEmblem tier={position.tier} size={size} />
-      {showsPips && !mythic && (
+    <span className={`mrankbadge ${unplaced ? "unplaced" : ""}`} style={{ width: size }}>
+      <RankEmblem tier={position.tier} size={size} grey={unplaced} />
+      {showsPips && !mythic && !unplaced && (
         <span className="mrankpips" style={{ ["--pip" as string]: `${Math.max(6, size * 0.11)}px` }} aria-label={`${position.pips} of ${RankPosition.pipsPerDivision} pips`}>
           {Array.from({ length: RankPosition.pipsPerDivision }, (_, i) => <i key={i} className={i < position.pips ? "on" : ""} data-tier={position.tier} />)}
         </span>

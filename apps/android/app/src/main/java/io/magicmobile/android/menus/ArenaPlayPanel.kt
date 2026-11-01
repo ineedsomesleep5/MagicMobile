@@ -165,7 +165,7 @@ class ArenaPlayPanelModel(
     val chooseRecent: (ArenaRecentGame) -> Unit,
 ) {
     val quickResolvedBracket: Int get() = ArenaPlayRules.quickResolvedBracket(quickBracket, deckBracket)
-    val rankedEligible: Boolean get() = ArenaPlayRules.rankedEligible(deckBracket, rank.position.tier)
+    val rankedEligible: Boolean get() = ArenaPlayRules.rankedEligible(deckBracket, rank.deckLimitTier)
     val busy: Boolean get() = search != null || waitingFor != null
     val selectedDeck: ArenaDeckBoxModel? get() = sections.asSequence().flatMap { it.decks }.firstOrNull { it.id == selectedDeckID }
 }
@@ -432,7 +432,7 @@ private fun BladeModes(model: ArenaPlayPanelModel, compact: Boolean) {
                 .semantics(mergeDescendants = true) { contentDescription = mode.title; selected = on }, enabled = !model.busy) {
                 Column(Modifier.fillMaxWidth().then(if (on) Modifier.background(Color.White.copy(alpha = 0.07f), shape).border(0.8.dp, ArenaGlass.hairline, shape) else Modifier)
                     .padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    ArenaModeGem(mode, model.rank.position, on, if (compact) 34.dp else 40.dp)
+                    ArenaModeGem(mode, model.rank.shownPosition, on, if (compact) 34.dp else 40.dp)
                     Text(mode.title, color = if (on) Color.White else ArenaMenuStyle.dim, style = ArenaMenuStyle.font(11f, SfWeight.semibold))
                 }
             }
@@ -557,9 +557,9 @@ private fun ColumnScope.RankedOptions(model: ArenaPlayPanelModel) {
     Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 10.dp).testTag("ranked.standing").semantics(mergeDescendants = true) { },
         horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         // Searching, the footer grows: the standing shrinks to its badge and title.
-        RankBadge(rank.position, if (model.search == null) 42.dp else 30.dp, showsPips = model.search == null)
+        RankBadge(rank.shownPosition, if (model.search == null) 42.dp else 30.dp, showsPips = model.search == null, unplaced = rank.isPlacing)
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(rank.position.title, color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(16f, SfWeight.bold))
+            Text(rank.shownTitle, color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(16f, SfWeight.bold))
             Text("${rank.wins} wins · ${rank.losses} losses", color = ArenaMenuStyle.gold, style = ArenaMenuStyle.font(11f, SfWeight.semibold))
         }
     }
@@ -569,7 +569,7 @@ private fun ColumnScope.RankedOptions(model: ArenaPlayPanelModel) {
         Row(Modifier.padding(vertical = 4.dp).testTag("ranked.ineligible"), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             val warm = rgb(1.0, 0.72, 0.5)
             SfImage("exclamationmark.triangle.fill", warm, 11.dp)
-            Text("${bracket.title} is above ${rank.position.tier.label}'s limit (Bracket ${rank.position.tier.maxDeckBracket}). Choose another deck.",
+            Text("${bracket.title} is above ${rank.deckLimitTier.label}'s limit (Bracket ${rank.deckLimitTier.maxDeckBracket}). Choose another deck.",
                 color = warm, style = ArenaMenuStyle.font(11.5f, SfWeight.semibold))
         }
     }

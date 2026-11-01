@@ -18,7 +18,7 @@ import {
   type InsightLine, percent, portraitChoices, ProfileGame, ProfileInsights, type ProfileRankPoint, type ProfileShare, ProfileSummary, type ProfileWeek,
   rankChartRange,
 } from "../../core/profileSummary";
-import { RankLadder, RankPosition, RankTier, SeasonBadge } from "../../core/rankLadder";
+import { RankLadder, RankPosition, RankState, RankTier, SeasonBadge } from "../../core/rankLadder";
 import { ManaSymbol } from "../arena/Symbols";
 import type { Award } from "../../core/account";
 import { gameAudio } from "../audio";
@@ -174,16 +174,16 @@ export function ProfilePage({ record, remote = [], playerName, deckCommanders, o
     <div className="mprofileidentity">
       <Caps text={`${RankLadder.seasonName(rank.season)} · Season rank`} />
       <div className="mcard mprofilerank">
-        <RankBadge position={rank.position} size={64} showsPips={false} />
+        <RankBadge position={RankState.shownPosition(rank)} size={64} showsPips={false} unplaced={RankState.isPlacing(rank)} />
         <div className="grow">
-          <b className="mprofileranktitle">{RankPosition.title(rank.position)}</b>
-          {rank.position.tier !== "mythic" && (
+          <b className="mprofileranktitle">{RankState.shownTitle(rank)}</b>
+          {rank.position.tier !== "mythic" && !RankState.isPlacing(rank) && (
             <span className="mrankpips" style={{ ["--pip" as string]: "10px" }} aria-label={`${rank.position.pips} of ${RankPosition.pipsPerDivision} pips`}>
               {Array.from({ length: RankPosition.pipsPerDivision }, (_, i) => <i key={i} className={i < rank.position.pips ? "on" : ""} data-tier={rank.position.tier} />)}
             </span>
           )}
           <span className="mprofilerecord">{rank.wins}–{rank.losses}</span>
-          {!RankPosition.equal(rank.peak, rank.position) && <span className="mprofilepeak">Peak {RankPosition.title(rank.peak)}</span>}
+          {!RankPosition.equal(rank.peak, rank.position) && !RankState.isPlacing(rank) && <span className="mprofilepeak">Peak {RankPosition.title(rank.peak)}</span>}
         </div>
       </div>
       <Caps text="Progression" className="mprofileprogresscaps" />

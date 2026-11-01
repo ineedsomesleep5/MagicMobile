@@ -278,6 +278,18 @@ describe("the server's ranked standing", () => {
     expect([next.wins, next.losses, next.winStreak]).toEqual([5, 2, 2]);
   });
 
+  it("takes the server's placements, and keeps its own from an older server", () => {
+    const base = standing({ points: 16, peak: 16 });
+    const answer = RankedStanding.parse({ ...JSON.parse(JSON.stringify(base)), placementLeft: 3, change: { pointsBefore: 8, pointsAfter: 16, bonuses: [], placementLeft: 3 } });
+    expect(answer.placementLeft).toBe(3);
+    expect(answer.change?.placementLeft).toBe(3);
+    expect(adoptStanding({ ...played(), placementGames: 4 }, answer)?.placementGames).toBe(3);
+    expect(adoptStanding({ ...played(), placementGames: 4 }, base)?.placementGames).toBe(4);
+    // Only the count differs: that still counts as a change.
+    const same = { ...played(), position: RankPosition.fromPoints(16), peak: RankPosition.fromPoints(16), wins: answer.wins, losses: answer.losses, winStreak: answer.winStreak };
+    expect(adoptStanding({ ...same, placementGames: 4 }, answer)?.placementGames).toBe(3);
+  });
+
   it("keeps its own count while a result is on its way", () => {
     expect(adoptStanding(played(), standing({ points: 0, unsettled: 1 }))).toBeUndefined();
     expect(adoptStanding(played(), standing({ points: 1 }), 1)).toBeUndefined();

@@ -15,7 +15,7 @@ export interface HomeArt { asset: string; focus: { x: number; y: number } }
 export interface Feature { id: string; kicker: string; title: string; art: HomeArt; action: () => void }
 export interface HomeTile { id: string; title: string; subtitle?: string; art: HomeArt; action: () => void }
 
-export interface HomeRank { tier: RankTier; title: string; pips: number; pipsPerDivision: number; mythic: boolean }
+export interface HomeRank { tier: RankTier; title: string; pips: number; pipsPerDivision: number; mythic: boolean; placing?: boolean }
 
 export interface HomeContent {
   features: Feature[];
@@ -155,9 +155,10 @@ function ProgressRail({ content }: { content: HomeContent }) {
           <span className="mmedart"><DeckArt name={deck.commander} colors={deck.colors} /></span>
         </Medallion>
       )}
-      <Medallion progress={pips / rank.pipsPerDivision} title={rank.title} subtitle={rank.mythic ? "Mythic" : `${pips} of ${rank.pipsPerDivision} pips`}
+      <Medallion progress={pips / rank.pipsPerDivision} title={rank.title}
+        subtitle={rank.placing ? undefined : rank.mythic ? "Mythic" : `${pips} of ${rank.pipsPerDivision} pips`}
         id="home.rank" action={content.openRank}>
-        <RankEmblem tier={rank.tier} size={32} />
+        <RankEmblem tier={rank.tier} size={32} grey={rank.placing} />
       </Medallion>
       <Medallion progress={played === 0 ? 0 : wins / played} title={`Season ${wins}–${losses}`}
         subtitle={played === 0 ? "No games yet" : `${Math.round((wins / played) * 100)}% won`} id="home.season" action={content.openRank}>
