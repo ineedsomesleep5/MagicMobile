@@ -158,7 +158,7 @@ final class RankedParityTests: XCTestCase {
             state.peak = state.position
             var last: RankChange?
             for result in try XCTUnwrap(item["results"] as? [String]) {
-                let applied = RankLadder.apply(try XCTUnwrap(RankOutcome(rawValue: result)), to: state, deckBracket: 1)
+                let applied = RankLadder.apply(try XCTUnwrap(RankOutcome(rawValue: result)), to: state, deckBracket: 3)
                 state = applied.state
                 last = applied.change
             }
@@ -270,7 +270,10 @@ final class PlayerRecordStoreTests: XCTestCase {
         XCTAssertNil(play(store, .quick, .win))
         XCTAssertEqual(store.rank.position, .start)
         let change = play(store, .ranked, .win)
-        XCTAssertEqual(change?.after, RankPosition(tier: .bronze, division: 4, pips: 2))
+        // A new player starts with placements: a win climbs two divisions.
+        XCTAssertEqual(change?.after, RankPosition(tier: .bronze, division: 2, pips: 0))
+        XCTAssertEqual(change?.kind, .placing)
+        XCTAssertEqual(store.rank.placementLeft, RankLadder.placementMatches - 1)
         XCTAssertEqual(store.rank.wins, 1)
         XCTAssertEqual(store.matches.count, 2)
         XCTAssertEqual(store.recentAIDecks, ["ai-edgar-markov-core"])

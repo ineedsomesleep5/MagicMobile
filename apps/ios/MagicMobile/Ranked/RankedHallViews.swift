@@ -120,8 +120,8 @@ struct RankedHallView: View {
     }
 
     private func tierPlaque(_ step: RankTier, width: CGFloat) -> some View {
-        let reached = step <= tier
-        let current = step == tier
+        let reached = !rank.isPlacing && step <= tier
+        let current = !rank.isPlacing && step == tier
         let shape = ArenaRewardPlaque()
         return HStack(spacing: 12) {
             RankEmblem(tier: step, size: 34)

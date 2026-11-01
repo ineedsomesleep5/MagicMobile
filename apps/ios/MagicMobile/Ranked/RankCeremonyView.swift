@@ -10,7 +10,7 @@ struct RankProgressPanel: View {
     private var shown: RankPosition { RankPosition(points: shownPoints ?? change.before.points) }
 
     var body: some View {
-        if let left = change.placementLeft { placement(left: left) } else { ladder }
+        if let left = change.placementLeft, left > 0 { placement(left: left) } else { ladder }
     }
 
     /// A placement match: how far through, with the climb kept for the end.

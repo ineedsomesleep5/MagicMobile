@@ -470,6 +470,7 @@ final class PlayerRecordStore: ObservableObject {
             let fixture = SocialFixtures.matches(now: now(), season: rank.season)
             matches = fixture.matches
             rank = fixture.rank
+            rank.placementGames = environment["MAGICMOBILE_UI_TEST_PLACEMENT"].flatMap(Int.init)
             favoriteCommander = nil
             return
         }
@@ -486,6 +487,7 @@ final class PlayerRecordStore: ObservableObject {
                 if parts.count >= 4, let streak = Int(parts[3]) { rank.winStreak = streak }
             }
         }
+        if let left = environment["MAGICMOBILE_UI_TEST_PLACEMENT"].flatMap(Int.init) { rank.placementGames = left }
         if let count = environment["MAGICMOBILE_UI_TEST_MATCHES"].flatMap(Int.init), count > 0 {
             let decks = AIDeckPool.all
             for index in 0..<count {

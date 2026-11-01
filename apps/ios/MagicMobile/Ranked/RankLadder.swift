@@ -135,6 +135,11 @@ struct RankChange: Codable, Equatable, Sendable {
     var placementLeft: Int? = nil
 
     var pipDelta: Int { after.points - before.points }
+    /// "Placement 3 of 5" until the last one, which shows the rank it earned.
+    var placementTitle: String? {
+        guard let placementLeft, placementLeft > 0 else { return nil }
+        return String(localized: "Placement \(RankLadder.placementMatches - placementLeft) of \(RankLadder.placementMatches)")
+    }
     /// What the game did on the ladder itself: placements don't move you pip by pip.
     var ladderDelta: Int? { placementLeft == nil ? pipDelta : nil }
 

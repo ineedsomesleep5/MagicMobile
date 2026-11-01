@@ -160,8 +160,19 @@ final class RankedUITests: XCTestCase {
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5))
     }
 
+    /// Placement matches hide the rank (Caleb, 2026-11-01): the panel counts the games instead.
+    func testPlacementsShowTheGameInsteadOfARank() {
+        launch(["MAGICMOBILE_UI_TEST_PLACEMENT": "3"], arguments: ["-magicmobile.boardMode", "arena"])
+        tapSteady(app.buttons["menu.play"], until: app.buttons["play.ranked"])
+        tapSteady(app.buttons["play.ranked"], until: app.buttons["ranked.find"])
+        let standing = app.descendants(matching: .any)["ranked.standing"]
+        XCTAssertTrue(standing.waitForExistence(timeout: 10))
+        XCTAssertTrue(standing.label.contains("Placement 3 of 5"), standing.label)
+        capture("Ranked panel, placing")
+    }
+
     func testRankUpAndDownMoments() {
-        for kind in ["tierUp", "tierDown", "divisionUp", "divisionDown"] {
+        for kind in ["placed", "tierUp", "tierDown", "divisionUp", "divisionDown"] {
             launch(["MAGICMOBILE_UI_TEST_CEREMONY": kind])
             let ceremony = app.descendants(matching: .any)["rank.ceremony"]
             XCTAssertTrue(ceremony.waitForExistence(timeout: 10), kind)
