@@ -1,7 +1,7 @@
 # TestFlight 0.1.1 (77): trophies from the server
 
 Uploaded November 1, 2026 and distributed to Internal and External testers, from PR #281. Released with Android build 54
-(`release/RELEASE_ANDROID_0.1.1_BUILD54.md`) and a web deploy. The migration `trophies` went live right after the merge, once the art was on `main`.
+(`release/RELEASE_ANDROID_0.1.1_BUILD54.md`) and web deploy `dpl_9F84NSmfoCQNB3Jj819CDZKReX9L`. The migration `trophies` went live right after the merge, once the art was on `main`.
 
 ## What changed
 - **Trophies:** an award with `shelf` set stands on the profile's Trophies shelf, dark until earned, so a new one needs only a row (`docs/SERVER_CONTROLS.md`). Twelve new coins with art, and rules that run after every game.
