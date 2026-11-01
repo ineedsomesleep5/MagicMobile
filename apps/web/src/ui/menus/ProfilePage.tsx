@@ -712,6 +712,14 @@ function CommanderTiles({ shares }: { shares: ProfileShare[] }) {
   );
 }
 
+/** A built-in trophy's painted coin, or the brass one if the art can't load. */
+function TrophyCoinArt({ coin, earned }: { coin: Achievement; earned: boolean }) {
+  const [failed, setFailed] = useState(false);
+  return failed
+    ? <i><Glyph name={TROPHY_GLYPH[coin]} size={18} fill={earned ? "rgb(77,38,10)" : "rgba(128,128,128,.55)"} /></i>
+    : <em className="mprofilemedal"><img src={Achievement.artUrl(coin)} alt="" onError={() => setFailed(true)} /></em>;
+}
+
 /**
  * The achievements as gold coins on a wooden shelf, then the server's trophies (mm_trophies); earned ones shine, the rest
  * wait in the dark (TrophyShelf).
@@ -744,7 +752,7 @@ export function TrophyShelf({ unlocked, server }: { unlocked: Set<Achievement>; 
                 <button key={coin} type="button" className={`mprofilecoin ${earned ? "earned" : ""}`} data-id={`profile.trophy.${coin}`}
                   aria-label={`${Achievement.title(coin)}. ${Achievement.detail(coin)} ${earned ? "Earned" : "Locked"}`}
                   onClick={read} onMouseEnter={read} onFocus={read}>
-                  <i><Glyph name={TROPHY_GLYPH[coin]} size={18} fill={earned ? "rgb(77,38,10)" : "rgba(128,128,128,.55)"} /></i>
+                  <TrophyCoinArt coin={coin} earned={earned} />
                   <span>{Achievement.title(coin)}</span>
                 </button>
               );

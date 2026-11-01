@@ -86,7 +86,7 @@ private val Award.color get() = Color(0xFF000000 or tint.toLong())
 private val Award.caption get() = listOfNotNull(note, awardedAt?.let { DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(it)) }).joinToString(" · ")
 
 /** Award art, downloaded once a launch (Android has no image loader here; iOS uses AsyncImage). */
-private object AwardArt {
+internal object AwardArt {
     private const val MAX_BYTES = 4L * 1024 * 1024
     private val loaded = mutableMapOf<String, ImageBitmap>()
 

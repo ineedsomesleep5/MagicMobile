@@ -45,10 +45,10 @@ describe("the Trophies shelf", () => {
   const shelf = (server: readonly Award[]) => renderToStaticMarkup(createElement(TrophyShelf, { unlocked: new Set<Achievement>(), server }));
   const coinClass = (html: string, id: string) => new RegExp(`class="([^"]*)" data-id="profile\\.trophy\\.${id}"`).exec(html)?.[1];
 
-  it("shows just the built-in coins for a server without trophies", () => {
+  it("shows just the built-in coins for a server without trophies, each with its painted art", () => {
     const html = shelf([]);
     expect(html.match(/data-id="profile\.trophy\./g)).toHaveLength(Achievement.all.length);
-    expect(html).not.toContain("mprofilemedal");
+    for (const coin of Achievement.all) expect(html).toContain(`src="${Achievement.artUrl(coin)}"`);
   });
 
   it("puts the server's trophies after the built-in coins, five to a row, earned or locked", () => {

@@ -90,6 +90,8 @@ A trophy is an award with `shelf` set. It stands on the profile's Trophies shelf
 `shelf_order` places it (lower first). It opens with the same ceremony, and needs no build (the shelf itself needs TestFlight 77 /
 Android 54). A plain award stays in the Awards row, and an old app shows every trophy there once earned.
 
+The 13 built-in coins load their art the same way, from `design/awards/classic-<id>.png` on `main`, with the brass coin as the fallback. Replacing a file there changes the art with no build. Whether they're earned is still worked out on the device.
+
 Rules for trophies run after every game a player reports, ranked or not, as well as when standings move:
 
 | Rule | Earned by |

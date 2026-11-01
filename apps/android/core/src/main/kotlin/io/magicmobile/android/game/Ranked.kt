@@ -631,6 +631,12 @@ enum class Achievement(val title: String, val detail: String) {
     QUICK_DRAW("Quick Draw", "Win 10 Quick Matches."),
     HUMAN_WIN("Duelist", "Beat another player online.");
 
+    /** Its painted coin, served like the server trophies' art. The brass coin stands in until it loads. */
+    val artUrl: String get() {
+        val slug = name.lowercase().split('_').mapIndexed { i, word -> if (i == 0) word else word.replaceFirstChar(Char::uppercase) }.joinToString("")
+        return "https://raw.githubusercontent.com/ineedsomesleep5/MagicMobile/main/design/awards/classic-$slug.png"
+    }
+
     companion object {
         fun unlocked(matches: List<MatchRecord>, rank: RankState): Set<Achievement> = buildSet {
             val wins = matches.filter { it.outcome == RankOutcome.WIN }

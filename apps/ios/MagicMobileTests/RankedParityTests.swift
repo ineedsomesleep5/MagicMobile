@@ -252,6 +252,15 @@ final class AIDeckPoolTests: XCTestCase {
 }
 
 final class ServerTrophyTests: XCTestCase {
+    func testEveryBuiltInTrophyHasItsPaintedCoin() throws {
+        let awards = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("design/awards")
+        for achievement in Achievement.allCases {
+            let name = try XCTUnwrap(achievement.artURL).lastPathComponent
+            XCTAssertTrue(FileManager.default.fileExists(atPath: awards.appendingPathComponent(name).path), name)
+        }
+    }
+
     func testTrophyRowsParseAndOnlyShelfOnesLeaveTheAwardsRow() {
         let rows: [[String: Any]] = [
             ["id": "lightning", "name": "Lightning Strike", "description": "Win by turn 8.", "shelf": true, "awardedAt": "2026-11-01T12:00:00Z"],

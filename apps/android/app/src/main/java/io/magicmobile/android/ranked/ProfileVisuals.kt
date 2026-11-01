@@ -2,6 +2,7 @@ package io.magicmobile.android.ranked
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Text
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -466,22 +469,30 @@ fun TrophyShelf(unlocked: Set<Achievement>, server: List<Award> = emptyList()) {
 
 @Composable
 private fun RowScope.AchievementCoin(achievement: Achievement, earned: Boolean, choose: () -> Unit) {
+    val art by produceState<ImageBitmap?>(null, achievement.artUrl) { value = AwardArt.load(achievement.artUrl) }
     Column(Modifier.weight(1f).clickable(onClick = choose).padding(bottom = 2.dp)
         .semantics(mergeDescendants = true) {
             contentDescription = "${achievement.title}. ${achievement.detail}"
             stateDescription = if (earned) "Earned" else "Locked"; role = Role.Button
         }.testTag("profile.trophy.${achievement.name}"),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Box(Modifier.size(46.dp).glow(if (earned) ProfilePalette.win.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f), if (earned) 5.dp else 2.dp, 23.dp)
-            .background(if (earned) Brush.radialGradient(listOf(rgb(1.0, 0.9, 0.62), rgb(0.72, 0.48, 0.16), rgb(0.36, 0.22, 0.08)))
-                else Brush.linearGradient(listOf(Color.Black.copy(alpha = 0.5f), Color.Black.copy(alpha = 0.5f))), CircleShape)
-            .border(2.dp, if (earned) TavernPalette.brassLine else Brush.linearGradient(listOf(Color.Gray.copy(alpha = 0.5f), Color.Gray.copy(alpha = 0.5f))), CircleShape),
-            contentAlignment = Alignment.Center) {
-            SfImage(achievementIcon(achievement), if (earned) rgb(0.30, 0.15, 0.04) else Color.Gray.copy(alpha = 0.55f), 18.dp)
-        }
+        val image = art
+        if (image != null) Image(image, null, Modifier.size(46.dp).colorAdjust(saturation = if (earned) 1f else 0f).alpha(if (earned) 1f else 0.32f))
+        else BrassCoin(achievement, earned)
         Box(Modifier.height(24.dp).alpha(if (earned) 0.95f else 0.45f)) {
             FitText(achievement.title, ArenaMenuStyle.font(9f, SfWeight.heavy), color = parchment, maxLines = 2, minimumScale = 0.7f, textAlign = TextAlign.Center)
         }
+    }
+}
+
+@Composable
+private fun BrassCoin(achievement: Achievement, earned: Boolean) {
+    Box(Modifier.size(46.dp).glow(if (earned) ProfilePalette.win.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f), if (earned) 5.dp else 2.dp, 23.dp)
+        .background(if (earned) Brush.radialGradient(listOf(rgb(1.0, 0.9, 0.62), rgb(0.72, 0.48, 0.16), rgb(0.36, 0.22, 0.08)))
+            else Brush.linearGradient(listOf(Color.Black.copy(alpha = 0.5f), Color.Black.copy(alpha = 0.5f))), CircleShape)
+        .border(2.dp, if (earned) TavernPalette.brassLine else Brush.linearGradient(listOf(Color.Gray.copy(alpha = 0.5f), Color.Gray.copy(alpha = 0.5f))), CircleShape),
+        contentAlignment = Alignment.Center) {
+        SfImage(achievementIcon(achievement), if (earned) rgb(0.30, 0.15, 0.04) else Color.Gray.copy(alpha = 0.55f), 18.dp)
     }
 }
 
