@@ -1,0 +1,310 @@
+{
+ "landscape": {
+  "flows": [
+   {
+    "kind": "water",
+    "rect": [
+     0,
+     0,
+     120,
+     76
+    ],
+    "dir": [
+     1,
+     0.3
+    ],
+    "speed": 0.9,
+    "pick": "water"
+   },
+   {
+    "kind": "water",
+    "rect": [
+     0,
+     120,
+     70,
+     250
+    ],
+    "dir": [
+     0.4,
+     1
+    ],
+    "speed": 0.8,
+    "pick": "water"
+   },
+   {
+    "kind": "water",
+    "rect": [
+     876,
+     30,
+     80,
+     380
+    ],
+    "dir": [
+     -0.4,
+     1
+    ],
+    "speed": 0.8,
+    "pick": "water"
+   },
+   {
+    "kind": "fall",
+    "rect": [
+     16,
+     2,
+     50,
+     62
+    ],
+    "dir": [
+     0.3,
+     1
+    ],
+    "speed": 1.0,
+    "strength": 0.7,
+    "pick": "white"
+   },
+   {
+    "kind": "wind",
+    "rect": [
+     0,
+     60,
+     70,
+     340
+    ],
+    "speed": 1.0,
+    "strength": 0.8,
+    "pick": "plants"
+   },
+   {
+    "kind": "wind",
+    "rect": [
+     884,
+     40,
+     72,
+     350
+    ],
+    "speed": 1.0,
+    "strength": 0.8,
+    "pick": "plants"
+   },
+   {
+    "kind": "wind",
+    "rect": [
+     240,
+     392,
+     520,
+     48
+    ],
+    "speed": 1.0,
+    "strength": 0.8,
+    "pick": "plants"
+   },
+   {
+    "kind": "wind",
+    "rect": [
+     110,
+     0,
+     270,
+     34
+    ],
+    "speed": 1.0,
+    "strength": 0.7,
+    "pick": "plants"
+   }
+  ],
+  "lights": [
+   {
+    "pick": "cool",
+    "style": "breathe",
+    "limit": 6,
+    "keep": 14,
+    "power": 0.7,
+    "halo": 1.0,
+    "region": [
+     0,
+     0,
+     956,
+     440
+    ]
+   }
+  ],
+  "particles": [
+   {
+    "kind": "petal",
+    "rect": [
+     0,
+     20,
+     26,
+     400
+    ],
+    "rate": 1.1
+   }
+  ],
+  "drifters": [
+   {
+    "kind": "cloud",
+    "every": 80,
+    "opacity": 0.2
+   },
+   {
+    "kind": "birdshadow",
+    "every": 38
+   }
+  ],
+  "hotspots": [
+   [
+    0,
+    0,
+    120,
+    80
+   ],
+   [
+    0,
+    120,
+    70,
+    250
+   ],
+   [
+    880,
+    60,
+    76,
+    330
+   ]
+  ]
+ },
+ "portrait": {
+  "flows": [
+   {
+    "kind": "water",
+    "rect": [
+     196,
+     0,
+     74,
+     70
+    ],
+    "dir": [
+     0,
+     1
+    ],
+    "speed": 0.9,
+    "pick": "water"
+   },
+   {
+    "kind": "fall",
+    "rect": [
+     210,
+     0,
+     44,
+     56
+    ],
+    "dir": [
+     0,
+     1
+    ],
+    "speed": 1.0,
+    "strength": 0.7,
+    "pick": "white"
+   },
+   {
+    "kind": "wind",
+    "rect": [
+     0,
+     100,
+     26,
+     620
+    ],
+    "speed": 1.0,
+    "strength": 0.8,
+    "pick": "plants"
+   },
+   {
+    "kind": "wind",
+    "rect": [
+     414,
+     100,
+     26,
+     620
+    ],
+    "speed": 1.0,
+    "strength": 0.8,
+    "pick": "plants"
+   },
+   {
+    "kind": "wind",
+    "rect": [
+     0,
+     860,
+     88,
+     96
+    ],
+    "speed": 1.0,
+    "strength": 0.8,
+    "pick": "plants"
+   },
+   {
+    "kind": "wind",
+    "rect": [
+     196,
+     860,
+     244,
+     96
+    ],
+    "speed": 1.0,
+    "strength": 0.8,
+    "pick": "plants"
+   }
+  ],
+  "lights": [
+   {
+    "pick": "cool",
+    "style": "breathe",
+    "limit": 5,
+    "keep": 10,
+    "power": 0.7,
+    "halo": 1.0,
+    "region": [
+     0,
+     0,
+     440,
+     956
+    ]
+   }
+  ],
+  "particles": [
+   {
+    "kind": "petal",
+    "rect": [
+     0,
+     100,
+     16,
+     640
+    ],
+    "rate": 0.9
+   }
+  ],
+  "drifters": [
+   {
+    "kind": "cloud",
+    "every": 80,
+    "opacity": 0.2
+   },
+   {
+    "kind": "birdshadow",
+    "every": 38
+   }
+  ],
+  "hotspots": [
+   [
+    196,
+    0,
+    74,
+    80
+   ],
+   [
+    0,
+    860,
+    88,
+    96
+   ]
+  ]
+ }
+}

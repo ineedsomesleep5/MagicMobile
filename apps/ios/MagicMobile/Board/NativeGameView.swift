@@ -126,6 +126,7 @@ struct NativeGameView: View {
     @State var isLogOpen = false
     @State var isGameMenuOpen = false
     @State var isTavernStackOpen = false
+    @AppStorage(ArenaTableTheme.key) var arenaTable = ArenaTableTheme.defaultValue
     @AppStorage(BoardAppearancePreference.key) var boardAppearance = BoardAppearancePreference.defaultValue
     @State var isPromptInspectorOpen = false
     @State var protocolDebug: XmageProtocolDebug?
@@ -1217,6 +1218,7 @@ struct NativeGameView: View {
             for object in snapshot.stackTopFirst { if let card = object.displaySourceCard?.card { casts[object.id] = card } }
             BoardFXSound.play(scheduled, viewerID: snapshot.viewerID, arrivals: arrivals, casts: casts)
         }
+        arenaWorldReactions(scheduled, viewerID: snapshot.viewerID)
         guard level == .full else { return }
         // Shake when the hit lands, scaled to it: the viewer losing life, a big hit on an
         // opponent, or a commander touching down. Five or more to you also flares red.

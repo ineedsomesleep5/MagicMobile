@@ -1,0 +1,295 @@
+{
+ "landscape": {
+  "flows": [
+   {
+    "kind": "wind",
+    "rect": [
+     886,
+     120,
+     70,
+     150
+    ],
+    "speed": 0.9,
+    "strength": 0.7,
+    "pick": "all",
+    "oval": true
+   },
+   {
+    "kind": "wind",
+    "rect": [
+     250,
+     0,
+     180,
+     40
+    ],
+    "speed": 0.9,
+    "strength": 0.6,
+    "pick": "all"
+   },
+   {
+    "kind": "wind",
+    "rect": [
+     250,
+     396,
+     340,
+     44
+    ],
+    "speed": 0.9,
+    "strength": 0.6,
+    "pick": "all"
+   },
+   {
+    "kind": "mist",
+    "rect": [
+     0,
+     330,
+     240,
+     110
+    ],
+    "dir": [
+     1,
+     -0.1
+    ],
+    "speed": 1.3,
+    "strength": 0.26,
+    "pick": "all",
+    "oval": true
+   },
+   {
+    "kind": "mist",
+    "rect": [
+     720,
+     0,
+     236,
+     70
+    ],
+    "dir": [
+     -1,
+     0.1
+    ],
+    "speed": 1.3,
+    "strength": 0.24,
+    "pick": "all",
+    "oval": true
+   }
+  ],
+  "lights": [
+   {
+    "pick": "warm",
+    "style": "lamp",
+    "limit": 12,
+    "keep": 24,
+    "power": 0.8,
+    "halo": 1.1
+   },
+   {
+    "pick": "green",
+    "style": "blink",
+    "limit": 3,
+    "keep": 4,
+    "power": 1.0,
+    "halo": 1.0
+   }
+  ],
+  "particles": [
+   {
+    "kind": "dust",
+    "rect": [
+     0,
+     0,
+     956,
+     440
+    ],
+    "rate": 2.2
+   },
+   {
+    "kind": "moth",
+    "rect": [
+     150,
+     20,
+     70,
+     44
+    ],
+    "rate": 3
+   },
+   {
+    "kind": "moth",
+    "rect": [
+     880,
+     20,
+     60,
+     50
+    ],
+    "rate": 2.2
+   },
+   {
+    "kind": "moth",
+    "rect": [
+     905,
+     300,
+     50,
+     60
+    ],
+    "rate": 1.6
+   }
+  ],
+  "drifters": [
+   {
+    "kind": "cloud",
+    "every": 70,
+    "opacity": 0.3
+   }
+  ],
+  "hotspots": [
+   [
+    0,
+    0,
+    250,
+    60
+   ],
+   [
+    880,
+    0,
+    76,
+    90
+   ],
+   [
+    900,
+    300,
+    56,
+    140
+   ]
+  ],
+  "hot": [
+   0.42,
+   0.34,
+   0.14
+  ]
+ },
+ "portrait": {
+  "flows": [
+   {
+    "kind": "wind",
+    "rect": [
+     170,
+     860,
+     270,
+     96
+    ],
+    "speed": 0.9,
+    "strength": 0.6,
+    "pick": "all"
+   },
+   {
+    "kind": "mist",
+    "rect": [
+     0,
+     110,
+     90,
+     300
+    ],
+    "dir": [
+     1,
+     0.1
+    ],
+    "speed": 1.3,
+    "strength": 0.24,
+    "pick": "all",
+    "oval": true
+   },
+   {
+    "kind": "mist",
+    "rect": [
+     350,
+     420,
+     90,
+     300
+    ],
+    "dir": [
+     -1,
+     0.1
+    ],
+    "speed": 1.3,
+    "strength": 0.24,
+    "pick": "all",
+    "oval": true
+   }
+  ],
+  "lights": [
+   {
+    "pick": "warm",
+    "style": "lamp",
+    "limit": 10,
+    "keep": 16,
+    "power": 0.8,
+    "halo": 1.0
+   },
+   {
+    "pick": "green",
+    "style": "blink",
+    "limit": 3,
+    "keep": 3,
+    "power": 1.0,
+    "halo": 1.0
+   }
+  ],
+  "particles": [
+   {
+    "kind": "dust",
+    "rect": [
+     0,
+     0,
+     440,
+     956
+    ],
+    "rate": 1.7
+   },
+   {
+    "kind": "moth",
+    "rect": [
+     180,
+     30,
+     60,
+     50
+    ],
+    "rate": 3
+   },
+   {
+    "kind": "moth",
+    "rect": [
+     300,
+     40,
+     60,
+     50
+    ],
+    "rate": 1.6
+   }
+  ],
+  "drifters": [
+   {
+    "kind": "cloud",
+    "every": 70,
+    "opacity": 0.3
+   }
+  ],
+  "hotspots": [
+   [
+    0,
+    40,
+    200,
+    50
+   ],
+   [
+    230,
+    20,
+    210,
+    60
+   ]
+  ],
+  "hot": [
+   0.42,
+   0.34,
+   0.14
+  ]
+ }
+}

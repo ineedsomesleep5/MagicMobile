@@ -442,6 +442,7 @@ struct ArenaBattlefieldCard: View {
     /// The Arena board: the tile lies back with the leaning table, and a tapped one tilts a little and greys under a big
     /// tap mark (the reference's look) instead of turning; an attacker keeps its colour while it attacks.
     @Environment(\.arenaBoard) private var arena
+    @Environment(\.arenaTableTheme) private var tableTheme
     /// Card Frames (Settings, kept per board mode): off draws the reference game's card instead of the tavern frame.
     @Environment(\.cardFrames) private var cardFrames
     /// A mana payment is open: what can pay glows orange.
@@ -992,7 +993,7 @@ struct ArenaBattlefieldCard: View {
         // A tapped tile greys the prototype's way (grayscale 0.75, brightness 0.62): a multiply, so dark art still reads.
         .saturation(showsTapped ? (arena ? 0.25 : 0.15) : 1)
         .brightness(showsTapped && !arena ? -0.16 : 0)
-        .colorMultiply(showsTapped && arena ? Color(white: 0.64) : .white)
+        .colorMultiply(arena ? (showsTapped ? tableTheme.tappedLight : tableTheme.cardLight) : .white)
         .background {
             // A framed tile glows while it is playable, a target or selected: light only, no line.
             // Drawn after the tapped tile's grey so a tapped target still glows red.
@@ -1009,6 +1010,7 @@ struct ArenaBattlefieldCard: View {
         }
         .rotationEffect(.degrees(showsTapped ? (arena ? 12 : -7) : 0))
         .shadow(color: framedTavern || plainTile ? .clear : accent.opacity(legal || targetable ? 0.45 : 0.1), radius: 5)
+        .modifier(ArenaCardShadowEffect(shadow: arena ? tableTheme.cardShadow : nil))
         .opacity(card.isPhasedOut ? 0.42 : 1)
         .overlay(alignment: .center) {
             if card.isPhasedOut {

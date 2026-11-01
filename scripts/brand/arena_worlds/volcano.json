@@ -1,0 +1,452 @@
+{
+ "name": "Volcano",
+ "seed": 41,
+ "sky": "#2a1712",
+ "sky_strength": 1.8,
+ "exposure": 1.15,
+ "glow": 5,
+ "warm": "#ff6a1e",
+ "cool": "#ffa640",
+ "bloom": {
+  "threshold": 1.0,
+  "strength": 0.35
+ },
+ "rake": 58,
+ "paint": {
+  "brush": 2,
+  "shadows": [
+   1.02,
+   1.0,
+   1.0
+  ],
+  "lights": [
+   1.03,
+   1.0,
+   0.96
+  ]
+ },
+ "moon": {
+  "turn": -6,
+  "tilt": -22,
+  "energy": 0.9,
+  "colour": "#ffc9a0",
+  "soft": 14
+ },
+ "dry_plants": [
+  0.5,
+  0.4,
+  0.5
+ ],
+ "ground": {
+  "calm": "mud_cracked_dry_03",
+  "calm_tile": 0.65,
+  "calm_flatten": 0.45,
+  "calm_grit": 0.3,
+  "calm_mean": [
+   0.13,
+   0.12,
+   0.12
+  ],
+  "calm_bump": 0.6,
+  "rough": "dry_ground_rocks",
+  "rough_tile": 0.8,
+  "cracks": "mud_cracked_dry_03",
+  "cracks_tile": 0.3,
+  "cracks_mix": 0.12,
+  "open_tint": "#8a8080",
+  "rough_tint": "#5c504c",
+  "drift_scale": 0.6,
+  "drift_dark": 0.88,
+  "drift_light": 1.1
+ },
+ "materials": {
+  "stone": {
+   "set": "cracked_concrete",
+   "tile": 1.6,
+   "tint": "#4e4644",
+   "bump": 1.2
+  },
+  "marble": {
+   "set": "dry_ground_rocks",
+   "tile": 2.0,
+   "tint": "#5a4e48"
+  },
+  "basalt": {
+   "set": "cracked_concrete",
+   "tile": 2.2,
+   "tint": "#3e3836",
+   "bump": 1.4
+  }
+ },
+ "palette": {
+  "rock": "#2e2a2a",
+  "twig": "#3a2e28",
+  "deck": "#2c2826"
+ },
+ "finishes": {
+  "gold": {
+   "colour": "#2a2422",
+   "rough": 0.5,
+   "metal": 0.5
+  },
+  "water": {
+   "colour": "#ff6a12",
+   "rough": 0.4,
+   "glow": 6
+  },
+  "foam": {
+   "colour": "#ff8a24",
+   "rough": 0.5,
+   "glow": 7
+  },
+  "lava": {
+   "colour": "#ff5e10",
+   "rough": 0.4,
+   "glow": 7
+  },
+  "obsidian": {
+   "colour": "#0f0d10",
+   "rough": 0.14
+  }
+ },
+ "landscape": {
+  "pebbles": 1800,
+  "scatter": {
+   "rocks": {
+    "count": 130,
+    "from": 0.15,
+    "to": 1.0,
+    "clusters": 0.22,
+    "tall": 0.4,
+    "models": [
+     [
+      "rock_07",
+      0.14,
+      0.36
+     ],
+     [
+      "rock_09",
+      0.14,
+      0.32
+     ],
+     [
+      "stone_01",
+      0.1,
+      0.26
+     ]
+    ]
+   }
+  },
+  "clear": [
+   [
+    112,
+    360,
+    178,
+    84
+   ],
+   [
+    630,
+    -30,
+    150,
+    92
+   ],
+   [
+    360,
+    -40,
+    236,
+    80
+   ]
+  ],
+  "props": [
+   {
+    "kind": "cascade",
+    "at": [
+     10,
+     10
+    ],
+    "radius": 0.92,
+    "start": 250,
+    "end": 352
+   },
+   {
+    "kind": "basalt_columns",
+    "at": [
+     150,
+     14
+    ],
+    "height": 0.8
+   },
+   {
+    "kind": "lava_pool",
+    "at": [
+     236,
+     8
+    ],
+    "span": 0.7
+   },
+   {
+    "kind": "obsidian_spire",
+    "at": [
+     326,
+     20
+    ],
+    "height": 0.8
+   },
+   {
+    "kind": "lava_pool",
+    "at": [
+     6,
+     146
+    ],
+    "span": 0.74,
+    "seat": true
+   },
+   {
+    "kind": "obsidian_spire",
+    "at": [
+     30,
+     226
+    ],
+    "height": 0.9
+   },
+   {
+    "kind": "lava_pool",
+    "at": [
+     4,
+     306
+    ],
+    "span": 0.7,
+    "seat": true
+   },
+   {
+    "kind": "basalt_columns",
+    "at": [
+     20,
+     404
+    ],
+    "height": 0.7
+   },
+   {
+    "kind": "obsidian_spire",
+    "at": [
+     832,
+     24
+    ],
+    "height": 0.8
+   },
+   {
+    "kind": "basalt_columns",
+    "at": [
+     916,
+     10
+    ],
+    "height": 0.9
+   },
+   {
+    "kind": "waterfall",
+    "at": [
+     934,
+     92
+    ],
+    "turn": -60,
+    "height": 0.56,
+    "width": 0.24
+   },
+   {
+    "kind": "terrace",
+    "at": [
+     968,
+     150
+    ],
+    "radius": 0.62,
+    "start": 92,
+    "end": 268
+   },
+   {
+    "kind": "obsidian_spire",
+    "at": [
+     926,
+     244
+    ],
+    "height": 0.8
+   },
+   {
+    "kind": "basalt_columns",
+    "at": [
+     936,
+     330
+    ],
+    "height": 0.6
+   },
+   {
+    "kind": "ember_vent",
+    "at": [
+     900,
+     410
+    ],
+    "power": 1
+   },
+   {
+    "kind": "ember_vent",
+    "at": [
+     760,
+     432
+    ],
+    "power": 1
+   },
+   {
+    "kind": "lava_pool",
+    "at": [
+     470,
+     438
+    ],
+    "span": 0.5,
+    "power": 5,
+    "seat": true
+   },
+   {
+    "kind": "obsidian_spire",
+    "at": [
+     330,
+     430
+    ],
+    "height": 0.5
+   }
+  ]
+ },
+ "portrait": {
+  "pebbles": 1200,
+  "scatter": {
+   "rocks": {
+    "count": 70,
+    "from": 0.15,
+    "to": 1.0,
+    "clusters": 0.22,
+    "tall": 0.4,
+    "models": [
+     [
+      "rock_07",
+      0.14,
+      0.36
+     ],
+     [
+      "rock_09",
+      0.14,
+      0.32
+     ],
+     [
+      "stone_01",
+      0.1,
+      0.26
+     ]
+    ]
+   }
+  },
+  "clear": [
+   [
+    88,
+    852,
+    110,
+    72
+   ],
+   [
+    8,
+    764,
+    44,
+    62
+   ]
+  ],
+  "front_wall": {
+   "height": 0.24,
+   "depth": 0.26,
+   "material": "basalt",
+   "cap": "gold"
+  },
+  "props": [
+   {
+    "kind": "pavilion",
+    "at": [
+     106,
+     30
+    ],
+    "width": 2.5,
+    "depth": 1.5,
+    "height": 0.3,
+    "seat": true,
+    "power": 6
+   },
+   {
+    "kind": "pavilion",
+    "at": [
+     340,
+     22
+    ],
+    "width": 1.8,
+    "depth": 1.4,
+    "height": 0.28,
+    "seat": true,
+    "power": 5
+   },
+   {
+    "kind": "cascade",
+    "at": [
+     232,
+     -2
+    ],
+    "radius": 0.5,
+    "start": 205,
+    "end": 335
+   },
+   {
+    "kind": "ember_vent",
+    "at": [
+     232,
+     74
+    ],
+    "power": 2
+   },
+   {
+    "kind": "obsidian_spire",
+    "at": [
+     428,
+     58
+    ],
+    "height": 0.6
+   },
+   {
+    "kind": "obsidian_spire",
+    "at": [
+     10,
+     80
+    ],
+    "height": 0.5
+   },
+   {
+    "kind": "lava_pool",
+    "at": [
+     30,
+     912
+    ],
+    "span": 0.62,
+    "power": 6,
+    "seat": true
+   },
+   {
+    "kind": "basalt_columns",
+    "at": [
+     292,
+     922
+    ],
+    "height": 0.5
+   },
+   {
+    "kind": "ember_vent",
+    "at": [
+     400,
+     912
+    ],
+    "power": 1
+   }
+  ]
+ }
+}

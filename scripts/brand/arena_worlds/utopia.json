@@ -1,0 +1,659 @@
+{
+ "name": "Utopia",
+ "seed": 23,
+ "sky": "#cfdcef",
+ "sky_strength": 1.4,
+ "exposure": 0.45,
+ "glow": 2.5,
+ "warm": "#ffd08a",
+ "cool": "#a6efff",
+ "bloom": {
+  "threshold": 1.2,
+  "strength": 0.15
+ },
+ "moon": {
+  "turn": -6,
+  "tilt": -34,
+  "energy": 4.0,
+  "colour": "#ffe2b8",
+  "soft": 5
+ },
+ "dry_plants": [
+  0.5,
+  1.1,
+  1.0
+ ],
+ "ground": {
+  "calm": "patterned_paving",
+  "calm_tile": 0.42,
+  "calm_flatten": 0.32,
+  "calm_grit": 0.0,
+  "calm_mean": [
+   0.84,
+   0.7,
+   0.48
+  ],
+  "calm_bump": 0.35,
+  "rough": "leafy_grass",
+  "rough_tile": 1.1,
+  "cracks": "marble_01",
+  "cracks_tile": 0.35,
+  "cracks_mix": 0.1,
+  "open_tint": "#ffefcf",
+  "rough_tint": "#a7c864",
+  "drift_scale": 0.7,
+  "drift_dark": 0.93,
+  "drift_light": 1.07,
+  "relief": 0.15,
+  "grass": [
+   0.5,
+   0.56
+  ],
+  "grass_set": "leafy_grass",
+  "grass_tile": 1.1,
+  "grass_tint": "#c9dc7c",
+  "grass_in_rows": 0.25
+ },
+ "materials": {
+  "stone": {
+   "set": "white_plaster_02",
+   "tile": 1.6,
+   "tint": "#fff4e2",
+   "bump": 0.5
+  },
+  "marble": {
+   "set": "marble_01",
+   "tile": 1.2,
+   "tint": "#fff8ee",
+   "bump": 0.3
+  },
+  "bark": {
+   "set": "weathered_planks",
+   "tile": 2.4,
+   "tint": "#7a5c42"
+  },
+  "leaf": {
+   "set": "leafy_grass",
+   "tile": 4,
+   "tint": "#cbe58a"
+  },
+  "leaf_dark": {
+   "set": "leafy_grass",
+   "tile": 4.0,
+   "tint": "#4d8a4a"
+  }
+ },
+ "palette": {
+  "rock": "#c8bda8",
+  "twig": "#7a6a4e",
+  "deck": "#e9dcc2"
+ },
+ "finishes": {
+  "gold": {
+   "colour": "#e0b45c",
+   "rough": 0.42,
+   "metal": 1.0
+  },
+  "glass": {
+   "colour": "#d5f0ff",
+   "rough": 0.06,
+   "glass": 0.85
+  },
+  "water": {
+   "colour": "#58b4bd",
+   "rough": 0.15
+  },
+  "foam": {
+   "colour": "#f4fbff",
+   "rough": 0.5,
+   "glow": 0.05
+  },
+  "sailcloth": {
+   "colour": "#fbf6ea",
+   "rough": 0.7
+  },
+  "blossom": {
+   "colour": "#f2a9c6",
+   "rough": 0.7
+  },
+  "bloom_white": {
+   "colour": "#fbf3e6",
+   "rough": 0.7
+  }
+ },
+ "landscape": {
+  "pebbles": 80,
+  "scatter": {
+   "scrub": {
+    "count": 300,
+    "from": 0.1,
+    "to": 1.0,
+    "clusters": 0.12,
+    "tall": 0.5,
+    "models": [
+     [
+      "flower_heliophila",
+      0.26,
+      0.44
+     ],
+     [
+      "periwinkle_plant",
+      0.2,
+      0.34
+     ],
+     [
+      "fern_02",
+      0.24,
+      0.38
+     ],
+     [
+      "didelta_spinosa",
+      0.24,
+      0.4
+     ],
+     [
+      "leipoldtia_schultzei",
+      0.2,
+      0.34
+     ],
+     [
+      "bush_leaf",
+      0.2,
+      0.34
+     ],
+     [
+      "bush_blossom",
+      0.14,
+      0.26
+     ],
+     [
+      "bush_bloom_white",
+      0.14,
+      0.26
+     ]
+    ]
+   }
+  },
+  "clear": [
+   [
+    112,
+    360,
+    178,
+    84
+   ],
+   [
+    630,
+    -30,
+    150,
+    92
+   ],
+   [
+    360,
+    -40,
+    236,
+    80
+   ]
+  ],
+  "props": [
+   {
+    "kind": "cascade",
+    "at": [
+     10,
+     10
+    ],
+    "radius": 0.92,
+    "start": 250,
+    "end": 352
+   },
+   {
+    "kind": "dome",
+    "at": [
+     150,
+     -2
+    ],
+    "radius": 0.42
+   },
+   {
+    "kind": "bridge",
+    "at": [
+     208,
+     18
+    ],
+    "span": 1.0
+   },
+   {
+    "kind": "cypress",
+    "at": [
+     268,
+     26
+    ],
+    "height": 0.6
+   },
+   {
+    "kind": "stairs",
+    "at": [
+     334,
+     20
+    ],
+    "width": 0.74
+   },
+   {
+    "kind": "crystal_lamp",
+    "at": [
+     302,
+     38
+    ],
+    "height": 0.46
+   },
+   {
+    "kind": "crystal_lamp",
+    "at": [
+     368,
+     36
+    ],
+    "height": 0.46
+   },
+   {
+    "kind": "cypress",
+    "at": [
+     46,
+     158
+    ],
+    "height": 0.56
+   },
+   {
+    "kind": "terrace",
+    "at": [
+     -10,
+     240
+    ],
+    "radius": 0.66,
+    "start": -88,
+    "end": 88
+   },
+   {
+    "kind": "waterfall",
+    "at": [
+     34,
+     186
+    ],
+    "turn": 60,
+    "height": 0.56,
+    "width": 0.24
+   },
+   {
+    "kind": "cypress",
+    "at": [
+     46,
+     282
+    ],
+    "height": 0.56
+   },
+   {
+    "kind": "blossom_tree",
+    "at": [
+     16,
+     332
+    ],
+    "span": 0.62
+   },
+   {
+    "kind": "blossom_tree",
+    "at": [
+     12,
+     398
+    ],
+    "span": 0.6,
+    "bloom": "bloom_white"
+   },
+   {
+    "kind": "cypress",
+    "at": [
+     62,
+     356
+    ],
+    "height": 0.44
+   },
+   {
+    "kind": "blossom_tree",
+    "at": [
+     52,
+     436
+    ],
+    "span": 0.5
+   },
+   {
+    "kind": "sail",
+    "at": [
+     930,
+     22
+    ],
+    "turn": 20,
+    "height": 1.1,
+    "width": 0.74
+   },
+   {
+    "kind": "sail",
+    "at": [
+     884,
+     24
+    ],
+    "turn": 40,
+    "height": 0.9,
+    "width": 0.6
+   },
+   {
+    "kind": "cypress",
+    "at": [
+     836,
+     26
+    ],
+    "height": 0.5
+   },
+   {
+    "kind": "terrace",
+    "at": [
+     968,
+     136
+    ],
+    "radius": 0.66,
+    "start": 92,
+    "end": 268
+   },
+   {
+    "kind": "waterfall",
+    "at": [
+     930,
+     84
+    ],
+    "turn": -60,
+    "height": 0.56,
+    "width": 0.24
+   },
+   {
+    "kind": "cypress",
+    "at": [
+     900,
+     176
+    ],
+    "height": 0.56
+   },
+   {
+    "kind": "terrace",
+    "at": [
+     968,
+     252
+    ],
+    "radius": 0.66,
+    "start": 92,
+    "end": 268
+   },
+   {
+    "kind": "waterfall",
+    "at": [
+     928,
+     200
+    ],
+    "turn": -60,
+    "height": 0.56,
+    "width": 0.24
+   },
+   {
+    "kind": "cypress",
+    "at": [
+     898,
+     300
+    ],
+    "height": 0.56
+   },
+   {
+    "kind": "blossom_tree",
+    "at": [
+     934,
+     328
+    ],
+    "span": 0.6,
+    "bloom": "bloom_white"
+   },
+   {
+    "kind": "crystal_lamp",
+    "at": [
+     892,
+     352
+    ],
+    "height": 0.46
+   },
+   {
+    "kind": "dome",
+    "at": [
+     926,
+     414
+    ],
+    "radius": 0.46
+   },
+   {
+    "kind": "cypress",
+    "at": [
+     862,
+     404
+    ],
+    "height": 0.5
+   },
+   {
+    "kind": "cypress",
+    "at": [
+     836,
+     430
+    ],
+    "height": 0.46
+   },
+   {
+    "kind": "blossom_tree",
+    "at": [
+     780,
+     432
+    ],
+    "span": 0.5
+   },
+   {
+    "kind": "crystal_lamp",
+    "at": [
+     700,
+     436
+    ],
+    "height": 0.36
+   }
+  ],
+  "tufts": 6000
+ },
+ "portrait": {
+  "pebbles": 80,
+  "scatter": {
+   "scrub": {
+    "count": 120,
+    "from": 0.1,
+    "to": 1.0,
+    "clusters": 0.12,
+    "tall": 0.5,
+    "models": [
+     [
+      "flower_heliophila",
+      0.26,
+      0.44
+     ],
+     [
+      "periwinkle_plant",
+      0.2,
+      0.34
+     ],
+     [
+      "fern_02",
+      0.24,
+      0.38
+     ],
+     [
+      "didelta_spinosa",
+      0.24,
+      0.4
+     ],
+     [
+      "leipoldtia_schultzei",
+      0.2,
+      0.34
+     ],
+     [
+      "bush_leaf",
+      0.2,
+      0.34
+     ],
+     [
+      "bush_blossom",
+      0.14,
+      0.26
+     ],
+     [
+      "bush_bloom_white",
+      0.14,
+      0.26
+     ]
+    ]
+   }
+  },
+  "clear": [
+   [
+    88,
+    852,
+    110,
+    72
+   ],
+   [
+    8,
+    764,
+    44,
+    62
+   ]
+  ],
+  "props": [
+   {
+    "kind": "cascade",
+    "at": [
+     232,
+     -2
+    ],
+    "radius": 0.5,
+    "start": 205,
+    "end": 335
+   },
+   {
+    "kind": "pavilion",
+    "at": [
+     106,
+     30
+    ],
+    "width": 2.5,
+    "depth": 1.5,
+    "height": 0.3,
+    "seat": true
+   },
+   {
+    "kind": "pavilion",
+    "at": [
+     340,
+     14
+    ],
+    "width": 1.8,
+    "depth": 1.4,
+    "height": 0.28,
+    "power": 4,
+    "seat": true
+   },
+   {
+    "kind": "crystal_lamp",
+    "at": [
+     202,
+     76
+    ],
+    "height": 0.46
+   },
+   {
+    "kind": "cypress",
+    "at": [
+     262,
+     62
+    ],
+    "height": 0.56
+   },
+   {
+    "kind": "cypress",
+    "at": [
+     428,
+     54
+    ],
+    "height": 0.5
+   },
+   {
+    "kind": "cypress",
+    "at": [
+     8,
+     84
+    ],
+    "height": 0.5
+   },
+   {
+    "kind": "blossom_tree",
+    "at": [
+     22,
+     914
+    ],
+    "span": 0.56
+   },
+   {
+    "kind": "blossom_tree",
+    "at": [
+     416,
+     908
+    ],
+    "span": 0.56,
+    "bloom": "bloom_white"
+   },
+   {
+    "kind": "cypress",
+    "at": [
+     228,
+     916
+    ],
+    "height": 0.4
+   },
+   {
+    "kind": "crystal_lamp",
+    "at": [
+     252,
+     900
+    ],
+    "height": 0.34
+   }
+  ],
+  "tufts": 3500,
+  "front_wall": {
+   "height": 0.24,
+   "depth": 0.26,
+   "material": "marble",
+   "cap": "gold"
+  }
+ },
+ "paint": {
+  "brush": 2,
+  "shadows": [
+   1.0,
+   1.0,
+   1.02
+  ],
+  "lights": [
+   1.04,
+   1.0,
+   0.92
+  ]
+ },
+ "view": "Khronos PBR Neutral",
+ "rake": 58
+}

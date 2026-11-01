@@ -235,6 +235,7 @@
 		81ECA8FA322072BB981F7170 /* PublicProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 816467D39B7879657F44ADEC /* PublicProfileView.swift */; };
 		8243CBF59D10FFF29450B881 /* DeckStudioScryfallViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 414BA1EAB2335B7591A6228A /* DeckStudioScryfallViews.swift */; };
 		844B57B284E797BBF126E0EE /* ParityGoldenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EA5ECC621D4E6094CABD432 /* ParityGoldenTests.swift */; };
+		84DD77CA70C8EC41271ECDD3 /* ArenaWorldLife.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3FCC188051ECC0CAFAFBE73 /* ArenaWorldLife.swift */; };
 		854D2E623A6B06AA1CDB0F09 /* graal_far_calls.S in Sources */ = {isa = PBXBuildFile; fileRef = 7A446528551A274633A4DD7B /* graal_far_calls.S */; };
 		862537656A79598B0D65BDF0 /* SocialComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AA4BE32E20CCDE498416F95 /* SocialComponents.swift */; };
 		86B8A7C74336B1F0191650C2 /* OnDeviceSnapshotAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82174CD2213C389DEF7B246E /* OnDeviceSnapshotAdapterTests.swift */; };
@@ -312,6 +313,7 @@
 		B560B383215D9373FCBC67CD /* book-close.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 8FCB5F336838EAC2C7DFB609 /* book-close.m4a */; };
 		B688FD17BCC4EF2D9C07E0A0 /* NativeAssetDownloadsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4D2F7DAE858AB8A4CF15791 /* NativeAssetDownloadsTests.swift */; };
 		B9C204367A644D4365AAA00C /* DeckLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13EC4CC09BB14F446DB7424 /* DeckLibrary.swift */; };
+		BAD316118A2584822658C4A4 /* arena-worlds.json in Resources */ = {isa = PBXBuildFile; fileRef = 0E3F7175401E06C60F4CAD3B /* arena-worlds.json */; };
 		BBDA821D25FAC873E808E8AF /* LessonsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62C29FB055AE475249ED3370 /* LessonsTests.swift */; };
 		BBE8185693461F485D667B3A /* player-hit.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 39CE03E5D480617F7D20468C /* player-hit.m4a */; };
 		BD1CA2E655DD7E9185ED910A /* OnDeviceDeckEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C37D72C4561936225893B0E /* OnDeviceDeckEditingTests.swift */; };
@@ -319,6 +321,7 @@
 		BE6B548663973E8919AB5DE5 /* CardPrintingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCCB62A192C1DF5E084F4AF0 /* CardPrintingTests.swift */; };
 		C083DC09C3B36F75989EC7E2 /* DeckStudioPlaytestInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDC1B9518484E7A9E2437F96 /* DeckStudioPlaytestInsightsView.swift */; };
 		C0EBF5270189607E4ED45FA1 /* cast-sorcery.m4a in Resources */ = {isa = PBXBuildFile; fileRef = B8D9F263351A7A9B6FBDE842 /* cast-sorcery.m4a */; };
+		C11D9B23A3155F195A95525B /* ArenaWorldFlow.metal in Sources */ = {isa = PBXBuildFile; fileRef = 4669E17CA7BDD580060C9716 /* ArenaWorldFlow.metal */; };
 		C1511A400C8C25B7D7B72191 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 268E12F4889571947D93BF23 /* Assets.xcassets */; };
 		C1EDD87917B5A7BBB5B4BF40 /* creature-wizard-2.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 81DC81F2357A0AE11588EE7C /* creature-wizard-2.m4a */; };
 		C20F60A38DB9FB821DEC380C /* DeckStudioComboView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA39AA71364294A3C5E86CB8 /* DeckStudioComboView.swift */; };
@@ -478,6 +481,7 @@
 		0BDDDE9538ED2F22D45B76A2 /* ui-tap.caf */ = {isa = PBXFileReference; path = "ui-tap.caf"; sourceTree = "<group>"; };
 		0D82C4BD0F1351C3E829A964 /* SocialUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialUITests.swift; sourceTree = "<group>"; };
 		0DD271B32D94A47D44936677 /* book-open.m4a */ = {isa = PBXFileReference; path = "book-open.m4a"; sourceTree = "<group>"; };
+		0E3F7175401E06C60F4CAD3B /* arena-worlds.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "arena-worlds.json"; sourceTree = "<group>"; };
 		0EF6CD8A8D52867D12A119B9 /* StartingRollDiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartingRollDiceTests.swift; sourceTree = "<group>"; };
 		0FDDBE9542A6251D077C3355 /* attack-3.caf */ = {isa = PBXFileReference; path = "attack-3.caf"; sourceTree = "<group>"; };
 		10E92CADE5A2E78AD0F9DFE6 /* NativeUpdateNewsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUpdateNewsView.swift; sourceTree = "<group>"; };
@@ -561,6 +565,7 @@
 		436CBF6B62656080C4BC10E9 /* OnDeviceAppConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceAppConfigurationTests.swift; sourceTree = "<group>"; };
 		43757BDA8C9BB55A8A1C9FFB /* NativeDeckBuilderLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDeckBuilderLayoutTests.swift; sourceTree = "<group>"; };
 		45FC289EBB6446A118BA5F4E /* NativeGameView+ArenaActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NativeGameView+ArenaActions.swift"; sourceTree = "<group>"; };
+		4669E17CA7BDD580060C9716 /* ArenaWorldFlow.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = ArenaWorldFlow.metal; sourceTree = "<group>"; };
 		47E7D0518F79D4F055DFCBA1 /* lesson-combat.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "lesson-combat.json"; sourceTree = "<group>"; };
 		487F7755E745AB1466FD171F /* creature-faerie-1.m4a */ = {isa = PBXFileReference; path = "creature-faerie-1.m4a"; sourceTree = "<group>"; };
 		495985ED8684F740F75B1111 /* creature-goblin.m4a */ = {isa = PBXFileReference; path = "creature-goblin.m4a"; sourceTree = "<group>"; };
@@ -708,6 +713,7 @@
 		A1A358A76C17F7578931A6E6 /* versus.m4a */ = {isa = PBXFileReference; path = versus.m4a; sourceTree = "<group>"; };
 		A1F9883F502768C836E38344 /* commander-cast.m4a */ = {isa = PBXFileReference; path = "commander-cast.m4a"; sourceTree = "<group>"; };
 		A375B93EAF5ACD850AD2D2B5 /* OnDeviceMessageSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceMessageSessionTests.swift; sourceTree = "<group>"; };
+		A3FCC188051ECC0CAFAFBE73 /* ArenaWorldLife.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArenaWorldLife.swift; sourceTree = "<group>"; };
 		A48D6D674E565E8970C38766 /* AmbientMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientMotion.swift; sourceTree = "<group>"; };
 		A4D2F7DAE858AB8A4CF15791 /* NativeAssetDownloadsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAssetDownloadsTests.swift; sourceTree = "<group>"; };
 		A56E9357C23E53EA32A06B07 /* lesson-table.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "lesson-table.json"; sourceTree = "<group>"; };
@@ -924,6 +930,8 @@
 				92BDB95AC64673DCB7CC6E0D /* ArenaBoardViews.swift */,
 				943401158B3EBC7BD0E340AF /* ArenaHandFan.swift */,
 				E9EA8000919F2ECA54F8B7A5 /* ArenaVoiceViews.swift */,
+				4669E17CA7BDD580060C9716 /* ArenaWorldFlow.metal */,
+				A3FCC188051ECC0CAFAFBE73 /* ArenaWorldLife.swift */,
 				7A3744BFB3A7C96C1932C6CB /* BattlefieldRow.swift */,
 				BCB711F169F86E1A0D722009 /* BoardChrome.swift */,
 				414816254DDDDA03802F4719 /* BoardPromptRules.swift */,
@@ -1313,6 +1321,7 @@
 			isa = PBXGroup;
 			children = (
 				F9C1C8BA1FBA059403F52107 /* ai-decks.json */,
+				0E3F7175401E06C60F4CAD3B /* arena-worlds.json */,
 				0011D51DDEED2576ED425898 /* commander-brackets.json */,
 				1A7B83AA1C40365E550FA5E3 /* tavern-room.json */,
 				D5489907D7F10C930B3E85E6 /* Audio */,
@@ -1626,6 +1635,7 @@
 				073A3C37624E019DB68DAA84 /* PrivacyInfo.xcprivacy in Resources */,
 				EF969496B7B06B93615E320C /* ability.caf in Resources */,
 				38A7F40E6DD44441FA1F78A5 /* ai-decks.json in Resources */,
+				BAD316118A2584822658C4A4 /* arena-worlds.json in Resources */,
 				03BAD9B9261A9DA7DB38BEE5 /* arrive-artifact.m4a in Resources */,
 				3B1818219041F123D5E5741C /* arrive-creature-heavy.m4a in Resources */,
 				78FEEA6C3F731B56CFCE64AB /* arrive-creature.caf in Resources */,
@@ -1817,6 +1827,8 @@
 				1069F3D1BAA49962B4419335 /* ArenaPanels.swift in Sources */,
 				53CE06D4214B551148D128BA /* ArenaPlayPanel.swift in Sources */,
 				58858BA2BD88347EEF714C81 /* ArenaVoiceViews.swift in Sources */,
+				C11D9B23A3155F195A95525B /* ArenaWorldFlow.metal in Sources */,
+				84DD77CA70C8EC41271ECDD3 /* ArenaWorldLife.swift in Sources */,
 				CA5EFC25898ACFEDEA8D650C /* BattlefieldAdaptiveSizing.swift in Sources */,
 				287E5F55CA27719D6983FF70 /* BattlefieldRow.swift in Sources */,
 				D2B46EEE34E03522188A8F54 /* BattlefieldViewportMetrics.swift in Sources */,

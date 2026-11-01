@@ -1038,6 +1038,34 @@ struct BoardModePicker: View {
     }
 }
 
+/// The Arena board's table (ArenaTableTheme). Hearth keeps its own table, so the choice shows only on Arena.
+struct ArenaTablePicker: View {
+    @AppStorage(BoardMode.key) private var mode = BoardMode.defaultValue
+    @AppStorage(ArenaTableTheme.key) private var table = ArenaTableTheme.defaultValue
+
+    var body: some View {
+        if BoardMode.resolved(mode) == .arena {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Theme").font(.system(size: 16, weight: .semibold, design: .serif))
+                // One row where the names fit at full size; on a narrow panel two rows, so none has to shrink.
+                let options = ArenaTableTheme.allCases.map { ($0.title, $0.rawValue) }
+                ViewThatFits(in: .horizontal) {
+                    themeRow(options).fixedSize(horizontal: true, vertical: false)
+                    VStack(spacing: 0) {
+                        themeRow(Array(options.prefix(3)))
+                        themeRow(Array(options.dropFirst(3)))
+                    }
+                }
+            }
+            .modifier(TavernSettingsPanel())
+        }
+    }
+
+    private func themeRow(_ options: [(String, String)]) -> some View {
+        ArenaSegmented(options: options.map { (label: $0.0, value: $0.1) }, selection: $table, identifier: "settings.arenaTable", stretch: true)
+    }
+}
+
 struct BoardEffectsPicker: View {
     /// Off where sound has a page of its own (the menu's Options).
     var includesAudio = true

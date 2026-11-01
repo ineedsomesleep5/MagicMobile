@@ -50,6 +50,88 @@ struct BattlefieldBackdropArt: View {
     }
 }
 
+/// The Arena board's table themes (docs/ARENA_STYLE.md "Table worlds"): a theme holds the plate, its light and how cards
+/// sit in that light; the Arena UI stays the same on every table. Stored values will be shared with Android and the web.
+enum ArenaTableTheme: String, CaseIterable, Identifiable {
+    case walnut
+    case radioNight = "radio-night"
+    case utopia
+    case halloween
+    case volcano
+
+    struct CardShadow: Equatable {
+        let color: Color
+        let radius: CGFloat
+        let x: CGFloat
+        let y: CGFloat
+    }
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .walnut: "Walnut"
+        case .radioNight: "Radio Night"
+        case .utopia: "Utopia"
+        case .halloween: "Halloween"
+        case .volcano: "Volcano"
+        }
+    }
+
+    static let key = "magicmobile.arenaTable"
+    static let defaultValue = ArenaTableTheme.walnut.rawValue
+    static func resolved(_ value: String) -> Self { Self(rawValue: value) ?? .walnut }
+
+    func plate(landscape: Bool) -> String {
+        let name = self == .walnut ? "tavern-arena" : "arena-world-\(rawValue)"
+        return "\(name)-\(landscape ? "landscape" : "portrait")"
+    }
+
+    /// The warm lamp drawn over the walnut mat. A world's lamps are in its plate.
+    var hasTableLamp: Bool { self == .walnut }
+    /// A pale table: thin light controls drawn straight on it need dark glass behind them.
+    var isBright: Bool { self == .utopia }
+
+    /// The table's light on a card lying on it, and on a tapped one.
+    var cardLight: Color {
+        switch self {
+        case .walnut: .white
+        case .radioNight: Color(red: 0.95, green: 0.93, blue: 1)
+        case .utopia: Color(red: 1, green: 0.985, blue: 0.95)
+        case .halloween: Color(red: 0.97, green: 0.93, blue: 0.95)
+        case .volcano: Color(red: 1, green: 0.96, blue: 0.92)
+        }
+    }
+    var tappedLight: Color {
+        switch self {
+        case .walnut: Color(white: 0.64)
+        case .radioNight: Color(red: 0.6, green: 0.58, blue: 0.68)
+        case .utopia: Color(red: 0.7, green: 0.67, blue: 0.62)
+        case .halloween: Color(red: 0.6, green: 0.56, blue: 0.62)
+        case .volcano: Color(red: 0.66, green: 0.58, blue: 0.54)
+        }
+    }
+
+    /// Each world's sun or moon is behind the player (arena_worlds/*.json), so shadows fall away up the table.
+    var cardShadow: CardShadow? {
+        switch self {
+        case .walnut: nil
+        case .radioNight: CardShadow(color: Color(red: 0.03, green: 0.02, blue: 0.07).opacity(0.85), radius: 5, x: 1.5, y: -3)
+        case .utopia: CardShadow(color: Color(red: 0.36, green: 0.22, blue: 0.1).opacity(0.42), radius: 4, x: 0.5, y: -2.5)
+        case .halloween: CardShadow(color: Color(red: 0.04, green: 0.02, blue: 0.05).opacity(0.85), radius: 5, x: 1, y: -3)
+        case .volcano: CardShadow(color: Color(red: 0.05, green: 0.015, blue: 0.01).opacity(0.85), radius: 5, x: 0, y: -2.5)
+        }
+    }
+    var pileShadow: Color {
+        switch self {
+        case .walnut: .black.opacity(0.55)
+        case .radioNight: Color(red: 0.03, green: 0.02, blue: 0.07).opacity(0.72)
+        case .utopia: Color(red: 0.36, green: 0.22, blue: 0.1).opacity(0.42)
+        case .halloween: Color(red: 0.04, green: 0.02, blue: 0.05).opacity(0.72)
+        case .volcano: Color(red: 0.05, green: 0.015, blue: 0.01).opacity(0.72)
+        }
+    }
+}
+
 struct GameBoardTheme {
     // Foundations
     let backgroundShadow = Color(red: 0.04, green: 0.03, blue: 0.02)

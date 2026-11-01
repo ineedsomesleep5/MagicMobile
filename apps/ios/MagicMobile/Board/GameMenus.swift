@@ -371,6 +371,7 @@ struct GameManagementMenu: View {
 
                     GameMenuSectionLabel(text: "Options")
                     BoardModePicker()
+                    ArenaTablePicker()
                     CardFramesToggle()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     FollowTurnsToggle()

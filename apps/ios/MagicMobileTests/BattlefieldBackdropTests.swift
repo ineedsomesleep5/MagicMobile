@@ -34,6 +34,47 @@ final class BattlefieldBackdropTests: XCTestCase {
         }
     }
 
+    func testTableThemesFallBackToWalnutAndWalnutStaysAsItWas() {
+        XCTAssertEqual(ArenaTableTheme.resolved("radio-night"), .radioNight)
+        XCTAssertEqual(ArenaTableTheme.resolved("utopia"), .utopia)
+        XCTAssertEqual(ArenaTableTheme.resolved("halloween"), .halloween)
+        XCTAssertEqual(ArenaTableTheme.resolved("volcano"), .volcano)
+        XCTAssertEqual(ArenaTableTheme.resolved("gone"), .walnut)
+        XCTAssertEqual(ArenaTableTheme.defaultValue, "walnut")
+        XCTAssertTrue(ArenaTableTheme.utopia.isBright)
+        XCTAssertFalse(ArenaTableTheme.walnut.isBright)
+        XCTAssertNil(ArenaTableTheme.walnut.cardShadow)
+        XCTAssertTrue(ArenaTableTheme.walnut.hasTableLamp)
+        XCTAssertEqual(ArenaTableTheme.walnut.plate(landscape: true), "tavern-arena-landscape")
+        XCTAssertEqual(ArenaTableTheme.walnut.plate(landscape: false), "tavern-arena-portrait")
+    }
+
+    func testEveryTableThemeShipsBothPlates() throws {
+        for theme in ArenaTableTheme.allCases {
+            let wide = try XCTUnwrap(UIImage(named: theme.plate(landscape: true)), "\(theme) has no landscape plate")
+            let tall = try XCTUnwrap(UIImage(named: theme.plate(landscape: false)), "\(theme) has no portrait plate")
+            XCTAssertGreaterThan(wide.size.width, wide.size.height)
+            XCTAssertGreaterThan(tall.size.height, tall.size.width)
+        }
+    }
+
+    /// Each world's motion is built from its plate (scripts/brand/arena_world_motion.py): the data and both maps must ship.
+    func testEveryWorldShipsItsMotion() throws {
+        for theme in ArenaTableTheme.allCases where theme != .walnut {
+            let spec = try XCTUnwrap(ArenaWorldSpec.all[theme.rawValue], "\(theme) has no motion")
+            for (variant, scene) in [("landscape", spec.landscape), ("portrait", spec.portrait)] {
+                XCTAssertFalse(scene.lights.isEmpty && scene.flows.isEmpty, "\(theme) \(variant) doesn't move")
+                XCTAssertNotNil(UIImage(named: "arena-world-\(theme.rawValue)-\(variant)-mask"))
+                XCTAssertNotNil(UIImage(named: "arena-world-\(theme.rawValue)-\(variant)-glow"))
+                for flow in scene.flows {
+                    XCTAssertEqual(flow.rect.count, 4)
+                    XCTAssertEqual(flow.dir.count, 2)
+                }
+            }
+        }
+        XCTAssertNil(ArenaWorldSpec.all[ArenaTableTheme.walnut.rawValue], "Walnut doesn't move")
+    }
+
     func testTavernFramesFollowTheCardsCurrentType() {
         func frame(_ typeLine: String, token: Bool? = nil, creatureNow: Bool? = nil) -> TavernFrameKind {
             TavernFrameKind(ZoneCard(instanceId: "f", card: CardIdentity(name: "Card", typeLine: typeLine, oracleText: nil, isToken: token),

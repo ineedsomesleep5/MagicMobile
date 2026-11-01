@@ -348,6 +348,7 @@ struct ArenaOptionsView: View {
                 BoardModePicker()
                 BoardEffectsPicker(includesAudio: false)
             }
+            ArenaTablePicker()
             CardFramesToggle()
         case .audio:
             GameAudioSettings().modifier(TavernSettingsPanel())

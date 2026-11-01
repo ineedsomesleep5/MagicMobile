@@ -1,0 +1,530 @@
+{
+ "name": "Halloween",
+ "seed": 31,
+ "sky": "#2c2840",
+ "sky_strength": 2.4,
+ "exposure": 1.5,
+ "glow": 3,
+ "warm": "#ff8a2e",
+ "cool": "#7fe0b0",
+ "bloom": {
+  "threshold": 1.0,
+  "strength": 0.3
+ },
+ "rake": 58,
+ "paint": {
+  "brush": 2,
+  "shadows": [
+   1.0,
+   1.0,
+   1.03
+  ],
+  "lights": [
+   1.02,
+   1.0,
+   0.98
+  ]
+ },
+ "moon": {
+  "turn": -8,
+  "tilt": -26,
+  "energy": 1.8,
+  "colour": "#c8c0f0",
+  "soft": 10
+ },
+ "dry_plants": [
+  0.47,
+  0.3,
+  0.45
+ ],
+ "ground": {
+  "calm": "dry_ground_01",
+  "calm_tile": 0.8,
+  "calm_flatten": 0.2,
+  "calm_grit": 0.4,
+  "calm_mean": [
+   0.26,
+   0.2,
+   0.18
+  ],
+  "calm_bump": 0.7,
+  "rough": "dry_ground_rocks",
+  "rough_tile": 0.8,
+  "cracks": "mud_cracked_dry_03",
+  "cracks_tile": 0.8,
+  "cracks_mix": 0.08,
+  "open_tint": "#a8928a",
+  "rough_tint": "#7c6a60",
+  "drift_scale": 0.6,
+  "drift_dark": 0.85,
+  "drift_light": 1.15
+ },
+ "materials": {
+  "stone": {
+   "set": "cracked_concrete",
+   "tile": 1.6,
+   "tint": "#857e8a",
+   "bump": 1.0
+  },
+  "marble": {
+   "set": "cracked_concrete",
+   "tile": 1.6,
+   "tint": "#857e8a"
+  },
+  "bark": {
+   "set": "weathered_planks",
+   "tile": 2.2,
+   "tint": "#4c3a30"
+  },
+  "planks": {
+   "set": "weathered_planks",
+   "tile": 0.9,
+   "tint": "#8a6a50"
+  },
+  "door": {
+   "set": "weathered_planks",
+   "tile": 1.2,
+   "tint": "#4e3a2c"
+  },
+  "roof": {
+   "set": "rusty_corrugated_iron",
+   "tile": 1.8,
+   "tint": "#6a5a58"
+  }
+ },
+ "palette": {
+  "rock": "#3f3a3f",
+  "twig": "#55443a",
+  "deck": "#4a4450",
+  "cream": "#b7ab92",
+  "tire": "#141416"
+ },
+ "finishes": {
+  "gold": {
+   "colour": "#2c2a30",
+   "rough": 0.5,
+   "metal": 0.6
+  },
+  "pumpkin": {
+   "colour": "#c9601a",
+   "rough": 0.5
+  },
+  "vine": {
+   "colour": "#4a5a2c",
+   "rough": 0.8
+  },
+  "cloth": {
+   "colour": "#6e5a46",
+   "rough": 0.9
+  },
+  "hat": {
+   "colour": "#1f1c24",
+   "rough": 0.8
+  }
+ },
+ "landscape": {
+  "pebbles": 1200,
+  "scatter": {
+   "scrub": {
+    "count": 110,
+    "from": 0.2,
+    "to": 1.0,
+    "clusters": 0.2,
+    "tall": 0.6,
+    "models": [
+     [
+      "twig_bush",
+      0.5,
+      0.9
+     ],
+     [
+      "shrub_03",
+      0.45,
+      0.8
+     ]
+    ]
+   },
+   "rocks": {
+    "count": 40,
+    "from": 0.2,
+    "to": 1.0,
+    "clusters": 0.3,
+    "tall": 0.4,
+    "models": [
+     [
+      "rock_07",
+      0.14,
+      0.34
+     ],
+     [
+      "rock_09",
+      0.14,
+      0.3
+     ]
+    ]
+   }
+  },
+  "clear": [
+   [
+    112,
+    360,
+    178,
+    84
+   ],
+   [
+    630,
+    -30,
+    150,
+    92
+   ],
+   [
+    360,
+    -40,
+    236,
+    80
+   ]
+  ],
+  "props": [
+   {
+    "kind": "cottage",
+    "at": [
+     64,
+     16
+    ],
+    "turn": 32,
+    "size": 0.74,
+    "seat": true,
+    "power": 7
+   },
+   {
+    "kind": "pumpkins",
+    "at": [
+     166,
+     20
+    ],
+    "big": 0.34
+   },
+   {
+    "kind": "lantern",
+    "at": [
+     140,
+     40
+    ],
+    "seat": true
+   },
+   {
+    "kind": "pumpkins",
+    "at": [
+     250,
+     22
+    ],
+    "big": 0.3
+   },
+   {
+    "kind": "pumpkins",
+    "at": [
+     14,
+     150
+    ],
+    "big": 0.36
+   },
+   {
+    "kind": "iron_fence",
+    "at": [
+     26,
+     238
+    ],
+    "turn": 86,
+    "span": 1.3
+   },
+   {
+    "kind": "gnarled_tree",
+    "at": [
+     14,
+     324
+    ],
+    "height": 1.2,
+    "seat": true
+   },
+   {
+    "kind": "lantern",
+    "at": [
+     50,
+     300
+    ],
+    "seat": true
+   },
+   {
+    "kind": "pumpkins",
+    "at": [
+     26,
+     410
+    ],
+    "big": 0.4
+   },
+   {
+    "kind": "headstones",
+    "at": [
+     846,
+     30
+    ],
+    "size": 1.25,
+    "seat": true
+   },
+   {
+    "kind": "iron_fence",
+    "at": [
+     800,
+     20
+    ],
+    "span": 1.2,
+    "seat": true
+   },
+   {
+    "kind": "gnarled_tree",
+    "at": [
+     928,
+     20
+    ],
+    "height": 1.2,
+    "seat": true
+   },
+   {
+    "kind": "lantern",
+    "at": [
+     900,
+     60
+    ],
+    "seat": true
+   },
+   {
+    "kind": "scarecrow",
+    "at": [
+     924,
+     146
+    ],
+    "seat": true,
+    "size": 1.1
+   },
+   {
+    "kind": "pumpkins",
+    "at": [
+     942,
+     262
+    ],
+    "big": 0.38
+   },
+   {
+    "kind": "pumpkins",
+    "at": [
+     942,
+     360
+    ],
+    "big": 0.44
+   },
+   {
+    "kind": "lantern",
+    "at": [
+     892,
+     310
+    ],
+    "seat": true
+   },
+   {
+    "kind": "pumpkins",
+    "at": [
+     910,
+     424
+    ],
+    "big": 0.46
+   },
+   {
+    "kind": "pumpkins",
+    "at": [
+     820,
+     430
+    ],
+    "big": 0.36
+   },
+   {
+    "kind": "pumpkins",
+    "at": [
+     360,
+     432
+    ],
+    "big": 0.28
+   },
+   {
+    "kind": "gnarled_tree",
+    "at": [
+     30,
+     250
+    ],
+    "height": 0.8,
+    "seat": true
+   }
+  ]
+ },
+ "portrait": {
+  "pebbles": 800,
+  "scatter": {
+   "scrub": {
+    "count": 40,
+    "from": 0.2,
+    "to": 1.0,
+    "clusters": 0.2,
+    "tall": 0.6,
+    "models": [
+     [
+      "twig_bush",
+      0.45,
+      0.8
+     ],
+     [
+      "shrub_03",
+      0.4,
+      0.7
+     ]
+    ]
+   },
+   "rocks": {
+    "count": 18,
+    "from": 0.2,
+    "to": 1.0,
+    "clusters": 0.3,
+    "tall": 0.4,
+    "models": [
+     [
+      "rock_07",
+      0.14,
+      0.3
+     ],
+     [
+      "rock_09",
+      0.14,
+      0.28
+     ]
+    ]
+   }
+  },
+  "clear": [
+   [
+    88,
+    852,
+    110,
+    72
+   ],
+   [
+    8,
+    764,
+    44,
+    62
+   ]
+  ],
+  "front_wall": {
+   "height": 0.24,
+   "depth": 0.26,
+   "material": "stone",
+   "cap": "gold"
+  },
+  "props": [
+   {
+    "kind": "pavilion",
+    "at": [
+     106,
+     30
+    ],
+    "width": 2.5,
+    "depth": 1.5,
+    "height": 0.3,
+    "seat": true,
+    "power": 6
+   },
+   {
+    "kind": "pavilion",
+    "at": [
+     340,
+     14
+    ],
+    "width": 1.8,
+    "depth": 1.4,
+    "height": 0.28,
+    "seat": true,
+    "power": 5
+   },
+   {
+    "kind": "pumpkins",
+    "at": [
+     232,
+     58
+    ],
+    "big": 0.26
+   },
+   {
+    "kind": "lantern",
+    "at": [
+     206,
+     78
+    ],
+    "height": 0.5
+   },
+   {
+    "kind": "gnarled_tree",
+    "at": [
+     232,
+     10
+    ],
+    "height": 0.8
+   },
+   {
+    "kind": "gnarled_tree",
+    "at": [
+     426,
+     58
+    ],
+    "height": 0.7
+   },
+   {
+    "kind": "pumpkins",
+    "at": [
+     16,
+     80
+    ],
+    "big": 0.2
+   },
+   {
+    "kind": "pumpkins",
+    "at": [
+     26,
+     906
+    ],
+    "big": 0.32
+   },
+   {
+    "kind": "pumpkins",
+    "at": [
+     408,
+     908
+    ],
+    "big": 0.34
+   },
+   {
+    "kind": "headstones",
+    "at": [
+     240,
+     906
+    ],
+    "size": 0.6
+   },
+   {
+    "kind": "lantern",
+    "at": [
+     300,
+     890
+    ],
+    "height": 0.5,
+    "power": 3
+   }
+  ]
+ }
+}

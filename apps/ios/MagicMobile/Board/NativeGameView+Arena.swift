@@ -45,9 +45,13 @@ extension NativeGameView {
         let canvas = ArenaCanvas(screen: screen)
         return ZStack {
             ArenaTableBackdrop()
+            ArenaWorldLife(theme: ArenaTableTheme.resolved(arenaTable), dread: arenaWorldDread(human), covered: arenaScreenUp(snapshot))
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture { arenaTapTable(snapshot: snapshot) }
+                .onTapGesture { location in
+                    ArenaWorldEvents.shared.send(.poke(location))
+                    arenaTapTable(snapshot: snapshot)
+                }
                 .accessibilityHidden(true)
             ArenaLayer { arenaTable(snapshot: snapshot, human: human, opponent: opponent, canvas: canvas) }
         }
@@ -62,6 +66,7 @@ extension NativeGameView {
         .persistentSystemOverlays(.hidden)
         .environment(\.tavernBoard, true)
         .environment(\.arenaBoard, true)
+        .environment(\.arenaTableTheme, ArenaTableTheme.resolved(arenaTable))
         .environment(\.arenaTableLean, ArenaTableLean(canvas: canvas))
         .environment(\.arenaSafeArea, ArenaSafeArea(insets: rootProxy.safeAreaInsets))
         // Every new answer from XMage steps the helpers: its revision, a new prompt or the pending answer clearing.
@@ -1203,6 +1208,11 @@ extension NativeGameView {
     private func arenaControlsOnTop(snapshot: GameSnapshot) -> Bool {
         InlinePaymentPromptState.isActive(in: snapshot) || !snapshot.stackTopFirst.isEmpty || arenaCombatPhase(snapshot) != nil
             || !GameBoardInteractionState.boardTargetableIds(for: snapshot).isEmpty
+    }
+
+    /// How close the viewer is to losing, for the world's mood: it gathers from ten life.
+    private func arenaWorldDread(_ human: PlayerGameState) -> CGFloat {
+        CGFloat(max(0, min(10, 11 - human.life))) / 10 * 0.8
     }
 
     /// A tap on the empty table: drops a lifted card, then puts a raised hand down, then clears any selection.
