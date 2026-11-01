@@ -71,4 +71,35 @@ do $t$ declare r jsonb := public.mm_ranked_seed(32, 32, 9, 1); begin
   if (r->>'points')::int <> 0 or (r->>'placementLeft')::int <> 5 or (r->>'seeded')::boolean is not true then raise exception 'seed: %', r; end if;
 end $t$;
 reset role;
+-- Games already played this season count: the replay turns them into placements.
+insert into auth.users(id,aud,role,email) values
+ ('d9700000-0000-0000-0000-000000000005','authenticated','authenticated','early@example.invalid'),
+ ('d9700000-0000-0000-0000-000000000006','authenticated','authenticated','keen@example.invalid'),
+ ('d9700000-0000-0000-0000-000000000007','authenticated','authenticated','imported@example.invalid');
+insert into public.profiles(id, display_name, username) values
+ ('d9700000-0000-0000-0000-000000000005', 'Early', 'Early'),
+ ('d9700000-0000-0000-0000-000000000006', 'Keeneye', 'Keeneye'),
+ ('d9700000-0000-0000-0000-000000000007', 'Imported', 'Imported');
+insert into public.ranked_standings (user_id, season, points, peak_points, wins, losses, placement_left) values
+ ('d9700000-0000-0000-0000-000000000005', public.mm_current_season(), 6, 6, 3, 1, 0),
+ ('d9700000-0000-0000-0000-000000000006', public.mm_current_season(), 9, 9, 5, 2, 0),
+ ('d9700000-0000-0000-0000-000000000007', public.mm_current_season(), 30, 30, 4, 1, 0);
+insert into public.ranked_results (user_id, season, source, outcome, points_before, points_after, created_at)
+select 'd9700000-0000-0000-0000-000000000005'::uuid, public.mm_current_season(), 'ai', o, 0, 2, now() + n * interval '1 second'
+  from unnest(array['loss','win','win','win']) with ordinality as x(o, n);
+insert into public.ranked_results (user_id, season, source, outcome, points_before, points_after, created_at)
+select 'd9700000-0000-0000-0000-000000000006'::uuid, public.mm_current_season(), 'ai', o, 10, 10 + d, now() + n * interval '1 second'
+  from unnest(array['win','win','loss','win','win','loss','win'], array[2,2,0,2,2,-1,2]) with ordinality as x(o, d, n);
+do $t$ declare s public.ranked_standings; begin
+  perform public.mm_ranked_recount('d9700000-0000-0000-0000-000000000005');
+  s := public.mm_ranked_current('d9700000-0000-0000-0000-000000000005');
+  if s.points <> 24 or s.peak_points <> 24 or s.placement_left <> 1 then raise exception 'recount four games: %', s; end if;
+  perform public.mm_ranked_recount('d9700000-0000-0000-0000-000000000006');
+  s := public.mm_ranked_current('d9700000-0000-0000-0000-000000000006');
+  -- Five placements with four wins reach 32, then the ladder's own -1 and +2.
+  if s.points <> 33 or s.peak_points <> 33 or s.placement_left <> 0 then raise exception 'recount seven games: %', s; end if;
+  perform public.mm_ranked_recount('d9700000-0000-0000-0000-000000000007');
+  s := public.mm_ranked_current('d9700000-0000-0000-0000-000000000007');
+  if s.points <> 30 or s.placement_left <> 0 then raise exception 'imported standing changed: %', s; end if;
+end $t$;
 drop function public.test_apply(uuid, text[]);

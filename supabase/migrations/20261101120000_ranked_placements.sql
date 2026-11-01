@@ -8,27 +8,52 @@
 alter table public.ranked_standings add column if not exists placement_left smallint not null default 5
   check (placement_left between 0 and 5);
 
--- Those already playing this season keep their place. Anyone who rolled into it without playing a game places.
-update public.ranked_standings s set placement_left = 0
- where s.season = public.mm_current_season() and s.wins + s.losses + s.draws > 0;
-
-update public.ranked_standings s
-   set points = v.start, peak_points = v.start, updated_at = now()
-  from (select x.user_id,
-               case when coalesce((select h.peak_points from public.ranked_season_history h
-                                    where h.user_id = x.user_id order by h.season desc limit 1), 0) >= 80
-                    then 8 else 0 end as start
-          from public.ranked_standings x
-         where x.season = public.mm_current_season() and x.wins + x.losses + x.draws = 0) v
- where s.user_id = v.user_id;
+-- This season's games so far count as placements (Caleb, 2026-11-01): each player's results replay from the start, the
+-- first five as placement games and any after them as the ladder moves they already were.
+create or replace function public.mm_ranked_recount(p_uid uuid) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  s public.ranked_standings%rowtype;
+  r record;
+  v_points integer;
+  v_peak integer;
+  v_left integer := 5;
+  v_counted integer := 0;
+begin
+  select * into s from public.ranked_standings where user_id = p_uid for update;
+  if not found or s.season <> public.mm_current_season() then return; end if;
+  v_points := case when coalesce((select h.peak_points from public.ranked_season_history h
+                                   where h.user_id = p_uid order by h.season desc limit 1), 0) >= 80 then 8 else 0 end;
+  v_peak := v_points;
+  for r in select outcome, points_before, points_after from public.ranked_results
+            where user_id = p_uid and season = s.season order by created_at, id
+  loop
+    v_counted := v_counted + 1;
+    if v_left > 0 then
+      v_left := v_left - 1;
+      if r.outcome = 'win' then v_points := v_points + 8; end if;
+    else
+      v_points := greatest(v_points + r.points_after - r.points_before, 0);
+    end if;
+    v_peak := greatest(v_peak, v_points);
+  end loop;
+  -- Games with no results behind them (imported standings) can't be replayed: that standing stays as it is.
+  if v_counted = 0 and s.wins + s.losses + s.draws > 0 then
+    update public.ranked_standings set placement_left = 0 where user_id = p_uid;
+    return;
+  end if;
+  update public.ranked_standings set points = v_points, peak_points = v_peak, placement_left = v_left, updated_at = now()
+   where user_id = p_uid;
+  perform public.mm_ranked_mirror(p_uid);
+end $$;
+revoke all on function public.mm_ranked_recount(uuid) from public, anon, authenticated;
 
 do $$
 declare v_uid uuid;
 begin
   for v_uid in select user_id from public.ranked_standings where season = public.mm_current_season()
-                                                             and wins + losses + draws = 0
   loop
-    perform public.mm_ranked_mirror(v_uid);
+    perform public.mm_ranked_recount(v_uid);
   end loop;
 end $$;
 
