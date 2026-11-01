@@ -1,0 +1,251 @@
+<title>MagicMobile Card Support</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+SC:wght@600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+/* Layout: walnut table; a ledger of counts, then one card shelf with tabs (new in XMage, commanders, renamed, lookup). */
+:root{
+  --canvas:#1B120B; --surface:#2B1B11; --raised:#3A2416; --border:#8A6A3C;
+  --ink:#F3E6C8; --ink2:#C2AB86; --brass:#E0AD5C; --ember:#FF8058; --ember-ink:#221713;
+  --parch:#F2E0BD; --parch-ink:#381C0A; --ok:#9FCB7A;
+  --display:"Cormorant SC","Cormorant Garamond",Georgia,serif;
+  --body:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--canvas);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45;
+  background-image:radial-gradient(ellipse at 50% -10%,#3a2416 0%,transparent 60%)}
+.wrap{max-width:1180px;margin:0 auto;padding-block:28px 64px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:22px}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(30px,6vw,46px);line-height:1.05;margin:0;
+  background:linear-gradient(#FFE08F,#CC8F38);-webkit-background-clip:text;background-clip:text;color:transparent;text-wrap:balance}
+.fresh{color:var(--ink2);font-family:var(--ui);font-size:13px;margin:6px 0 0}
+.fresh b{color:var(--ink);font-weight:600}
+.ledger{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:760px){.ledger{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.plaque{background:var(--surface);border:1px solid color-mix(in srgb,var(--border) 70%,transparent);border-radius:10px;padding:14px 16px;
+  box-shadow:inset 0 1px 0 rgba(255,224,143,.08)}
+.plaque .n{font-family:var(--display);font-size:clamp(28px,5vw,38px);font-weight:700;color:var(--brass);line-height:1;font-variant-numeric:tabular-nums}
+.plaque .l{font-family:var(--ui);font-size:12.5px;color:var(--ink);margin-top:6px}
+.plaque .s{font-family:var(--ui);font-size:12px;color:var(--ink2);margin-top:2px}
+.plaque.hot{background:linear-gradient(160deg,#4a1d12,#2b1b11 70%);border-color:#a74429}
+.plaque.hot .n{color:var(--ember)}
+.shelf{display:flex;flex-direction:column;gap:14px}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:color-mix(in srgb,var(--canvas) 94%,transparent);
+  backdrop-filter:blur(6px);padding-block:10px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid color-mix(in srgb,var(--border) 45%,transparent)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--canvas)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{font-family:var(--ui);font-size:13.5px;font-weight:600;color:var(--ink2);background:var(--surface);border:1px solid color-mix(in srgb,var(--border) 55%,transparent);
+  border-radius:999px;padding:7px 14px;cursor:pointer}
+.tab[aria-selected="true"]{background:linear-gradient(#FF9D7E,#FF8058);color:var(--ember-ink);border-color:transparent}
+.tab .c{font-weight:500;opacity:.8;margin-left:4px;font-variant-numeric:tabular-nums}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tools input[type=search],.tools select{font:14px var(--ui);color:var(--ink);background:var(--raised);border:1px solid color-mix(in srgb,var(--border) 70%,transparent);
+  border-radius:8px;padding:8px 10px;min-width:0}
+.tools input[type=search]{flex:1 1 220px}
+.pips{display:flex;gap:4px}
+.pipbtn{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer;font:700 12px var(--ui);display:grid;place-items:center;opacity:.55}
+.pipbtn[aria-pressed="true"]{opacity:1;border-color:var(--brass)}
+.chk{font:13px var(--ui);color:var(--ink2);display:flex;gap:6px;align-items:center}
+:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
+.note{font:13px var(--ui);color:var(--ink2);margin:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px}
+@media (max-width:420px){.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}}
+/* Text card: a parchment face framed in the card's colour identity. */
+.card{position:relative;aspect-ratio:63/88;max-width:100%;border-radius:4.5%/3.2%;padding:5px;cursor:pointer;
+  background:var(--frame,#8a8378);box-shadow:0 2px 8px rgba(0,0,0,.45);border:none;text-align:left;color:inherit;font:inherit;width:100%}
+.card .face{height:100%;border-radius:3.5%/2.5%;background:linear-gradient(#f6e9cc,#e9d6ae);color:var(--parch-ink);display:flex;flex-direction:column;overflow:hidden}
+.card .nm{display:flex;justify-content:space-between;gap:4px;align-items:flex-start;padding:5px 6px 3px;font-weight:600;font-size:12.5px;line-height:1.15;
+  background:rgba(255,255,255,.35);border-bottom:1px solid rgba(56,28,10,.2)}
+.card .nm span:first-child{min-width:0;overflow-wrap:anywhere}
+.cost{display:flex;gap:1px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0;max-width:48%}
+.m{display:inline-grid;place-items:center;width:14px;height:14px;border-radius:50%;font:700 8.5px var(--ui);color:#1b120b;background:#cbc2b4;box-shadow:0 1px 0 rgba(0,0,0,.35)}
+.m.W{background:#f8f1d8}.m.U{background:#7fb3e0}.m.B{background:#a69c96}.m.R{background:#ec8a6c}.m.G{background:#8cc49a}.m.C{background:#d3cdc6}
+.m.h{background:linear-gradient(135deg,var(--h1) 50%,var(--h2) 50%);font-size:7px}
+.card .ty{font-size:11px;font-style:italic;padding:3px 6px;border-bottom:1px solid rgba(56,28,10,.2);background:rgba(255,255,255,.22)}
+.card .tx{font-size:10.5px;line-height:1.3;padding:5px 6px;flex:1;overflow:hidden;
+  -webkit-mask-image:linear-gradient(#000 82%,transparent);mask-image:linear-gradient(#000 82%,transparent)}
+.card .tx p{margin:0 0 4px}
+.card .ft{display:flex;justify-content:space-between;align-items:center;padding:3px 6px 4px;font:600 10px var(--ui);color:#6a4a2a}
+.card .pt{background:var(--parch);border:1px solid rgba(56,28,10,.35);border-radius:3px;padding:0 4px;color:var(--parch-ink);font-size:11px}
+.card .badge{position:absolute;top:-6px;right:-4px;font:700 10px var(--ui);background:var(--ember);color:var(--ember-ink);border-radius:999px;padding:2px 7px;box-shadow:0 1px 4px rgba(0,0,0,.5)}
+.card.img{padding:0;background:#111}
+.card.img .art{width:100%;height:100%;border-radius:4.5%/3.2%;background-color:#2b1b11;background-repeat:no-repeat}
+.more{align-self:center;font:600 14px var(--ui);color:var(--ink);background:var(--raised);border:1px solid var(--border);border-radius:999px;padding:9px 20px;cursor:pointer}
+.empty{font:14px var(--ui);color:var(--ink2);padding:28px 0;text-align:center}
+.rows{display:flex;flex-direction:column;border:1px solid color-mix(in srgb,var(--border) 45%,transparent);border-radius:10px;overflow:hidden}
+.row{display:flex;justify-content:space-between;gap:12px;padding:10px 14px;background:var(--surface);font-size:14.5px;border-top:1px solid color-mix(in srgb,var(--border) 25%,transparent)}
+.row:first-child{border-top:none}
+.row .st{font:600 12px var(--ui);white-space:nowrap}
+.st.yes{color:var(--ok)}.st.new{color:var(--ember)}
+.overlay{position:fixed;inset:0;z-index:20;background:rgba(10,6,3,.78);display:grid;place-items:center;
+  padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.sheet{background:var(--surface);border:1px solid var(--border);border-radius:14px;max-width:640px;width:100%;max-height:100%;overflow:auto;
+  display:grid;grid-template-columns:minmax(0,240px) minmax(0,1fr);gap:18px;padding:18px}
+@media (max-width:560px){.sheet{grid-template-columns:minmax(0,1fr)}.sheet .card{max-width:240px;margin:0 auto}}
+.sheet h2{font-family:var(--display);font-size:26px;line-height:1.1;margin:0 0 4px;color:var(--brass);text-wrap:balance}
+.sheet .meta{font:13px var(--ui);color:var(--ink2);margin:0 0 10px}
+.sheet .rules p{margin:0 0 8px;font-size:14.5px}
+.sheet a{color:var(--ember)}
+.sheet .x{font:600 13px var(--ui);background:var(--raised);color:var(--ink);border:1px solid var(--border);border-radius:999px;padding:6px 14px;cursor:pointer;margin-top:8px}
+@media (prefers-reduced-motion:no-preference){.card{transition:transform .15s}.card:hover{transform:translateY(-2px)}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>MagicMobile Card Support</h1>
+    <p class="fresh" id="fresh">Loading the latest comparison…</p>
+  </header>
+  <section class="ledger" id="ledger" aria-label="Counts"></section>
+  <section class="shelf">
+    <div class="bar">
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <div class="tools">
+        <input type="search" id="q" placeholder="Search names, types and rules" aria-label="Search">
+        <select id="setf" aria-label="Set"></select>
+        <div class="pips" id="pips" aria-label="Colour identity"></div>
+        <label class="chk" id="cmdwrap"><input type="checkbox" id="cmdonly"> Commanders only</label>
+      </div>
+      <p class="note" id="note"></p>
+    </div>
+    <div id="view"></div>
+  </section>
+</div>
+<div class="overlay" id="ov" hidden></div>
+
+<script>
+(function(){
+const PAGE=60, COLORS={W:'#f8f1d8',U:'#7fb3e0',B:'#a69c96',R:'#ec8a6c',G:'#8cc49a'};
+const FRAME={W:'#d8cfb0',U:'#3f74ad',B:'#3a3330',R:'#b8442c',G:'#2f7a4a',M:'linear-gradient(135deg,#d9b25a,#a8862f)',C:'#8f8a84'};
+let D=null, tab='new', shown=PAGE, colorSel=new Set();
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=n=>Number(n).toLocaleString('en-US');
+const day=s=>new Date(s).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+
+function ciOf(c){
+  if(c.ci!==undefined) return c.ci;
+  const m=(c.manaCost||'').match(/[WUBRG]/g)||[]; return [...new Set(m)].sort((a,b)=>'WUBRG'.indexOf(a)-'WUBRG'.indexOf(b)).join('');
+}
+function frameOf(ci){return ci.length>1?FRAME.M:ci.length===1?FRAME[ci]:FRAME.C}
+function cost(s){
+  return (s.match(/\{[^}]+\}/g)||[]).map(t=>{
+    const v=t.slice(1,-1);
+    if(v.includes('/')){const [a,b]=v.split('/');return `<span class="m h" style="--h1:${COLORS[a]||'#cbc2b4'};--h2:${COLORS[b]||'#cbc2b4'}">${esc(v.replace('/',''))}</span>`}
+    return `<span class="m ${/^[WUBRGC]$/.test(v)?v:''}">${esc(v)}</span>`;
+  }).join('');
+}
+function rulesOf(c){
+  if(c.rules) return c.rules;
+  return (c.text||'').replace(/<br>/g,'\n').split('\n').filter(Boolean);
+}
+function rulesHtml(c){return rulesOf(c).map(r=>`<p>${esc(r).replace(/\{[^}]+\}/g,m=>cost(m))}</p>`).join('')}
+function imgFor(c){
+  const im=D.images; if(!im||!im.at) return null; const a=im.at[c.name]; if(!a) return null;
+  const [sheet,i]=a, cols=im.cols, rows=Math.ceil((im.perSheet||100)/cols);
+  return {src:im.sheets[sheet], x:(i%cols)/(cols-1)*100, y:Math.floor(i/cols)/(rows-1)*100, size:`${cols*100}% ${rows*100}%`};
+}
+function cardHtml(c,idx){
+  const ci=ciOf(c), im=imgFor(c), badge=c.kind==='renamed'?'Renamed':c.kind==='not shipped yet'?'Not shipped':(c.commander&&tab==='new'?'Commander':'');
+  const b=badge?`<span class="badge">${badge}</span>`:'';
+  if(im) return `<button class="card img" data-i="${idx}" aria-label="${esc(c.name)}">${b}<div class="art" data-src="${esc(im.src)}" style="background-size:${im.size};background-position:${im.x}% ${im.y}%"></div></button>`;
+  return `<button class="card" data-i="${idx}" style="--frame:${frameOf(ci)}">${b}<div class="face">
+    <div class="nm"><span>${esc(c.name)}</span><span class="cost">${cost(c.manaCost||'')}</span></div>
+    <div class="ty">${esc(c.typeLine||'')}</div>
+    <div class="tx">${rulesHtml(c)}</div>
+    <div class="ft"><span>${esc(c.set)} · ${esc(c.num)}</span>${c.pt?`<span class="pt">${esc(c.pt)}</span>`:''}</div></div></button>`;
+}
+let current=[];
+function lists(){
+  return {new:D.newCards, commanders:D.commanders, renamed:D.dropped, lookup:null};
+}
+function matches(c,q){
+  if(!q) return true; q=q.toLowerCase();
+  return c.name.toLowerCase().includes(q)||(c.typeLine||'').toLowerCase().includes(q)||rulesOf(c).join(' ').toLowerCase().includes(q);
+}
+function colorOk(c){
+  if(!colorSel.size) return true; const ci=ciOf(c);
+  if(colorSel.has('C')) return ci==='';
+  return [...colorSel].every(x=>ci.includes(x));
+}
+function render(){
+  const q=$('q').value.trim(), v=$('view');
+  $('setf').hidden=tab!=='new'; $('cmdwrap').hidden=tab!=='new'; $('pips').hidden=!(tab==='new'||tab==='commanders');
+  if(tab==='lookup'){
+    $('note').textContent='Type a card name to see whether MagicMobile and XMage support it.';
+    if(q.length<2){v.innerHTML='<p class="empty">Start typing a card name.</p>';return}
+    const ql=q.toLowerCase(), out=[];
+    for(const n of D.supported){if(n.toLowerCase().includes(ql)){out.push([n,'yes']);if(out.length>=80)break}}
+    for(const c of D.newCards){if(c.name.toLowerCase().includes(ql)&&out.length<100)out.push([c.name,'new'])}
+    v.innerHTML=out.length?`<div class="rows">${out.map(([n,s])=>`<div class="row"><span>${esc(n)}</span><span class="st ${s}">${s==='yes'?'In MagicMobile and XMage':'XMage only, coming in the next engine update'}</span></div>`).join('')}</div>`
+      :'<p class="empty">No card by that name in MagicMobile or XMage.</p>';
+    return;
+  }
+  let L=lists()[tab]||[];
+  const sf=$('setf').value, co=$('cmdonly').checked;
+  current=L.filter(c=>matches(c,q)&&colorOk(c)&&(tab!=='new'||((!sf||c.set===sf)&&(!co||c.commander))));
+  const notes={new:'Cards XMage plays now that MagicMobile will get when it moves to this XMage version.',
+    commanders:'Every commander you can build around in MagicMobile today.',
+    renamed:'Cards XMage renamed. MagicMobile still uses the old name until the next engine update.'};
+  $('note').textContent=`${notes[tab]} Showing ${fmt(Math.min(shown,current.length))} of ${fmt(current.length)}.`;
+  if(tab==='renamed'){
+    v.innerHTML=current.length?`<div class="rows">${current.map(c=>`<div class="row"><span>${esc(c.name)}</span><span class="st new">now “${esc(c.renamedTo||'removed')}”</span></div>`).join('')}</div>`:'<p class="empty">Nothing renamed or removed.</p>';
+    return;
+  }
+  if(!current.length){v.innerHTML='<p class="empty">No cards match. Clear the search or filters.</p>';return}
+  v.innerHTML=`<div class="grid">${current.slice(0,shown).map(cardHtml).join('')}</div>`+(current.length>shown?`<div style="display:flex;justify-content:center;margin-top:16px"><button class="more" id="more">Show ${fmt(Math.min(PAGE,current.length-shown))} more</button></div>`:'');
+  lazy();
+}
+let io=null;
+function lazy(){
+  const arts=document.querySelectorAll('.art[data-src]'); if(!arts.length) return;
+  if(!io) io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){const a=e.target;a.style.backgroundImage=`url("${a.dataset.src}")`;a.removeAttribute('data-src');io.unobserve(a)}}),{rootMargin:'400px'});
+  arts.forEach(a=>io.observe(a));
+}
+function open(c){
+  const ov=$('ov'), sc=`https://scryfall.com/search?q=${encodeURIComponent('!"'+c.name+'"')}`;
+  const meta=[c.setName||c.set, c.num?'#'+c.num:'', c.rarity||''].filter(Boolean).join(' · ');
+  ov.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(c.name)}"><div>${cardHtml(c,-1)}</div><div>
+    <h2>${esc(c.name)}</h2><p class="meta">${esc(c.typeLine||'')}${meta?'<br>'+esc(meta):''}</p>
+    <div class="rules">${rulesHtml(c)||'<p>No rules text.</p>'}</div>
+    <p class="meta"><a href="${sc}" target="_blank" rel="noopener">Open on Scryfall</a></p>
+    <button class="x" id="close">Close</button></div></div>`;
+  ov.hidden=false; lazy(); $('close').focus();
+}
+function setTab(t){tab=t;shown=PAGE;[...$('tabs').children].forEach(b=>b.setAttribute('aria-selected',b.dataset.t===t));
+  try{localStorage.setItem('cs-tab',t)}catch(e){} render()}
+
+document.addEventListener('click',e=>{
+  const t=e.target.closest('.tab'); if(t){setTab(t.dataset.t);return}
+  if(e.target.id==='more'){shown+=PAGE;render();return}
+  const p=e.target.closest('.pipbtn'); if(p){const k=p.dataset.c; if(colorSel.has(k))colorSel.delete(k); else{ if(k==='C')colorSel.clear(); else colorSel.delete('C'); colorSel.add(k)}
+    document.querySelectorAll('.pipbtn').forEach(b=>b.setAttribute('aria-pressed',colorSel.has(b.dataset.c)));shown=PAGE;render();return}
+  const c=e.target.closest('.card'); if(c&&c.dataset.i>=0&&!c.closest('.sheet')){open(current[+c.dataset.i]);return}
+  if(e.target.id==='close'||e.target.id==='ov'){$('ov').hidden=true}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('ov').hidden=true});
+let tm; $('q').addEventListener('input',()=>{clearTimeout(tm);tm=setTimeout(()=>{shown=PAGE;render()},150)});
+$('setf').addEventListener('change',()=>{shown=PAGE;render()}); $('cmdonly').addEventListener('change',()=>{shown=PAGE;render()});
+
+fetch('data.json').then(r=>r.json()).then(d=>{
+  D=d; const k=d.counts;
+  const behind=d.pin.commitsBehind!=null?`, ${fmt(d.pin.commitsBehind)} XMage changes ago`:'';
+  $('fresh').innerHTML=`Checked <b>${day(d.generatedAt)}</b> against XMage as of <b>${day(d.xmage.date)}</b>. MagicMobile runs the XMage version from <b>${day(d.pin.date)}</b>${behind}.`;
+  $('ledger').innerHTML=[
+    ['',fmt(k.supportedBoth),'cards in both','MagicMobile ships '+fmt(k.magicmobileCards)],
+    ['hot',fmt(k.newInXmage),'new in XMage',fmt(k.newCardImplementations)+' new cards, '+fmt(k.renamedInXmage)+' renamed'],
+    ['hot',fmt(k.newCommanders),'new commanders','waiting on the next engine update'],
+    ['',fmt(k.magicmobileCommanders),'commanders in MagicMobile',fmt(k.xmageNotCommanderLegal)+' XMage cards are not Commander legal'],
+  ].map(([c,n,l,s])=>`<div class="plaque ${c}"><div class="n">${n}</div><div class="l">${l}</div><div class="s">${s}</div></div>`).join('');
+  const tabs=[['new','New in XMage',d.newCards.length],['commanders','Commanders',d.commanders.length],['renamed','Renamed',d.dropped.length],['lookup','Is it supported?','']];
+  $('tabs').innerHTML=tabs.map(([t,l,n])=>`<button class="tab" role="tab" data-t="${t}" aria-selected="false">${l}${n!==''?`<span class="c">${fmt(n)}</span>`:''}</button>`).join('');
+  const sets={}; d.newCards.forEach(c=>{sets[c.set]=c.setName||c.set});
+  $('setf').innerHTML='<option value="">All sets</option>'+Object.entries(sets).sort((a,b)=>a[1].localeCompare(b[1])).map(([c,n])=>`<option value="${esc(c)}">${esc(n)} (${esc(c)})</option>`).join('');
+  $('pips').innerHTML=['W','U','B','R','G','C'].map(c=>`<button class="pipbtn m ${c}" data-c="${c}" aria-pressed="false" aria-label="${{W:'White',U:'Blue',B:'Black',R:'Red',G:'Green',C:'Colorless'}[c]}">${c}</button>`).join('');
+  let t='new'; try{t=localStorage.getItem('cs-tab')||'new'}catch(e){}
+  setTab(tabs.some(x=>x[0]===t)?t:'new');
+}).catch(()=>{$('fresh').textContent='The card list did not load. Reload the page to try again.'});
+})();
+</script>
