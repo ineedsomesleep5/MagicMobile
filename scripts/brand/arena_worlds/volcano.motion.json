@@ -1,0 +1,399 @@
+{
+ "landscape": {
+  "cracks": "lava",
+  "flows": [
+   {
+    "kind": "fall",
+    "rect": [
+     8,
+     0,
+     70,
+     62
+    ],
+    "dir": [
+     0.3,
+     1
+    ],
+    "speed": 1.0,
+    "pick": "lava"
+   },
+   {
+    "kind": "lava",
+    "rect": [
+     0,
+     100,
+     72,
+     72
+    ],
+    "dir": [
+     1,
+     0.25
+    ],
+    "speed": 1.0,
+    "pick": "lava"
+   },
+   {
+    "kind": "lava",
+    "rect": [
+     0,
+     255,
+     72,
+     82
+    ],
+    "dir": [
+     1,
+     -0.2
+    ],
+    "speed": 0.9,
+    "pick": "lava"
+   },
+   {
+    "kind": "lava",
+    "rect": [
+     176,
+     0,
+     96,
+     28
+    ],
+    "dir": [
+     1,
+     0.1
+    ],
+    "speed": 0.9,
+    "pick": "lava"
+   },
+   {
+    "kind": "lava",
+    "rect": [
+     896,
+     48,
+     60,
+     68
+    ],
+    "dir": [
+     -1,
+     0.4
+    ],
+    "speed": 1.0,
+    "pick": "lava"
+   },
+   {
+    "kind": "lava",
+    "rect": [
+     918,
+     124,
+     38,
+     60
+    ],
+    "dir": [
+     0,
+     1
+    ],
+    "speed": 0.8,
+    "pick": "lava"
+   },
+   {
+    "kind": "haze",
+    "rect": [
+     60,
+     96,
+     70,
+     80
+    ],
+    "strength": 0.9,
+    "pick": "all",
+    "oval": true
+   },
+   {
+    "kind": "haze",
+    "rect": [
+     60,
+     250,
+     70,
+     86
+    ],
+    "strength": 0.9,
+    "pick": "all",
+    "oval": true
+   },
+   {
+    "kind": "mist",
+    "rect": [
+     0,
+     350,
+     110,
+     90
+    ],
+    "dir": [
+     1,
+     -0.3
+    ],
+    "speed": 1.0,
+    "strength": 0.5,
+    "pick": "all",
+    "oval": true
+   },
+   {
+    "kind": "mist",
+    "rect": [
+     856,
+     0,
+     100,
+     70
+    ],
+    "dir": [
+     -1,
+     0.2
+    ],
+    "speed": 1.0,
+    "strength": 0.5,
+    "pick": "all",
+    "oval": true
+   }
+  ],
+  "lights": [
+   {
+    "pick": "lava",
+    "style": "breathe",
+    "limit": 7,
+    "keep": 70,
+    "power": 0.8,
+    "halo": 1.1
+   }
+  ],
+  "particles": [
+   {
+    "kind": "ember",
+    "rect": [
+     0,
+     70,
+     84,
+     270
+    ],
+    "rate": 5
+   },
+   {
+    "kind": "ember",
+    "rect": [
+     884,
+     40,
+     72,
+     120
+    ],
+    "rate": 3
+   },
+   {
+    "kind": "ember",
+    "rect": [
+     170,
+     0,
+     110,
+     26
+    ],
+    "rate": 1.6
+   },
+   {
+    "kind": "ash",
+    "rect": [
+     0,
+     0,
+     956,
+     30
+    ],
+    "rate": 1.1
+   }
+  ],
+  "hotspots": [
+   [
+    0,
+    0,
+    96,
+    180
+   ],
+   [
+    0,
+    250,
+    96,
+    100
+   ],
+   [
+    880,
+    40,
+    76,
+    140
+   ]
+  ]
+ },
+ "portrait": {
+  "cracks": "lava",
+  "flows": [
+   {
+    "kind": "fall",
+    "rect": [
+     204,
+     0,
+     58,
+     62
+    ],
+    "dir": [
+     0,
+     1
+    ],
+    "speed": 1.0,
+    "pick": "lava"
+   },
+   {
+    "kind": "lava",
+    "rect": [
+     196,
+     50,
+     76,
+     36
+    ],
+    "dir": [
+     1,
+     0.1
+    ],
+    "speed": 0.9,
+    "pick": "lava"
+   },
+   {
+    "kind": "lava",
+    "rect": [
+     0,
+     850,
+     70,
+     106
+    ],
+    "dir": [
+     1,
+     -0.3
+    ],
+    "speed": 0.9,
+    "pick": "lava"
+   },
+   {
+    "kind": "haze",
+    "rect": [
+     180,
+     76,
+     110,
+     60
+    ],
+    "strength": 0.8,
+    "pick": "all",
+    "oval": true
+   },
+   {
+    "kind": "mist",
+    "rect": [
+     0,
+     690,
+     86,
+     110
+    ],
+    "dir": [
+     1,
+     -0.3
+    ],
+    "speed": 1.0,
+    "strength": 0.55,
+    "pick": "all",
+    "oval": true
+   },
+   {
+    "kind": "mist",
+    "rect": [
+     372,
+     30,
+     68,
+     90
+    ],
+    "dir": [
+     -1,
+     0.2
+    ],
+    "speed": 1.0,
+    "strength": 0.45,
+    "pick": "all",
+    "oval": true
+   }
+  ],
+  "lights": [
+   {
+    "pick": "lava",
+    "style": "breathe",
+    "limit": 8,
+    "keep": 40,
+    "power": 0.8,
+    "halo": 0.9
+   }
+  ],
+  "particles": [
+   {
+    "kind": "ember",
+    "rect": [
+     190,
+     40,
+     90,
+     50
+    ],
+    "rate": 3
+   },
+   {
+    "kind": "ember",
+    "rect": [
+     0,
+     700,
+     70,
+     100
+    ],
+    "rate": 2.2
+   },
+   {
+    "kind": "ember",
+    "rect": [
+     370,
+     700,
+     70,
+     100
+    ],
+    "rate": 1.6
+   },
+   {
+    "kind": "ember",
+    "rect": [
+     0,
+     850,
+     70,
+     90
+    ],
+    "rate": 2
+   },
+   {
+    "kind": "ash",
+    "rect": [
+     0,
+     0,
+     440,
+     30
+    ],
+    "rate": 0.9
+   }
+  ],
+  "hotspots": [
+   [
+    190,
+    0,
+    90,
+    90
+   ],
+   [
+    0,
+    850,
+    80,
+    106
+   ]
+  ]
+ }
+}

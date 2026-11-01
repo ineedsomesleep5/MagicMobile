@@ -288,12 +288,19 @@ final class GameAudio {
     static let effectsVolumeKey = "magicmobile.effectsVolume"
     static let musicVolumeKey = "magicmobile.musicVolume"
     static let defaultMusicVolume = 0.6
+    static let worldSoundsKey = "magicmobile.worldSounds"
+    /// Under the music, whatever the effects slider allows.
+    private static let worldLevel: Float = 0.42
 
     private var pools: [String: [AVAudioPlayer]] = [:]
     private var nextVoice: [String: Int] = [:]
     private var lastPlayed: [GameSound: TimeInterval] = [:]
     private var musicPlayer: AVAudioPlayer?
     private var fadingPlayers: [AVAudioPlayer] = []
+    private var worldPlayer: AVAudioPlayer?
+    private var worldPlaying: String?
+    private var worldSound: String?
+    private var worldAudition: String?
     private let musicEnd = MusicEndObserver()
     private(set) var currentTrack: GameMusic?
     private(set) var nowPlaying: MusicTrack?
@@ -312,6 +319,7 @@ final class GameAudio {
     var effectsEnabled: Bool { defaults.object(forKey: Self.effectsKey) as? Bool ?? true }
     /// A music level of zero is the same as music switched off.
     var musicEnabled: Bool { (defaults.object(forKey: Self.musicKey) as? Bool ?? true) && musicVolume > 0 }
+    var worldSoundsEnabled: Bool { effectsEnabled && defaults.object(forKey: Self.worldSoundsKey) as? Bool ?? true }
     var effectsVolume: Float { Float(defaults.object(forKey: Self.effectsVolumeKey) as? Double ?? 0.9) }
     var musicVolume: Float { Float(defaults.object(forKey: Self.musicVolumeKey) as? Double ?? Self.defaultMusicVolume) }
 
@@ -444,6 +452,49 @@ final class GameAudio {
         return others.randomElement() ?? scene.tracks[0]
     }
 
+    /// A table's own air, looped quietly under the music while its world is on screen (nil fades it out).
+    func playWorld(_ file: String?) {
+        guard !isTesting else { return }
+        worldSound = file
+        updateWorld()
+    }
+
+    /// Sound Lab: hear a world's air now, over whatever is playing. `endPreview` ends it.
+    func previewWorld(_ file: String?) {
+        guard !isTesting else { return }
+        worldAudition = file
+        updateWorld()
+    }
+
+    private func updateWorld() {
+        let wanted = worldAudition ?? (worldSoundsEnabled ? worldSound : nil)
+        let level = Self.worldLevel * max(effectsVolume, worldAudition == nil ? 0 : 0.5)
+        if wanted == worldPlaying {
+            worldPlayer?.setVolume(level, fadeDuration: 0.3)
+            return
+        }
+        if let old = worldPlayer {
+            old.setVolume(0, fadeDuration: 1.5)
+            fadingPlayers.append(old)
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(1.6))
+                old.stop()
+                self?.fadingPlayers.removeAll { $0 === old }
+            }
+        }
+        worldPlayer = nil
+        worldPlaying = nil
+        guard let wanted, let url = url(wanted), let player = try? AVAudioPlayer(contentsOf: url) else { return }
+        prepareSession()
+        player.numberOfLoops = -1
+        player.volume = 0
+        player.prepareToPlay()
+        player.play()
+        player.setVolume(level, fadeDuration: 3)
+        worldPlayer = player
+        worldPlaying = wanted
+    }
+
     /// Crossfades to the playlist for `scene` (nil fades music out). Safe to call repeatedly.
     func playMusic(_ scene: GameMusic?) {
         guard !isTesting else { return }
@@ -487,6 +538,7 @@ final class GameAudio {
     }
 
     func endPreview() {
+        if worldAudition != nil { previewWorld(nil) }
         guard previewing else { return }
         previewing = false
         guard let scene = currentTrack, musicEnabled else { stopMusic(); return }
@@ -526,6 +578,7 @@ final class GameAudio {
 
     /// Apply changed settings (toggles, sliders or a new track pick) immediately.
     func settingsChanged(trackPickChanged: Bool = false) {
+        updateWorld()
         if !musicEnabled, !previewing {
             stopMusic(fade: 0.4)
         } else if let scene = currentTrack {
@@ -550,6 +603,9 @@ final class GameAudio {
         pools.removeAll(); nextVoice.removeAll()
         for player in fadingPlayers { player.stop() }
         fadingPlayers.removeAll()
+        worldPlayer?.stop()
+        worldPlayer = nil
+        worldPlaying = nil
         if let player = musicPlayer {
             player.delegate = nil
             player.stop()
@@ -561,6 +617,7 @@ final class GameAudio {
 
     /// iOS stops an ambient session's players in the background; pick the playlist back up.
     func resume() {
+        updateWorld()
         guard let scene = currentTrack, musicEnabled, musicPlayer?.isPlaying != true else { return }
         musicPlayer = nil
         start(nextTrack(for: scene), scene: scene, fadeIn: 2.0)

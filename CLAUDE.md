@@ -10,4 +10,5 @@
   sheet layouts). Read it before building or porting any screen; Android screens follow it.
 - `docs/ARENA_STYLE.md`: the Arena board mode's look (MTG Arena's browsers, plaques, glass, no system UI). Read it
   before building anything the Arena board shows.
+- `docs/ARENA_WORLDS.md`: the rules and steps for every new Arena table theme. Follow it for any world or board environment.
 - `docs/ANDROID_PARITY.md` for Android work, `DESIGN.md` for general design principles.

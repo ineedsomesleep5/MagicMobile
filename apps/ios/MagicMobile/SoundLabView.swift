@@ -19,6 +19,8 @@ struct SoundLabView: View {
                     ArenaCaps(text: String(localized: "Music"))
                     musicPanel(.menu, choice: $menuChoice)
                     musicPanel(.game, choice: $gameChoice)
+                    ArenaCaps(text: String(localized: "World sounds")).padding(.top, 6)
+                    worldPanel
                     ArenaCaps(text: String(localized: "Sound effects")).padding(.top, 6)
                     ForEach(GameSoundCategory.allCases) { SoundLabCategory(category: $0) }
                     ArenaCaps(text: String(localized: "Credits")).padding(.top, 6)
@@ -66,6 +68,20 @@ struct SoundLabView: View {
         .padding(.top, 6)
         .padding(.bottom, 2)
         .overlay(alignment: .bottom) { Rectangle().fill(ArenaGlass.hairline).frame(height: 1).opacity(0.45) }
+    }
+
+    /// Each world's air, over the music as it plays at the table.
+    private var worldPanel: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(ArenaTableTheme.allCases.filter { $0.ambience != nil }) { table in
+                trackRow(title: table.title, selected: previewing == table.ambience, previewID: table.ambience) {
+                    previewing = table.ambience
+                    GameAudio.shared.previewWorld(table.ambience)
+                }
+                .accessibilityIdentifier("soundlab.world.\(table.rawValue)")
+            }
+        }
+        .arenaCard(padding: 14)
     }
 
     private func musicPanel(_ scene: GameMusic, choice: Binding<String>) -> some View {

@@ -1,0 +1,292 @@
+{
+ "landscape": {
+  "flows": [
+   {
+    "kind": "sway",
+    "rect": [
+     868,
+     106,
+     72,
+     104
+    ],
+    "speed": 1.0,
+    "strength": 0.9,
+    "pick": "all",
+    "oval": true
+   },
+   {
+    "kind": "mist",
+    "rect": [
+     0,
+     70,
+     96,
+     130
+    ],
+    "dir": [
+     1,
+     0.1
+    ],
+    "speed": 1.0,
+    "strength": 0.42,
+    "pick": "all",
+    "oval": true
+   },
+   {
+    "kind": "mist",
+    "rect": [
+     0,
+     300,
+     130,
+     140
+    ],
+    "dir": [
+     1,
+     -0.1
+    ],
+    "speed": 0.9,
+    "strength": 0.5,
+    "pick": "all",
+    "oval": true
+   },
+   {
+    "kind": "mist",
+    "rect": [
+     780,
+     0,
+     176,
+     64
+    ],
+    "dir": [
+     -1,
+     0.1
+    ],
+    "speed": 0.9,
+    "strength": 0.5,
+    "pick": "all",
+    "oval": true
+   },
+   {
+    "kind": "mist",
+    "rect": [
+     870,
+     190,
+     86,
+     190
+    ],
+    "dir": [
+     -1,
+     0.2
+    ],
+    "speed": 1.0,
+    "strength": 0.42,
+    "pick": "all",
+    "oval": true
+   }
+  ],
+  "lights": [
+   {
+    "pick": "warm",
+    "style": "flicker",
+    "limit": 16,
+    "keep": 30,
+    "power": 0.85,
+    "halo": 1.2
+   }
+  ],
+  "particles": [
+   {
+    "kind": "leaf",
+    "rect": [
+     0,
+     10,
+     18,
+     420
+    ],
+    "rate": 0.8
+   },
+   {
+    "kind": "firefly",
+    "rect": [
+     790,
+     0,
+     150,
+     56
+    ],
+    "rate": 1.0
+   },
+   {
+    "kind": "dust",
+    "rect": [
+     0,
+     0,
+     956,
+     440
+    ],
+    "rate": 0.5
+   }
+  ],
+  "drifters": [
+   {
+    "kind": "crow",
+    "every": 24
+   }
+  ],
+  "hotspots": [
+   [
+    0,
+    0,
+    160,
+    80
+   ],
+   [
+    150,
+    0,
+    190,
+    50
+   ],
+   [
+    0,
+    120,
+    70,
+    300
+   ],
+   [
+    860,
+    100,
+    96,
+    110
+   ],
+   [
+    880,
+    210,
+    76,
+    230
+   ],
+   [
+    300,
+    400,
+    200,
+    40
+   ]
+  ]
+ },
+ "portrait": {
+  "flows": [
+   {
+    "kind": "mist",
+    "rect": [
+     0,
+     100,
+     74,
+     330
+    ],
+    "dir": [
+     1,
+     0.1
+    ],
+    "speed": 1.0,
+    "strength": 0.42,
+    "pick": "all",
+    "oval": true
+   },
+   {
+    "kind": "mist",
+    "rect": [
+     366,
+     240,
+     74,
+     360
+    ],
+    "dir": [
+     -1,
+     0.1
+    ],
+    "speed": 0.9,
+    "strength": 0.42,
+    "pick": "all",
+    "oval": true
+   },
+   {
+    "kind": "mist",
+    "rect": [
+     0,
+     560,
+     84,
+     240
+    ],
+    "dir": [
+     1,
+     -0.1
+    ],
+    "speed": 0.9,
+    "strength": 0.45,
+    "pick": "all",
+    "oval": true
+   }
+  ],
+  "lights": [
+   {
+    "pick": "warm",
+    "style": "flicker",
+    "limit": 14,
+    "keep": 24,
+    "power": 0.85,
+    "halo": 1.1
+   }
+  ],
+  "particles": [
+   {
+    "kind": "leaf",
+    "rect": [
+     0,
+     110,
+     14,
+     640
+    ],
+    "rate": 0.8
+   },
+   {
+    "kind": "dust",
+    "rect": [
+     0,
+     0,
+     440,
+     956
+    ],
+    "rate": 0.45
+   }
+  ],
+  "drifters": [
+   {
+    "kind": "crow",
+    "every": 26
+   }
+  ],
+  "hotspots": [
+   [
+    0,
+    40,
+    200,
+    50
+   ],
+   [
+    230,
+    40,
+    210,
+    50
+   ],
+   [
+    0,
+    850,
+    110,
+    106
+   ],
+   [
+    300,
+    850,
+    140,
+    106
+   ]
+  ]
+ }
+}

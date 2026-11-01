@@ -13,9 +13,9 @@ final class RankedUITests: XCTestCase {
         app = nil
     }
 
-    private func launch(_ environment: [String: String] = [:], settle: Bool = true) {
+    private func launch(_ environment: [String: String] = [:], settle: Bool = true, arguments: [String] = []) {
         app = XCUIApplication()
-        UITestHarness.configure(app, extraArguments: ["-magicmobile.boardAppearance", "tavern"])
+        UITestHarness.configure(app, extraArguments: ["-magicmobile.boardAppearance", "tavern"] + arguments)
         environment.forEach { app.launchEnvironment[$0.key] = $0.value }
         app.launch()
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 20))
@@ -44,6 +44,22 @@ final class RankedUITests: XCTestCase {
 
     private func reveal(_ element: XCUIElement) {
         for _ in 0..<6 where !(element.exists && element.isHittable) { app.swipeUp() }
+    }
+
+    /// Every game draws its table (ArenaTableDraw): only Quick Match's Advanced can pick one here.
+    func testTheTableIsPickedOnlyUnderAdvanced() {
+        launch(arguments: ["-magicmobile.boardMode", "arena"])
+        tapSteady(app.buttons["menu.play"], until: app.buttons["play.quick"])
+        tapSteady(app.buttons["play.quick"], until: app.buttons["quick.level.advanced"])
+        tapSteady(app.buttons["quick.level.medium"])
+        let table = app.descendants(matching: .any)["table.pick"]
+        XCTAssertFalse(table.waitForExistence(timeout: 2), "Medium draws at random")
+        tapSteady(app.buttons["quick.level.advanced"], until: table)
+        reveal(table)
+        XCTAssertTrue(table.waitForExistence(timeout: 10), "Advanced can pick a table")
+        capture("Quick Match, Advanced, Table")
+        tapSteady(app.buttons["play.ranked"], until: app.buttons["ranked.find"])
+        XCTAssertFalse(table.exists, "Ranked draws at random")
     }
 
     /// Play opens Arena's panel (Caleb, 2026-10-22): the tabs, the three ways to play and each one's start in the

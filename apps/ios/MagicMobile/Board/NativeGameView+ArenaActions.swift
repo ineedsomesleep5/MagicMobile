@@ -648,15 +648,17 @@ struct ArenaCombatArrows: View {
 /// Portrait only: the plate's own front rail drawn again over a resting hand, so the hand tucks behind the table's edge.
 struct ArenaFrontRail: View {
     let top: CGFloat
+    @Environment(\.arenaTableTheme) private var theme
 
     var body: some View {
         GeometryReader { proxy in
-            Image("tavern-arena-portrait")
+            Image(theme.plate(landscape: false))
                 .resizable()
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .mask(alignment: .bottom) {
                     Rectangle().frame(height: max(0, proxy.size.height - top))
                 }
+                .overlay { ArenaWorldLife(theme: theme, band: .rail) }
                 .overlay(alignment: .top) {
                     LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: .bottom)
                         .frame(height: 8)

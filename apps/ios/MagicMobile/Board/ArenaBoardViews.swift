@@ -6,6 +6,7 @@ import UIKit
 // with the views and helpers the Hearth board already uses (PlayerZoneMenu, BattlefieldRow, GameActionDockModel…).
 
 struct ArenaBoardKey: EnvironmentKey { static let defaultValue = false }
+struct ArenaTableThemeKey: EnvironmentKey { static let defaultValue = ArenaTableTheme.walnut }
 struct CardFramesKey: EnvironmentKey { static let defaultValue = true }
 
 /// The table's camera, so cards lying on it lean the way the rendered table does: the plate's pitch (landscape 22°,
@@ -35,6 +36,10 @@ extension EnvironmentValues {
     var arenaBoard: Bool {
         get { self[ArenaBoardKey.self] }
         set { self[ArenaBoardKey.self] = newValue }
+    }
+    var arenaTableTheme: ArenaTableTheme {
+        get { self[ArenaTableThemeKey.self] }
+        set { self[ArenaTableThemeKey.self] = newValue }
     }
     var arenaTableLean: ArenaTableLean? {
         get { self[ArenaTableLeanKey.self] }
@@ -208,17 +213,21 @@ enum ArenaGlowImages {
 
 /// The leaning tavern table: the plate stretches to the screen the way the layout does, so the mat sits under the lanes.
 struct ArenaTableBackdrop: View {
+    @Environment(\.arenaTableTheme) private var theme
+
     var body: some View {
         GeometryReader { proxy in
             let landscape = proxy.size.width > proxy.size.height
-            Image(landscape ? "tavern-arena-landscape" : "tavern-arena-portrait")
+            Image(theme.plate(landscape: landscape))
                 .resizable()
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .overlay {
-                    // The lamp over the middle of the mat: warm light only, no texture.
-                    RadialGradient(colors: [Color(red: 1, green: 0.77, blue: 0.47).opacity(0.13), .clear],
-                                   center: .center, startRadius: 0, endRadius: max(proxy.size.width, proxy.size.height) * 0.42)
-                        .blendMode(.screen)
+                    if theme.hasTableLamp {
+                        // The lamp over the middle of the mat: warm light only, no texture.
+                        RadialGradient(colors: [Color(red: 1, green: 0.77, blue: 0.47).opacity(0.13), .clear],
+                                       center: .center, startRadius: 0, endRadius: max(proxy.size.width, proxy.size.height) * 0.42)
+                            .blendMode(.screen)
+                    }
                 }
         }
         .ignoresSafeArea()
@@ -390,6 +399,7 @@ struct ArenaPileStack<Top: View>: View {
     let count: Int
     let size: CGSize
     @ViewBuilder let top: Top
+    @Environment(\.arenaTableTheme) private var theme
 
     static func thickness(count: Int, height: CGFloat) -> CGFloat {
         count > 0 ? max(1.5, CGFloat(count) * height * 0.0055) : 0
@@ -399,7 +409,7 @@ struct ArenaPileStack<Top: View>: View {
         let thickness = Self.thickness(count: count, height: size.height)
         let layers = min(16, Int((thickness / 1.1).rounded()))
         ZStack {
-            Ellipse().fill(.black.opacity(count > 0 ? 0.55 : 0)).blur(radius: 4)
+            Ellipse().fill(count > 0 ? theme.pileShadow : .clear).blur(radius: 4)
                 .frame(width: size.width * 1.1, height: size.height * 0.5).offset(y: size.height * 0.32)
             if count == 0 {
                 RoundedRectangle(cornerRadius: 4).strokeBorder(TavernPalette.brass.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
@@ -420,6 +430,19 @@ struct ArenaPileStack<Top: View>: View {
         .modifier(ArenaTableLeanEffect())
         .overlay(alignment: .bottomTrailing) {
             if count > 0 { ArenaCountBadge(count: count).offset(x: 8, y: -2) }
+        }
+    }
+}
+
+/// A table theme's shadow under a card lying on it. Walnut has none, and pays for none.
+struct ArenaCardShadowEffect: ViewModifier {
+    let shadow: ArenaTableTheme.CardShadow?
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if let shadow {
+            content.shadow(color: shadow.color, radius: shadow.radius, x: shadow.x, y: shadow.y)
+        } else {
+            content
         }
     }
 }
@@ -537,6 +560,7 @@ struct ArenaOpponentHandFan: View {
 /// The reference's phase strip: all eight steps of a turn as dark icons on a thin track, always shown, the current one
 /// lit in the active player's colour; moving on sends a spark along the track to the next icon.
 struct ArenaPhaseStrip: View {
+    @Environment(\.arenaTableTheme) private var tableTheme
     let step: String?
     let viewerTurn: Bool
     let width: CGFloat
@@ -602,6 +626,11 @@ struct ArenaPhaseStrip: View {
             }
         }
         .frame(width: width, height: iconSize + 4)
+        .background {
+            if tableTheme.isBright {
+                Capsule().fill(ArenaGlass.bottom.opacity(0.72)).padding(.horizontal, -4).padding(.vertical, -2)
+            }
+        }
         .onChange(of: current) { old, new in move(from: old, to: new, positions: positions) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(TavernPhaseTrack.describe(step).title)

@@ -166,6 +166,21 @@ with a settle, a bloom of its colour behind the card, a shine and a few motes; t
 shows its own power and toughness, so no badges go over it. An opponent's spell is revealed larger toward the middle
 without covering their piles.
 
+## Table worlds
+
+The full rules and steps are in `docs/ARENA_WORLDS.md`. A world is a real place, not a mat: the ground itself flattens into the play area, with no rectangle or outline. Build it with
+`scripts/brand/arena_world.py` and a file in `scripts/brand/arena_worlds/`, on the table's own cameras.
+
+- **Nothing stands in the card rows,** and no shadow falls across them (`qa.json`).
+- **Every resting place sits on one flat surface (Caleb, 2026-10-31):** libraries, graveyards, exile and the opponent's hand
+  rest wholly on the floor or wholly on a roof, never across an edge. The UI stays where it is; move the scenery to it.
+  `arena_zones.py` `SEATS` lists them, and `qa.json` fails a seat that lands on two surfaces, on uneven ground or on a wall.
+- Portrait and landscape keep separate sets, because their cameras see different ground.
+- **Portrait needs a front wall:** the hand tucks away at `railTop` (815), where `ArenaFrontRail` redraws the plate over it. A world puts a full-width wall's highest visible point exactly on that line (`front_wall` in its file), so the cards stop at the top of the wall and never overlap it. Walnut's is the table's edge.
+- **Bright tables:** `isBright` puts dark glass behind thin controls drawn straight on the table, such as the phase strip.
+- **Method (Caleb, 2026-10-31):** Blender fixes the camera, zones and seats; a Codex repaint with the concept as a style image gives the finish. Re-check the zones and the wall line on the painted plate, because the 3D checks can't see it.
+- **A theme is the table, not the UI:** `ArenaTableTheme` (`GameBoardTheme.swift`) holds the plate, whether the walnut lamp shows, the light on a card and the shadow under it. Walnut has no card shadow; a world's shadow follows its moon or sun. Each game draws its table (`ArenaTableDraw`), Walnut included, and the only places to pick one are Quick Match's Advanced and a Custom Table (`ArenaTableRow`, on Arena only). Install plates with `scripts/brand/install_arena_world.sh`.
+
 ## Timing (the reference's pace)
 
 Measured from Arena gameplay video at 30 fps (`~/Movies/motion-assets/yt/_-awmu2U83w/GAP_ANALYSIS.md` §2) and kept in

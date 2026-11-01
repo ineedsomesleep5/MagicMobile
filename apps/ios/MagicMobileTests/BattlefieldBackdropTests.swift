@@ -34,6 +34,60 @@ final class BattlefieldBackdropTests: XCTestCase {
         }
     }
 
+    func testTableThemesFallBackToWalnutAndWalnutStaysAsItWas() {
+        XCTAssertEqual(ArenaTableTheme.defaultValue, ArenaTableDraw.random)
+        XCTAssertTrue(ArenaTableTheme.utopia.isBright)
+        XCTAssertFalse(ArenaTableTheme.walnut.isBright)
+        XCTAssertNil(ArenaTableTheme.walnut.cardShadow)
+        XCTAssertTrue(ArenaTableTheme.walnut.hasTableLamp)
+        XCTAssertEqual(ArenaTableTheme.walnut.plate(landscape: true), "tavern-arena-landscape")
+        XCTAssertEqual(ArenaTableTheme.walnut.plate(landscape: false), "tavern-arena-portrait")
+    }
+
+    func testEachGameDrawsItsOwnTableAndKeepsIt() {
+        let draw = { (match: String) in ArenaTableDraw.table(match: match, pinned: ArenaTableDraw.random, pinnedMatch: "") }
+        XCTAssertEqual(draw("match-a"), draw("match-a"), "A resumed game keeps its table")
+        var drawn: [ArenaTableTheme: Int] = [:]
+        for index in 0..<5000 { drawn[draw("\(UUID())-\(index)"), default: 0] += 1 }
+        XCTAssertEqual(drawn.count, ArenaTableTheme.allCases.count)
+        for (table, count) in drawn { XCTAssertGreaterThan(count, 800, "\(table) came up too rarely") }
+    }
+
+    func testAPickedTableStaysWithItsOwnMatch() {
+        let pinned = { (match: String?) in ArenaTableDraw.table(match: match, pinned: "volcano", pinnedMatch: "chosen") }
+        XCTAssertEqual(pinned("chosen"), .volcano)
+        let others = Set((0..<200).map { pinned("ranked-\($0)") })
+        XCTAssertGreaterThan(others.count, 1, "The next game draws again")
+        XCTAssertEqual(ArenaTableDraw.table(match: "any", pinned: "volcano", pinnedMatch: ""), .volcano, "Fixtures pin every game")
+        XCTAssertEqual(ArenaTableDraw.table(match: nil, pinned: ArenaTableDraw.random, pinnedMatch: ""), .walnut)
+    }
+
+    func testEveryTableThemeShipsBothPlates() throws {
+        for theme in ArenaTableTheme.allCases {
+            let wide = try XCTUnwrap(UIImage(named: theme.plate(landscape: true)), "\(theme) has no landscape plate")
+            let tall = try XCTUnwrap(UIImage(named: theme.plate(landscape: false)), "\(theme) has no portrait plate")
+            XCTAssertGreaterThan(wide.size.width, wide.size.height)
+            XCTAssertGreaterThan(tall.size.height, tall.size.width)
+        }
+    }
+
+    /// Each world's motion is built from its plate (scripts/brand/arena_world_motion.py): the data and both maps must ship.
+    func testEveryWorldShipsItsMotion() throws {
+        for theme in ArenaTableTheme.allCases where theme != .walnut {
+            let spec = try XCTUnwrap(ArenaWorldSpec.all[theme.rawValue], "\(theme) has no motion")
+            for (variant, scene) in [("landscape", spec.landscape), ("portrait", spec.portrait)] {
+                XCTAssertFalse(scene.lights.isEmpty && scene.flows.isEmpty, "\(theme) \(variant) doesn't move")
+                XCTAssertNotNil(UIImage(named: "arena-world-\(theme.rawValue)-\(variant)-mask"))
+                XCTAssertNotNil(UIImage(named: "arena-world-\(theme.rawValue)-\(variant)-glow"))
+                for flow in scene.flows {
+                    XCTAssertEqual(flow.rect.count, 4)
+                    XCTAssertEqual(flow.dir.count, 2)
+                }
+            }
+        }
+        XCTAssertNil(ArenaWorldSpec.all[ArenaTableTheme.walnut.rawValue], "Walnut doesn't move")
+    }
+
     func testTavernFramesFollowTheCardsCurrentType() {
         func frame(_ typeLine: String, token: Bool? = nil, creatureNow: Bool? = nil) -> TavernFrameKind {
             TavernFrameKind(ZoneCard(instanceId: "f", card: CardIdentity(name: "Card", typeLine: typeLine, oracleText: nil, isToken: token),

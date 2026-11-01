@@ -1076,6 +1076,7 @@ struct BoardEffectsPicker: View {
 struct GameAudioSettings: View {
     @Environment(\.arenaOpenSoundLab) private var openSoundLab
     @AppStorage(GameAudio.effectsKey, store: MagicMobilePreferences.current) private var effects = true
+    @AppStorage(GameAudio.worldSoundsKey, store: MagicMobilePreferences.current) private var worldSounds = true
     @AppStorage(GameAudio.musicKey, store: MagicMobilePreferences.current) private var music = true
     @AppStorage(GameAudio.effectsVolumeKey, store: MagicMobilePreferences.current) private var effectsVolume = 0.9
     @AppStorage(GameAudio.musicVolumeKey, store: MagicMobilePreferences.current) private var musicVolume = GameAudio.defaultMusicVolume
@@ -1095,6 +1096,7 @@ struct GameAudioSettings: View {
             TavernToggle(title: "Effect Sounds", isOn: $effects, identifier: "settings.boardSounds")
             if effects {
                 TavernSlider(value: $effectsVolume, label: "Effects volume", identifier: "settings.effectsVolume")
+                TavernToggle(title: "World Sounds", isOn: $worldSounds, identifier: "settings.worldSounds")
             }
             TavernToggle(title: "Music", isOn: musicOn, identifier: "settings.music")
             if musicOn.wrappedValue {
@@ -1113,7 +1115,11 @@ struct GameAudioSettings: View {
                 .accessibilityIdentifier("settings.soundLab")
             }
         }
-        .onChange(of: effects) { _, on in if on { GameAudio.shared.play(.uiToggle) } }
+        .onChange(of: effects) { _, on in
+            GameAudio.shared.settingsChanged()
+            if on { GameAudio.shared.play(.uiToggle) }
+        }
+        .onChange(of: worldSounds) { _, _ in GameAudio.shared.settingsChanged() }
         .onChange(of: music) { _, _ in GameAudio.shared.settingsChanged() }
         .onChange(of: musicVolume) { _, _ in GameAudio.shared.settingsChanged() }
         .onChange(of: effectsVolume) { _, _ in GameAudio.shared.play(.uiTick) }
