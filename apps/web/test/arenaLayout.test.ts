@@ -84,6 +84,13 @@ describe("piles", () => {
     expect(pileLean({ x: ARENA.opponentPiles.library.x - 340, y: 30 }).drift).toBeCloseTo(-114 / 566);
   });
 
+  it("sink when a full deck would pass the top of the screen, and near ones have room to rise", () => {
+    const far = pileLean(ARENA.opponentPiles.library);
+    const { thickness } = pileThickness(92, ARENA.opponentPiles.size.h, far.rise);
+    expect(ARENA.opponentPiles.library.y - ARENA.opponentPiles.size.h / 2 - thickness + Math.max(0, thickness - far.headroom)).toBeGreaterThanOrEqual(0);
+    expect(pileLean(ARENA.viewerPiles.library).headroom).toBe(Infinity);
+  });
+
   it("stand as tall as their rise", () => {
     const near = pileThickness(40, 50), far = pileThickness(40, 50, 0.6);
     expect(far.thickness).toBeCloseTo(near.thickness * 0.6);

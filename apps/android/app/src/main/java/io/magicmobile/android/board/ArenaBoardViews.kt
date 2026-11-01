@@ -516,7 +516,7 @@ fun ArenaPileStack(count: Int, size: DpSize, modifier: Modifier = Modifier, lean
                    top: @Composable () -> Unit) {
     val thickness = (if (count > 0) max(1.5f, count * size.height.value * 0.0055f) else 0f) * pileLean.rise
     val layers = min(16, (thickness / 1.1f).roundToInt())
-    Box(modifier.requiredSize(size)) {
+    Box(modifier.offset(y = pileLean.sink(thickness).dp).requiredSize(size)) {
         Box(lean(Modifier.fillMaxSize()).drawBehind {
             val w = this.size.width; val h = this.size.height
             if (count > 0) drawIntoCanvas { canvas ->

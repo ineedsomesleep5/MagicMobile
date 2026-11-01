@@ -55,7 +55,11 @@ data class ArenaPileLean(
     val drift: Float = -0.22f,
     /** The pile's height, as a share of a near pile's. */
     val rise: Float = 1f,
-)
+    /** Room above the pile on the screen. A taller pile sinks by the rest, so a full deck's top card stays in view. */
+    val headroom: Float = Float.POSITIVE_INFINITY,
+) {
+    fun sink(thickness: Float): Float = max(0f, thickness - headroom)
+}
 
 /**
  * The Arena board's design canvases: landscape 956 × 440 (an iPhone 17 Pro Max held sideways) and portrait 440 × 956. Every
@@ -117,7 +121,9 @@ data class ArenaLayout(
     fun pileLean(point: BoardPoint): ArenaPileLean {
         val under = if (landscape) BoardPoint(478f, 596f) else BoardPoint(220f, 744f)
         val drift = (point.x - under.x) / max(abs(point.y - under.y), 1f)
-        return ArenaPileLean(drift.coerceIn(-0.22f, 0.22f), if (point.y < canvas.height / 2) 0.6f else 1f)
+        val far = point.y < canvas.height / 2
+        return ArenaPileLean(drift.coerceIn(-0.22f, 0.22f), if (far) 0.6f else 1f,
+            if (far) max(point.y - opponentPile.height / 2, 0f) else Float.POSITIVE_INFINITY)
     }
 
     /** Front rows a side may use: landscape has no room between the lanes for a second; portrait grows one toward its owner. */

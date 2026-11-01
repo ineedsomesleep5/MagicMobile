@@ -28,7 +28,7 @@ export function ArenaPile({ x, y, size, count, top, kind, label, onOpen, reader,
   const lift = (i: number) => `translate(${(thickness * pile.drift * i / Math.max(layers, 1)).toFixed(2)}px, ${(-thickness * i / Math.max(layers, 1)).toFixed(2)}px)`;
   return (
     <button type="button" className={`apile ${kind} ${count === 0 ? "empty" : ""}`} disabled={!onOpen || count === 0}
-      style={{ left, top: y - size.h / 2, width: size.w, height: size.h, fontSize: size.w / 15 }}
+      style={{ left, top: y - size.h / 2 + Math.max(0, thickness - pile.headroom), width: size.w, height: size.h, fontSize: size.w / 15 }}
       aria-label={count === 0 ? `${label}, empty` : `${label}, ${count} card${count === 1 ? "" : "s"}`}
       onClick={(event) => { event.stopPropagation(); onOpen?.(); }}
       {...readProps(reader, top && kind !== "library" ? { name: top.card.name, card: top } : undefined)}>

@@ -1036,9 +1036,9 @@ export function GameScreen({ table, rankChange, rankNote, versus, voiceToken }: 
     // their count lozenges (Caleb, 2026-10-21, on iOS: the badges ran over the next pile).
     const anchor = mine ? ARENA.viewerMedallion.x : ARENA.opponentPiles.library.x;
     const at = (p: { x: number; y: number }) => ({ x: anchor + (p.x - anchor) * geo.grow + shift, y: mine ? B(p.y) : T(p.y) });
-    // Across the board where it really stands, so a further opponent's piles, shifted left, lean their own way.
-    const lean = (p: { x: number; y: number }) => pileLean({ x: at(p).x, y: p.y });
     const size = { w: spots.size.w * geo.grow, h: spots.size.h * geo.grow };
+    // Across the board where it really stands, so a further opponent's piles, shifted left, lean their own way.
+    const lean = (p: { x: number; y: number }) => pileLean({ x: at(p).x, y: p.y }, at(p).y - size.h / 2);
     const whose = mine ? "Your" : `${player.displayName ?? "Their"}’s`;
     const open = (zone: "graveyard" | "exile") => () => setZone({ title: `${whose} ${zone}`, cards: player.zones[zone] });
     return (

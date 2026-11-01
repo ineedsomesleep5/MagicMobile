@@ -358,12 +358,18 @@ export interface PileLean {
   drift: number;
   /** The pile's height, as a share of a near pile's. */
   rise: number;
+  /** Room above the pile on the screen. A taller pile sinks by the rest, so a full deck's top card stays in view. */
+  headroom: number;
 }
 
-/** A pile at `point` (x across the board, y on the 440-point plate): the table camera stands over (478, 596). */
-export function pileLean(point: { x: number; y: number }): PileLean {
+/**
+ * A pile at `point` (x across the board, y on the 440-point plate), with its upper edge at `top` on the stage: the table
+ * camera stands over (478, 596).
+ */
+export function pileLean(point: { x: number; y: number }, top = point.y - ARENA.opponentPiles.size.h / 2): PileLean {
   const drift = (point.x - 478) / Math.max(Math.abs(point.y - 596), 1);
-  return { drift: Math.min(0.22, Math.max(-0.22, drift)), rise: point.y < STAGE.height / 2 ? 0.6 : 1 };
+  const far = point.y < STAGE.height / 2;
+  return { drift: Math.min(0.22, Math.max(-0.22, drift)), rise: far ? 0.6 : 1, headroom: far ? Math.max(top, 0) : Infinity };
 }
 
 /** ArenaPileStack: how thick a pile of `count` cards stands, and how many slivers draw it. */

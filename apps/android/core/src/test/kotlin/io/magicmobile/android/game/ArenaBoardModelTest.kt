@@ -41,6 +41,13 @@ class ArenaBoardModelTest {
         assertEquals(1f, wide.pileLean(wide.viewerLibrary).rise)
         val tall = ArenaLayout.portraitLayout
         assertTrue(tall.pileLean(tall.opponentLibrary).drift < 0)
+        // A full deck at the top of the screen sinks rather than leaving it. Near piles have room to rise.
+        for (layout in listOf(wide, tall)) {
+            val lean = layout.pileLean(layout.opponentLibrary)
+            val thickness = 92 * layout.opponentPile.height * 0.0055f * lean.rise
+            assertTrue(layout.opponentLibrary.y - layout.opponentPile.height / 2 - thickness + lean.sink(thickness) >= 0f)
+            assertEquals(0f, layout.pileLean(layout.viewerLibrary).sink(40f))
+        }
     }
 
     @Test fun needReadsXMagePaymentText() {
