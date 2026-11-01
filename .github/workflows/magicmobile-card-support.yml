@@ -1,0 +1,68 @@
+name: Card support page data
+
+# Weekly: compares XMage master with MagicMobile's shipped cards, adds card pictures from Scryfall,
+# and force-pushes the page data as one commit to the card-support-data branch. Read-only on XMage.
+on:
+  schedule:
+    - cron: '41 9 * * 1' # Monday 09:41 UTC, after the upstream detection run.
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/card-support/**'
+      - '.github/workflows/magicmobile-card-support.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: card-support-data
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write # pushes the card-support-data branch only
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Pillow
+        run: python3 -m pip install pillow==11.1.0
+      - name: Fixture tests
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/card-support -p 'test_*.py'
+      - name: Compare XMage with MagicMobile
+        run: python3 scripts/card-support/build_card_support.py --repo . --workdir "$RUNNER_TEMP/xmage" --out out
+      - uses: actions/cache@v4
+        with:
+          path: .scryfall-cache
+          key: card-support-scryfall-${{ github.run_id }}
+          restore-keys: card-support-scryfall-
+      - name: Add card pictures
+        run: python3 scripts/card-support/make_sprites.py --data out/data.json --out out/img --cache .scryfall-cache
+      - name: Add the page
+        run: cp scripts/card-support/page/index.html out/
+      - name: Publish to the card-support-data branch
+        # Pull requests from forks get a read-only token, so they stop after the build.
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE: ${{ github.sha }}
+        working-directory: out
+        run: |
+          git init -q -b card-support-data
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898732+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -q -m "Card support data from ${SOURCE}"
+          git push -q --force "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" card-support-data
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: card-support-${{ github.run_id }}
+          path: out/data.json
+          if-no-files-found: ignore
