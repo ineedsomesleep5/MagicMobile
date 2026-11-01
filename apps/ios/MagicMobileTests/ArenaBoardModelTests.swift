@@ -1,5 +1,4 @@
 import CoreGraphics
-import SwiftUI
 import XCTest
 import MagicMobileOnDevice
 @testable import MagicMobile
@@ -608,7 +607,7 @@ final class ArenaBoardModelTests: XCTestCase {
     func testAFullFarDeckStaysOnTheScreen() {
         for layout in [ArenaLayout.landscapeLayout, ArenaLayout.portraitLayout] {
             let lean = layout.pileLean(at: layout.opponentLibrary)
-            let thickness = ArenaPileStack<EmptyView>.thickness(count: 92, height: layout.opponentPile.height) * lean.rise
+            let thickness = 92 * layout.opponentPile.height * 0.0055 * lean.rise
             let top = layout.opponentLibrary.y - layout.opponentPile.height / 2 - thickness + lean.sink(under: thickness)
             XCTAssertGreaterThanOrEqual(top, 0)
             XCTAssertEqual(layout.pileLean(at: layout.viewerLibrary).sink(under: 40), 0)

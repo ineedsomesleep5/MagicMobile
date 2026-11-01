@@ -1236,3 +1236,6 @@ contradicting one.
   argument like `-quick.level 3` overrides `@AppStorage` for the whole run, so taps can't change it and a test looks like a broken
   picker. (3) A class inserted above an existing `@MainActor` line takes that mark, and the class it came from fails to build. A
   harness `build=1` with no error, though, means a file changed mid-build: leave Swift alone until it finishes.
+  (4) `swift test` builds a package without the SwiftUI board views, so a test naming one passes the app harness and fails
+  there as `error: fatalError`, which is a compile failure despite the name: read the lines above it. (5) A UI test seeding a rank
+  must also count as placed (`MAGICMOBILE_UI_TEST_RANK` now does), or the home button says Placements.
