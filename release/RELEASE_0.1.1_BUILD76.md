@@ -1,7 +1,7 @@
 # TestFlight 0.1.1 (76): placement matches
 
 Uploaded November 1, 2026 and distributed to Internal and External testers, from PR #279. Released with Android build 53
-(`release/RELEASE_ANDROID_0.1.1_BUILD53.md`) and a web deploy. The migration `ranked_placements` went live first.
+(`release/RELEASE_ANDROID_0.1.1_BUILD53.md`) and web deploy `dpl_D6p3jqGbVUHybCKPKVNvSM42RNZX`. The migration `ranked_placements` went live first.
 
 ## What changed
 - **Placements:** every season, and every new player, starts with five placement matches. A win climbs two divisions, up to Gold II, or Platinum IV after making Mythic. The rank stays hidden until the fifth game, which plays a PLACED moment.
