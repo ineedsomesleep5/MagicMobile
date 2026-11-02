@@ -263,11 +263,6 @@ enum FreezeDevice {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "?"
         let build = info?["CFBundleVersion"] as? String ?? "?"
-        var model = "unknown"
-        var system = utsname()
-        if uname(&system) == 0 {
-            model = withUnsafeBytes(of: &system.machine) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
-        }
         let thermal: String
         switch ProcessInfo.processInfo.thermalState {
         case .nominal: thermal = "nominal"
@@ -277,6 +272,6 @@ enum FreezeDevice {
         @unknown default: thermal = "unknown"
         }
         let memory = AppMemory.footprint().map { "\($0 / 1_048_576) MB" } ?? "?"
-        return "App \(version) (\(build)) · \(ProcessInfo.processInfo.operatingSystemVersionString) · \(model) · thermal \(thermal) · memory \(memory) · \(foreground ? "foreground" : "background")"
+        return "App \(version) (\(build)) · \(ProcessInfo.processInfo.operatingSystemVersionString) · \(DeviceModel.identifier) · thermal \(thermal) · memory \(memory) · \(foreground ? "foreground" : "background")"
     }
 }

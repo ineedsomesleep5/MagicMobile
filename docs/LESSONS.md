@@ -1239,3 +1239,11 @@ contradicting one.
   (4) `swift test` builds a package without the SwiftUI board views, so a test naming one passes the app harness and fails
   there as `error: fatalError`, which is a compile failure despite the name: read the lines above it. (5) A UI test seeding a rank
   must also count as placed (`MAGICMOBILE_UI_TEST_RANK` now does), or the home button says Placements.
+
+- 2026-11-02 (Claude, heat tracker): (1) `current?.field = other ?? current?.field` reads `current` while writing it, which traps at run time as "Simultaneous accesses".
+  Unwrap first. (2) A Time Profiler export lists thread names (`time_profile_summary.py`): the engine's search threads are `AI-SIM-MAD - N`, so CPU can be split
+  by name from app code with no engine change. (3) A heat figure that ignores time in the background is meaningless on a phone: count readings up to 30 s apart as awake.
+  (4) `ios-ui-tests.py test` runs a fresh harness build with its Agora frameworks unsigned, so the app dies at launch and xcodebuild then waits for it forever, for hours, with no
+  output behind a `tail`. Ad-hoc sign `Products/Debug-iphonesimulator/*.framework` and the copies in the app first, and put a hard limit on every run:
+  `perl -e 'alarm shift; exec @ARGV' 900 xcodebuild ... -test-timeouts-enabled YES -maximum-test-execution-time-allowance 240`. (5) Whether a world is still can be proved with no eyes:
+  three `simctl io screenshot`s and ffmpeg's `psnr` on the plate: `inf` is pixel-identical.

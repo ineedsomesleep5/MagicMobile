@@ -599,14 +599,8 @@ struct TrophyShelf: View {
         let earned = unlocked.contains(achievement)
         return Button { chosen = achievement.rawValue } label: {
             VStack(spacing: 3) {
-                AsyncImage(url: achievement.artURL) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().scaledToFit().saturation(earned ? 1 : 0).opacity(earned ? 1 : 0.32)
-                    } else {
-                        brassCoin(achievement, earned: earned)
-                    }
-                }
-                .frame(width: 46, height: 46)
+                BadgeImage(url: achievement.artURL, earned: earned) { brassCoin(achievement, earned: earned) }
+                    .frame(width: 46, height: 46)
                 Text(achievement.title).font(ArenaMenuStyle.font(9, .heavy)).lineLimit(2).multilineTextAlignment(.center)
                     .minimumScaleFactor(0.7).opacity(earned ? 0.95 : 0.45).frame(height: 24, alignment: .top)
             }

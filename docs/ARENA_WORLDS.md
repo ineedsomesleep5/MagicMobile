@@ -65,7 +65,7 @@ Every world moves, and the board never pays for it. `Board/ArenaWorldLife.swift`
   Effects only decorate. Give each world one signature reaction, like Radio Night's blackout.
 - **Tappable corners:** `hotspots` in the motion file, in the corners only. Light blooms under the finger, because flaring a glow that's already bright mostly clips.
 - **Respect the phone:** rest with `BoardActivity` (nothing new is born, flows ease to a stop, then everything stops), half rate while
-  hot, lights only on Reduced or Low Power Mode, nothing on Off or Reduce Motion, and rest behind full-table screens. One frame is on
+  hot, lights only on Reduced or Low Power Mode, nothing on Off or Reduce Motion, and rest behind full-table screens. The server can still or slow them (`WorldMotion`, docs/SERVER_CONTROLS.md). One frame is on
   the GPU at a time, so a slow frame is skipped and can't stall the board.
 - **Last a whole game.** Anything built on the clock has to look the same an hour in. `arenaHash` folds its lattice to stay in range;
   a new noise needs the same. Check with `MAGICMOBILE_WORLD_CLOCK=3000`.

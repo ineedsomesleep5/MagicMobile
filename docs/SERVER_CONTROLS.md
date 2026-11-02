@@ -13,7 +13,7 @@ before TestFlight 64 / Android 42 don't read it.
 | `notice` | A banner on the main menu, shown once per `id` until the player closes it. `platforms` limits it to `ios`, `android`, `web`; `maxBuild` shows it only to builds at or below a number (to ask older builds to update). `null` shows nothing. | below |
 | `name_fixes` | Deck-import name fixes: the name a deck site sends → the app's card name. Used only when that card is in the app's catalogue, after the app's own matching (exact name, plain letters, front of a two-part name). | `{"Some Archidekt Name": "Engine Name"}` |
 | `ai_decks` | A newer AI deck file for each card catalogue, so decks and their Power change without a build. Apps from TestFlight 73 / Android 51 read it. See below. `{}` sends every app back to its own decks. | `{"<catalogue hash>": {"revision": 2, "url": "https://...", "sha256": "..."}}` |
-| `switches` | Turns newer features off without a build. A switch that isn't named is on, except `voiceChat`. `leaveVote`: the vote to go on without a player who is away (a player who leaves is still conceded). `stackAutoTuck`: the stack card tucking itself while you pick a target. `voiceChat`: the mic at online tables (docs/VOICE_CHAT.md), off unless named on. | `{"leaveVote": true, "stackAutoTuck": true, "voiceChat": true}` (voice on since 2026-10-27) |
+| `switches` | Turns newer features off without a build. A switch that isn't named is on, except `voiceChat`. `leaveVote`: the vote to go on without a player who is away (a player who leaves is still conceded). `stackAutoTuck`: the stack card tucking itself while you pick a target. `voiceChat`: the mic at online tables (docs/VOICE_CHAT.md), off unless named on. `worldMotion`, `worldMotionHalf`, `worldMotionTest`: how much Arena worlds move, below. | `{"leaveVote": true, "stackAutoTuck": true, "voiceChat": true}` (voice on since 2026-10-27) |
 
 ```sql
 -- A notice for iPhones on build 63 or older and Android on 41 or older.
@@ -68,7 +68,12 @@ player's devices, then sits on their profile. A profile that can't be opened doe
 | `rule` | Optional. Hands it out by itself as ranked standings move: `{"kind": "peak_step", "step": 20}`, `{"kind": "season_wins", "count": 100}` or `{"kind": "win_streak", "count": 10}`; add `"first": 1` to stop after that many players. Steps: Diamond 16, Mythic 20. Another kind needs a migration. |
 | `active` | `false` hides it everywhere and keeps who earned it. |
 
-Art goes in `design/awards/` on `main`, then `https://raw.githubusercontent.com/ineedsomesleep5/MagicMobile/main/design/awards/<name>.png`.
+Art goes in `design/awards/` on `main`, then `https://raw.githubusercontent.com/ineedsomesleep5/MagicMobile/main/design/awards/<name>.png`. Run `scripts/brand/award_small.sh` first: it
+makes the 192 px copy in `design/awards/small/` that shelves show, about 25 KB against 500. The rows keep the big URL, and apps from TestFlight 79 / Android 56 find the small copy from it, falling
+back to the big one.
+
+Those apps keep badges on the phone: they fill them in after launch, ask the server again at most every six hours, and download a file again only if it changed, so a replaced file reaches
+them within six hours of their next launch.
 
 ```sql
 -- A new award with a rule, then give it to everyone who has already earned it, in the order they did.
@@ -111,6 +116,59 @@ values ('quick-draw', 'Quick Draw', 'Win a game by turn 6.', 'https://raw.github
 select public.mm_awards_backfill('quick-draw');
 -- Backfilled players get the ceremony on their next launch. To skip it for a trophy they earned long ago:
 update public.player_awards set seen_at = now() where award_id = 'quick-draw' and seen_at is null;
+```
+
+## Heat reports
+
+Every game of a minute or more on an iPhone or Android phone sends one row to `game_heat` once it ends, on the terms a game record goes up: when the
+app is open and online, retried until the server has it, once each. A game the app never got to end (heat, memory, a force quit) goes up to its last
+saved minute, marked `interrupted`. Apps from TestFlight 79 / Android 56 send them. The web can't read heat, so it sends none.
+
+Each row has the platform, build, phone model, system version, mode, AI skill, board, table, motion and effects, then `stats`:
+
+| Number | What it is |
+| --- | --- |
+| `minutes`, `turns` | Time the app was awake for the game, and turns. |
+| `hottest`, `startThermal` | 0 nominal, 1 fair, 2 serious, 3 critical. iPhones say only this, never degrees. |
+| `warmMinutes`, `hotMinutes` | Minutes at fair or above, and at serious or above. |
+| `secondsToWarm`, `secondsToHot` | Awake seconds until the first reading at that level. |
+| `cpu`, `cpuBoard`, `cpuUpdates`, `cpuAI` | Percent of one core: all of it, the main thread, the rest, and the engine's `AI-` search threads. |
+| `slowFrames` | Percent of frames late, timed three seconds a minute while the board is awake. |
+| `batteryUsed` | Percent, left out on a charger. iPhones report it in 5% steps. |
+| `tempStart`, `tempPeak` | The battery's °C, Android only. |
+| `peakMB`, `lowestHeadroomMB`, `memoryWarnings` | Memory. |
+| `charging`, `lowPower`, `interrupted` | Flags. |
+
+The graphics chip isn't measured: no phone says how much it works for one app. A world's cost shows in heat, not in `cpu`. Compare tables, or use the test below.
+
+Only the database reads the table: no RLS policy, no grants. Read `game_heat_summary` first. It keeps real games (three minutes or more, not charging, not already
+serious at the start) by build, table and motion.
+
+```sql
+select * from public.game_heat_summary order by build desc, serious_pct desc;
+-- By phone.
+select device, count(*), round(avg((stats ->> 'cpu')::numeric)) as cpu,
+       count(*) filter (where (stats ->> 'hottest')::numeric >= 2) as serious
+  from public.game_heat where build >= 79 group by device order by count(*) desc;
+```
+
+### World motion
+
+Three switches change how much a world moves, with no build (iOS, since Android and the web have no moving worlds):
+
+| Switch | Does |
+| --- | --- |
+| `worldMotion: false` | Stills every world. |
+| `worldMotionHalf: true` | Runs them at the rate a hot phone uses, half. |
+| `worldMotionTest: true` | Stills the world in half of all games, chosen from the match ID. |
+
+`worldMotionTest` is the clean answer to whether motion heats phones: same players, same tables, and the summary splits `full` from `off`. Leave it on for a day or two
+of games, then turn it off.
+
+```sql
+update public.app_settings set value = value || '{"worldMotionTest": true}', updated_at = now() where key = 'switches';
+-- Off again: drop the name rather than setting it false.
+update public.app_settings set value = value - 'worldMotionTest', updated_at = now() where key = 'switches';
 ```
 
 ## Voice chat

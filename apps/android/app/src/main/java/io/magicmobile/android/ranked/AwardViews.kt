@@ -1,5 +1,6 @@
 package io.magicmobile.android.ranked
 
+import android.content.Context
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
@@ -55,6 +56,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.magicmobile.android.game.Award
+import io.magicmobile.android.game.BadgeArtStore
+import io.magicmobile.android.game.BadgeFetch
 import io.magicmobile.android.menus.ArenaButton
 import io.magicmobile.android.menus.ArenaButtonKind
 import io.magicmobile.android.menus.ArenaButtonText
@@ -75,7 +78,10 @@ import java.text.DateFormat
 import java.util.Date
 import kotlin.math.max
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
+import java.io.File
 
 private val gold = Color(0xFFFFCC5C)
 private val metal = listOf(Color(0xFFFFEDAD), gold, Color(0xFF8C5C1F))
@@ -88,26 +94,62 @@ private val Award.caption get() = listOfNotNull(note, awardedAt?.let { DateForma
 /** Award art, downloaded once a launch (Android has no image loader here; iOS uses AsyncImage). */
 internal object AwardArt {
     private const val MAX_BYTES = 4L * 1024 * 1024
+    /** The small copies are 192 px, sharp up to this size on a phone. */
+    val SMALL_UP_TO = 64.dp
     private val loaded = mutableMapOf<String, ImageBitmap>()
+    private var store: BadgeArtStore? = null
 
-    suspend fun load(url: String): ImageBitmap? = synchronized(loaded) { loaded[url] } ?: withContext(Dispatchers.IO) {
-        runCatching {
-            val connection = URL(url).openConnection() as HttpURLConnection
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 30_000
-            try {
-                if (connection.responseCode != 200 || connection.contentLengthLong > MAX_BYTES) return@runCatching null
-                val bytes = connection.inputStream.use { it.readBytes() }
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()?.also { synchronized(loaded) { loaded[url] = it } }
-            } finally { connection.disconnect() }
-        }.getOrNull()
+    fun init(context: Context) { store = BadgeArtStore(File(context.cacheDir, "badge-art"), ::download) }
+
+    /** The coin if it's in memory, so a shelf drawn again shows it from its first frame. */
+    fun ready(url: String?, small: Boolean = true): ImageBitmap? = url?.let { synchronized(loaded) { loaded["$small:$it"] } }
+
+    suspend fun load(url: String, small: Boolean = true): ImageBitmap? = ready(url, small) ?: withContext(Dispatchers.IO) {
+        val store = store ?: return@withContext null
+        if (store.stored(url, small) == null) store.refresh(url, small)
+        decode(store.stored(url, small), url, small)
     }
+
+    /** Fills the phone's copies ahead of time, a few at a time. A coin that changed shows on its next load. */
+    suspend fun prefetch(urls: Collection<String>, small: Boolean = true) = withContext(Dispatchers.IO) {
+        val store = store ?: return@withContext
+        urls.distinct().chunked(4).forEach { batch ->
+            batch.map { url -> async { if (store.refresh(url, small)) synchronized(loaded) { loaded.remove("$small:$url") } } }.awaitAll()
+        }
+    }
+
+    private fun decode(bytes: ByteArray?, url: String, small: Boolean): ImageBitmap? = bytes?.let {
+        runCatching { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }.getOrNull()
+    }?.also { synchronized(loaded) { loaded["$small:$url"] = it } }
+
+    private fun download(url: String, etag: String?): BadgeFetch = runCatching {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        connection.connectTimeout = 15_000
+        connection.readTimeout = 30_000
+        connection.useCaches = false
+        etag?.let { connection.setRequestProperty("If-None-Match", it) }
+        try {
+            when (connection.responseCode) {
+                200 -> if (connection.contentLengthLong > MAX_BYTES) BadgeFetch.Failed
+                       else BadgeFetch.New(connection.inputStream.use { it.readBytes() }, connection.getHeaderField("ETag"))
+                304 -> BadgeFetch.Unchanged
+                404 -> BadgeFetch.Missing
+                else -> BadgeFetch.Failed
+            }
+        } finally { connection.disconnect() }
+    }.getOrDefault(BadgeFetch.Failed)
 }
 
 /** An award's art, or a star medal in its tint when it has none or it can't load. */
 @Composable
 fun AwardMedal(award: Award, size: Dp = 60.dp) {
-    val art by produceState<ImageBitmap?>(null, award.imageUrl) { value = award.imageUrl?.let { AwardArt.load(it) } }
+    // The ceremony's big medal starts from the small copy, then sharpens.
+    val big = size > AwardArt.SMALL_UP_TO
+    val art by produceState(AwardArt.ready(award.imageUrl), award.imageUrl) {
+        val url = award.imageUrl ?: return@produceState
+        value = AwardArt.load(url)
+        if (big) AwardArt.load(url, small = false)?.let { value = it }
+    }
     val glow = when (award.rarity) { 3 -> award.color.copy(alpha = 0.8f); 2 -> award.color.copy(alpha = 0.45f); else -> Color.Transparent }
     Box(Modifier.size(size).glow(glow, size * (if (award.rarity == 3) 0.2f else 0.12f), size / 2), contentAlignment = Alignment.Center) {
         val image = art

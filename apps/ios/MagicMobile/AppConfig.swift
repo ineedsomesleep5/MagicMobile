@@ -56,6 +56,24 @@ struct AppConfig: Equatable, Sendable {
     }
 }
 
+/// A hash that stays the same from launch to launch and phone to phone, as Swift's own doesn't (FNV-1a).
+func stableHash(_ text: String) -> UInt64 {
+    text.utf8.reduce(UInt64(0xcbf2_9ce4_8422_2325)) { ($0 ^ UInt64($1)) &* 0x0000_0100_0000_01B3 }
+}
+
+/// How much an Arena world moves this game. The server can turn it off or to half rate with no build, and `worldMotionTest` stills
+/// the world in half of all games, so the heat reports compare the two on the same phones (docs/SERVER_CONTROLS.md).
+enum WorldMotion: String, Sendable {
+    case full, half, off
+
+    static func plan(match: String?, config: AppConfig) -> WorldMotion {
+        if !config.isOn("worldMotion") { return .off }
+        if config.isOn("worldMotionHalf", default: false) { return .half }
+        guard config.isOn("worldMotionTest", default: false), let match else { return .full }
+        return stableHash("motion:\(match)") % 2 == 0 ? .full : .off
+    }
+}
+
 /// The phone's copy of the server's settings (UserDefaults), readable from any thread.
 final class AppConfigStore: @unchecked Sendable {
     static let shared = AppConfigStore()

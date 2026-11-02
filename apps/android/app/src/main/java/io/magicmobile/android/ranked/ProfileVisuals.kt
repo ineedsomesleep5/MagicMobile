@@ -469,7 +469,7 @@ fun TrophyShelf(unlocked: Set<Achievement>, server: List<Award> = emptyList()) {
 
 @Composable
 private fun RowScope.AchievementCoin(achievement: Achievement, earned: Boolean, choose: () -> Unit) {
-    val art by produceState<ImageBitmap?>(null, achievement.artUrl) { value = AwardArt.load(achievement.artUrl) }
+    val art by produceState(AwardArt.ready(achievement.artUrl), achievement.artUrl) { value = AwardArt.load(achievement.artUrl) }
     Column(Modifier.weight(1f).clickable(onClick = choose).padding(bottom = 2.dp)
         .semantics(mergeDescendants = true) {
             contentDescription = "${achievement.title}. ${achievement.detail}"

@@ -10,6 +10,9 @@ import { Btn, Caps } from "./kit";
 
 const metal = "mawardmetal";
 
+/** Our art has a small copy beside it for shelves (scripts/brand/award_small.sh); the big file is for the ceremony. */
+const smallArt = (url: string) => url.includes("/design/awards/small/") ? url : url.replace("/design/awards/", "/design/awards/small/");
+
 /** An award's art, or a star medal in its tint. */
 export function AwardMedal({ award, size = 60 }: { award: Award; size?: number }) {
   const [failed, setFailed] = useState(false);
@@ -17,7 +20,7 @@ export function AwardMedal({ award, size = 60 }: { award: Award; size?: number }
   const art = award.imageUrl && !failed;
   return (
     <span className={`mawardmedal rarity${award.rarity}`} aria-hidden="true" style={{ width: size, height: size, ["--tint" as string]: award.tint }}>
-      {art ? <img src={award.imageUrl} alt="" onError={() => setFailed(true)} />
+      {art ? <img src={size <= 64 ? smallArt(award.imageUrl!) : award.imageUrl} alt="" onError={() => setFailed(true)} />
         : <svg viewBox="0 0 24 24"><path className={metal} d="M12 3.2l2.7 5.6 6.1.8-4.5 4.2 1.2 6.1-5.5-3-5.5 3 1.2-6.1-4.5-4.2 6.1-.8z" /></svg>}
     </span>
   );

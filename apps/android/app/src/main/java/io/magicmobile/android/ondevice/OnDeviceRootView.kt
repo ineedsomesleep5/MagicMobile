@@ -260,6 +260,8 @@ object OrientationController {
 @Composable
 fun OnDeviceRoot(vm: OnDeviceViewModel) {
     val session = vm.session
+    val boardMode by AppPreferences.string(io.magicmobile.android.game.BoardMode.key, io.magicmobile.android.game.BoardMode.defaultValue)
+    val boardEffects by AppPreferences.string(io.magicmobile.android.game.BoardFXLevel.key, io.magicmobile.android.game.BoardFXLevel.defaultValue)
     val setup = vm.setup
     val context = LocalContext.current
     val activity = context as? Activity
@@ -398,7 +400,15 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         val upload: suspend () -> Unit = { uploader.flush(record.file.matches) { vm.account.recordGame(it) } }
         // A ranked game goes up after its result counts on the server, which records its rank points then.
         record.didRecord = { match -> if (match.mode != io.magicmobile.android.game.PlayMode.RANKED) scope.launch { upload() } }
-        vm.account.afterRefresh = { vm.account.syncRank(record); upload() }
+        vm.account.afterRefresh = {
+            vm.account.syncRank(record)
+            upload()
+            io.magicmobile.android.ui.GamePerformanceRecorder.flush { vm.account.recordHeat(it) }
+            // Badges wait on the phone, so the profile opens with them; an unseen award's big art is ready for its ceremony.
+            val awards = vm.account.awards + vm.account.trophies
+            io.magicmobile.android.ranked.AwardArt.prefetch(io.magicmobile.android.game.Achievement.entries.map { it.artUrl } + awards.mapNotNull { it.imageUrl })
+            io.magicmobile.android.ranked.AwardArt.prefetch(vm.account.awards.filter { !it.seen }.mapNotNull { it.imageUrl }, small = false)
+        }
         // Debug: MAGICMOBILE_UI_TEST_CEREMONY=tierUp|tierDown|divisionUp|divisionDown|placed plays a rank moment (as on iOS).
         val P = io.magicmobile.android.game.RankPosition
         val win = io.magicmobile.android.game.RankOutcome.WIN; val loss = io.magicmobile.android.game.RankOutcome.LOSS
@@ -1018,6 +1028,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     LaunchedEffect(portraitModeEnabled, activeGame) { OrientationController.apply(activity, portraitModeEnabled, activeGame) }
     LaunchedEffect(session.snapshot?.isCompleted, session.snapshot?.isSpectating) { recordFinishedGameIfNeeded() }
     LaunchedEffect(session.snapshot?.turn) { io.magicmobile.android.ui.GamePerformanceRecorder.noteTurn(session.snapshot?.turn) }
+    LaunchedEffect(session.snapshot?.id) {
+        if (session.snapshot?.id != null) io.magicmobile.android.ui.GamePerformanceRecorder.noteBoard(
+            io.magicmobile.android.game.GameBoardNote(board = io.magicmobile.android.game.BoardMode.resolved(boardMode).rawValue, effects = boardEffects))
+    }
     // During a game, friends' messages are checked every 15 seconds (the menu's heartbeat is slower), and a new one shows a banner.
     LaunchedEffect(activeGame, vm.account.messagesAvailable) {
         if (!activeGame || !vm.account.messagesAvailable) return@LaunchedEffect
@@ -1043,8 +1057,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         // The combo loop shortcut: solo games only.
         session.comboLoopsAllowed = activeGame && !setup.usingMultiplayer
         if (activeGame) { matchmaker.finish(); rankedConnectJob?.cancel() }
-        if (activeGame) io.magicmobile.android.ui.GamePerformanceRecorder.begin(activeMatch?.mode?.raw ?: if (setup.usingMultiplayer) "online" else "custom", activeMatch?.aiSkill)
-        else io.magicmobile.android.ui.GamePerformanceRecorder.end()
+        if (activeGame) io.magicmobile.android.ui.GamePerformanceRecorder.begin(if (lessonRun != null) "lesson" else activeMatch?.mode?.raw ?: if (setup.usingMultiplayer) "online" else "custom", activeMatch?.aiSkill)
+        else {
+            io.magicmobile.android.ui.GamePerformanceRecorder.end()
+            scope.launch { io.magicmobile.android.ui.GamePerformanceRecorder.flush { vm.account.recordHeat(it) } }
+        }
         if (activeGame) {
             FreezeLog.mode = activeMatch?.mode?.raw ?: if (setup.usingMultiplayer) "table" else "custom"
             FreezeLog.crumb("Game started (${FreezeLog.mode}${if (setup.resume.resumedGame) ", resumed" else ""})")

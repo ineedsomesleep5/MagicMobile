@@ -48,6 +48,7 @@ struct OnDeviceRootView: View {
     @Environment(\.openURL) private var openURL
     /// The menus are Arena's everywhere; in a game the Hearth board keeps its own look.
     @AppStorage(BoardMode.key) private var boardMode = BoardMode.defaultValue
+    @AppStorage(BoardFXLevel.key) private var boardEffects = BoardFXLevel.defaultValue
     @State private var showSetup = false
     @State private var showAppearance = false
     @State private var showUpdates = false
@@ -765,6 +766,7 @@ struct OnDeviceRootView: View {
         }
         .onOpenURL { url in if let code = TableJoinLink.code(from: url) { openJoinLink(code) } }
         .onChange(of: session.snapshot?.turn) { _, turn in GamePerformanceLog.shared.noteTurn(turn) }
+        .onChange(of: session.snapshot?.id) { _, match in noteBoard(match: match) }
         // Memory warnings free the caches that reload by themselves (not the sounds or music, which would cut out).
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
             GamePerformanceLog.shared.noteMemoryWarning()
@@ -785,10 +787,11 @@ struct OnDeviceRootView: View {
             session.comboLoopsAllowed = playing && !setup.usingMultiplayer
             updateDevicePace()
             if playing {
-                GamePerformanceLog.shared.begin(mode: activeMatch?.mode.rawValue ?? (setup.usingMultiplayer ? "online" : "custom"),
+                GamePerformanceLog.shared.begin(mode: lessonRun != nil ? "lesson" : activeMatch?.mode.rawValue ?? (setup.usingMultiplayer ? "online" : "custom"),
                                                 aiSkill: activeMatch?.aiSkill)
             } else {
                 GamePerformanceLog.shared.end()
+                Task { [account] in await GamePerformanceLog.shared.flush { await account.recordHeat($0) } }
             }
             if playing { matchmaker.finish(); rankedConnectTask?.cancel() }
             guard playing else { versusIntro = nil; return }
@@ -854,6 +857,10 @@ struct OnDeviceRootView: View {
             account.afterRefresh = { [account, profileRecord] in
                 await account.syncRank(profileRecord)
                 await upload()
+                await GamePerformanceLog.shared.flush { await account.recordHeat($0) }
+                // Badges wait on the phone, so the profile opens with them; an unseen award's big art is ready for its ceremony.
+                await BadgeImages.prefetch(Achievement.allCases.compactMap(\.artURL) + (account.awards + account.trophies).compactMap(\.imageURL))
+                await BadgeImages.prefetch(account.awards.filter { !$0.seen }.compactMap(\.imageURL), small: false)
             }
         }
         .onChange(of: setup.isBusy) { _, busy in
@@ -1609,6 +1616,16 @@ struct OnDeviceRootView: View {
     private var mayStartSolo: Bool {
         validName && selectedDeck != nil && selectedDeckBracket != nil && setup.identity != nil
             && !setup.isBusy && !setup.needsLeave && !matchmaker.isSearching
+    }
+
+    /// What the heat report says about the board: the table only means something on Arena.
+    private func noteBoard(match: String?) {
+        guard let match else { return }
+        let arena = BoardMode.resolved(boardMode) == .arena
+        let table = ArenaTableDraw.table(match: match, pinned: pinnedTable, pinnedMatch: pinnedTableMatch)
+        let motion = WorldMotion.plan(match: match, config: AppConfigStore.shared.current)
+        GamePerformanceLog.shared.noteBoard(GameBoardNote(board: BoardMode.resolved(boardMode).rawValue, table: arena ? table.rawValue : nil,
+                                                          motion: arena ? motion.rawValue : nil, effects: boardEffects))
     }
 
     /// A game you set up yourself keeps the table you picked; every other game draws its own (ArenaTableDraw). A table
