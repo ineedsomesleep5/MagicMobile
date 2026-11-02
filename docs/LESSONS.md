@@ -601,6 +601,8 @@ contradicting one.
   catalogue from the pinned commit then matches it except for 5 Secrets of Strixhaven names. The Claude cloud container
   cannot reach Scryfall and claude.ai pages cannot load outside images, so card pictures are fetched in GitHub Actions
   (`magicmobile-card-support.yml`) and shipped with the page as sprite sheets on the `card-support-data` branch.
+  The download site's Vercel project builds every pushed branch and fails on one without `apps/site`, so any branch a
+  workflow pushes needs `apps/site/vercel.json` with `git.deploymentEnabled: false` (the card workflow writes it).
 - 2026-10-26 (Claude, voice chat): iPhones write the game's epoch upper case (`UUID().uuidString`), Android and the web
   lower case, so anything named from the raw epoch splits a mixed table. **Rule:** lowercase it (`VoiceChatRules.channel`).
   Agora's Android `io.agora.rtc:voice-sdk` pulls every extension (AI noise, spatial audio…); use `voice-rtc-basic` and iOS

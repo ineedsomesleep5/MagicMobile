@@ -13,6 +13,7 @@ with card pictures. `.github/workflows/magicmobile-card-support.yml` rebuilds it
 
 The workflow force-pushes the output (`index.html`, `data.json`, `img/`) as a single commit to the
 `card-support-data` branch. A Claude routine fetches that branch and republishes the page at the same link.
+The branch also carries `apps/site/vercel.json` so the download site's Vercel project skips it.
 
 ```
 python3 scripts/card-support/build_card_support.py --repo . --workdir /tmp/xmage-cards --out out

@@ -57,6 +57,9 @@ jobs:
           git init -q -b card-support-data
           git config user.name 'github-actions[bot]'
           git config user.email '41898732+github-actions[bot]@users.noreply.github.com'
+          # The download site's Vercel project (root apps/site) builds every pushed branch; tell it to skip this one.
+          mkdir -p apps/site
+          printf '{"git":{"deploymentEnabled":false},"ignoreCommand":"exit 0"}\n' > apps/site/vercel.json
           git add -A
           git commit -q -m "Card support data from ${SOURCE}"
           git push -q --force "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" card-support-data
