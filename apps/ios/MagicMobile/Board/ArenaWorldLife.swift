@@ -6,7 +6,7 @@ import UIKit
 /// The living part of an Arena world (docs/ARENA_WORLDS.md "Motion"). It sits on the plate, under the cards, and never asks
 /// SwiftUI to redraw the board: light and particles run in Core Animation, and flowing surfaces are small Metal layers on
 /// one 24 Hz clock (mist, haze and wind at half that). It rests with `BoardActivity`, halves while the phone is hot, and
-/// follows Board Effects.
+/// follows Board Effects and the server's WorldMotion.
 struct ArenaWorldSpec: Decodable {
     struct Flow: Decodable {
         let kind: String
@@ -84,6 +84,7 @@ struct ArenaWorldLife: View {
     var covered = false
     @AppStorage(BoardFXLevel.key) private var level = BoardFXLevel.defaultValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.arenaWorldMotion) private var motion
     @ObservedObject private var activity = BoardActivity.shared
     @ObservedObject private var heat = DeviceHeat.shared
 
@@ -98,9 +99,10 @@ struct ArenaWorldLife: View {
 
     private var state: ArenaWorldLifeView.State {
         let chosen = BoardFXLevel(rawValue: level) ?? .full
-        let mode: ArenaWorldLifeView.Mode = reduceMotion || chosen == .off ? .still
+        let mode: ArenaWorldLifeView.Mode = reduceMotion || chosen == .off || motion == .off ? .still
             : chosen == .reduced || ProcessInfo.processInfo.isLowPowerModeEnabled ? .light : .full
-        return .init(theme: theme, band: band, mode: mode, resting: activity.isIdle || covered, covered: covered, hot: heat.isHot, dread: dread)
+        return .init(theme: theme, band: band, mode: mode, resting: activity.isIdle || covered, covered: covered,
+                     hot: heat.isHot || motion == .half, dread: dread)
     }
 }
 

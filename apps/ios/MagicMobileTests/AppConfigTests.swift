@@ -6,6 +6,28 @@ import XCTest
 final class AppConfigTests: XCTestCase {
     private func data(_ json: String) -> Data { Data(json.utf8) }
 
+    /// The server can still a world, slow it, or still it in half of all games to compare the two.
+    func testWorldMotionFollowsTheServer() {
+        var config = AppConfig()
+        XCTAssertEqual(WorldMotion.plan(match: "m", config: config), .full)
+        config.switches = ["worldMotionHalf": true]
+        XCTAssertEqual(WorldMotion.plan(match: "m", config: config), .half)
+        config.switches = ["worldMotion": false, "worldMotionHalf": true, "worldMotionTest": true]
+        XCTAssertEqual(WorldMotion.plan(match: "m", config: config), .off, "off wins")
+        config.switches = ["worldMotionTest": true]
+        let plans = (0..<400).map { WorldMotion.plan(match: "match-\($0)", config: config) }
+        XCTAssertEqual(plans, (0..<400).map { WorldMotion.plan(match: "match-\($0)", config: config) }, "a resumed game keeps its plan")
+        XCTAssertEqual(Set(plans), [.full, .off])
+        XCTAssertEqual(Double(plans.filter { $0 == .off }.count), 200, accuracy: 40)
+        XCTAssertEqual(WorldMotion.plan(match: nil, config: config), .full)
+    }
+
+    /// Tables are drawn from this, so a resumed game keeps its table and two phones agree: it can't change.
+    func testStableHashIsFNV1a() {
+        XCTAssertEqual(stableHash("a"), 0xaf63_dc4c_8601_ec8c)
+        XCTAssertEqual(stableHash(""), 0xcbf2_9ce4_8422_2325)
+    }
+
     func testTheReplyIsReadAndSwitchesDefaultOn() throws {
         let config = try XCTUnwrap(AppConfig.parse(data(#"{"notice": {"id": "update-64", "text": "Update to build 64."}, "nameFixes": {"A": "B", "": "C", "D": 3}, "switches": {"leaveVote": false, "odd": "yes"}}"#)))
         XCTAssertEqual(config.notice, AppConfig.Notice(id: "update-64", text: "Update to build 64."))

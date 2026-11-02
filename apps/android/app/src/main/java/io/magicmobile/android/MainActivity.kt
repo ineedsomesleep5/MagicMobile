@@ -22,6 +22,7 @@ class MainActivity: ComponentActivity() {
         io.magicmobile.android.ui.GameAudio.init(this)
         io.magicmobile.android.ui.DeviceHeat.init(this)
         io.magicmobile.android.ui.GamePerformanceRecorder.init(this)
+        io.magicmobile.android.ranked.AwardArt.init(this)
         // Local crash and ANR summaries for the report sheet (background thread); nothing is uploaded.
         if (savedInstanceState==null) io.magicmobile.android.ondevice.OnDeviceSystemReports.recordAtStartup(this)
         // The freeze log's watchdog and the earlier run's unsent freeze (docs/FREEZE_LOG.md); nothing is sent without Send.

@@ -661,6 +661,24 @@ final class PlayerAccount: ObservableObject {
         }
     }
 
+    /// Sends one game's heat numbers (GamePerformanceEntry.report), on the same terms as the game itself.
+    func recordHeat(_ report: [String: Any]) async -> GameUploadResult {
+        guard phase == .ready, username != nil else { return .unavailable }
+        #if DEBUG
+        if SocialFixtures.isActive { return .sent }
+        #endif
+        do {
+            _ = try await api.rpc("mm_game_heat", report)
+            return .sent
+        } catch {
+            switch SupabaseLite.code(of: error) {
+            case "feature_unavailable", "no_username": return .unavailable
+            case "invalid_report": return .rejected
+            default: return .retryLater
+            }
+        }
+    }
+
     func addFriend(_ name: String) async {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }

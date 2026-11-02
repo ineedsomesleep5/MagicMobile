@@ -128,8 +128,8 @@ export type Achievement =
   | "firstWin" | "firstRankedWin" | "silver" | "gold" | "platinum" | "diamond" | "mythic"
   | "streak5" | "veteran" | "prismatic" | "giantSlayer" | "quickDraw" | "humanWin";
 export const Achievement = {
-  /** Its painted coin, served like the server trophies' art. */
-  artUrl: (a: Achievement) => `https://raw.githubusercontent.com/ineedsomesleep5/MagicMobile/main/design/awards/classic-${a}.png`,
+  /** Its painted coin, served like the server trophies' art, as the small copy a shelf shows. */
+  artUrl: (a: Achievement) => `https://raw.githubusercontent.com/ineedsomesleep5/MagicMobile/main/design/awards/small/classic-${a}.png`,
   all: ["firstWin", "firstRankedWin", "silver", "gold", "platinum", "diamond", "mythic",
     "streak5", "veteran", "prismatic", "giantSlayer", "quickDraw", "humanWin"] as Achievement[],
   title: (a: Achievement) => ({

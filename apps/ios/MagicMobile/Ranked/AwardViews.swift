@@ -1,20 +1,72 @@
 import SwiftUI
 
+/// Badges in memory, over BadgeArtStore's copies on the phone.
+@MainActor
+enum BadgeImages {
+    /// The small copies are 192 px, sharp up to this size on a phone.
+    static let smallUpTo: CGFloat = 64
+    private static let memory = NSCache<NSString, UIImage>()
+
+    private static func key(_ url: URL, small: Bool) -> NSString { "\(small):\(url.absoluteString)" as NSString }
+
+    /// Right now, for a view's first frame: from memory or the phone, never the network.
+    static func ready(_ url: URL, small: Bool = true) -> UIImage? {
+        if let image = memory.object(forKey: key(url, small: small)) { return image }
+        guard let data = BadgeArtStore.shared.stored(url, small: small), let image = UIImage(data: data) else { return nil }
+        memory.setObject(image, forKey: key(url, small: small))
+        return image
+    }
+
+    static func load(_ url: URL, small: Bool = true) async -> UIImage? {
+        if let image = ready(url, small: small) { return image }
+        await BadgeArtStore.shared.refresh(url, small: small)
+        return ready(url, small: small)
+    }
+
+    /// Fills the phone's copies ahead of time. A coin that changed shows on its next load.
+    static func prefetch(_ urls: [URL], small: Bool = true) async {
+        for url in await BadgeArtStore.shared.prefetch(Array(Set(urls)), small: small) {
+            memory.removeObject(forKey: key(url, small: small))
+        }
+    }
+}
+
+/// A badge's art, or `placeholder` until there is any. A big one starts from the small copy, then sharpens.
+struct BadgeImage<Placeholder: View>: View {
+    let url: URL?
+    var large = false
+    var earned = true
+    @ViewBuilder var placeholder: () -> Placeholder
+    @State private var loaded: (url: URL, image: UIImage)?
+
+    private var shown: UIImage? {
+        if let loaded, loaded.url == url { return loaded.image }
+        return url.flatMap { BadgeImages.ready($0) }
+    }
+
+    var body: some View {
+        Group {
+            if let shown {
+                Image(uiImage: shown).resizable().scaledToFit().saturation(earned ? 1 : 0).opacity(earned ? 1 : 0.32)
+            } else {
+                placeholder()
+            }
+        }
+        .task(id: url) {
+            guard let url else { return }
+            if let image = await BadgeImages.load(url) { loaded = (url, image) }
+            if large, let image = await BadgeImages.load(url, small: false) { loaded = (url, image) }
+        }
+    }
+}
+
 /// An award's art, or a star medal in its tint when it has none or it can't load.
 struct AwardMedal: View {
     let award: Award
     var size: CGFloat = 60
 
     var body: some View {
-        Group {
-            if let url = award.imageURL {
-                AsyncImage(url: url) { phase in
-                    if case .success(let image) = phase { image.resizable().scaledToFit() } else { drawn }
-                }
-            } else {
-                drawn
-            }
-        }
+        BadgeImage(url: award.imageURL, large: size > BadgeImages.smallUpTo) { drawn }
         .frame(width: size, height: size)
         .shadow(color: award.rarity > 1 ? award.tint.opacity(award.rarity == 3 ? 0.8 : 0.45) : .clear, radius: size * (award.rarity == 3 ? 0.2 : 0.12))
         // Flattened once, with room for the glow: a shadow on a picture is otherwise worked out again every frame it scrolls.

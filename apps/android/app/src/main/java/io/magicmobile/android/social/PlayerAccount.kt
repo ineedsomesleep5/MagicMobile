@@ -418,6 +418,23 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
         }
     }
 
+    /** Sends one game's heat numbers (GamePerformanceEntry.report), on the same terms as the game itself. */
+    suspend fun recordHeat(report: Map<String, JsonElement>): GameUploadResult {
+        if (phase != Phase.READY || username == null) return GameUploadResult.UNAVAILABLE
+        if (SocialFixtures.isActive) return GameUploadResult.SENT
+        return try {
+            api.rpc("mm_game_heat", report)
+            GameUploadResult.SENT
+        } catch (error: kotlinx.coroutines.CancellationException) { throw error
+        } catch (error: Exception) {
+            when (SupabaseLite.code(error)) {
+                "feature_unavailable", "no_username" -> GameUploadResult.UNAVAILABLE
+                "invalid_report" -> GameUploadResult.REJECTED
+                else -> GameUploadResult.RETRY_LATER
+            }
+        }
+    }
+
     /** Development fixtures (SocialFixtures): a signed-in account with friends, instead of the server. */
     private fun applyFixtureAccount() {
         phase = Phase.READY

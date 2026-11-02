@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		001AB64DF90EFF56F60B5E95 /* dice-roll.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 6CA8A5960041348B8C01CB67 /* dice-roll.m4a */; };
 		008C07BFF86B3AEE7F3679A2 /* tavern-room.json in Resources */ = {isa = PBXBuildFile; fileRef = 1A7B83AA1C40365E550FA5E3 /* tavern-room.json */; };
+		00CFBDF3E22D406A5544DC03 /* BadgeArtStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B19984AA40B72C79F0FC8ED /* BadgeArtStore.swift */; };
 		00D040BACBE56F8EE6F1A08A /* CompactPromptPopup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FD247A43254B7430E9FF79C /* CompactPromptPopup.swift */; };
 		0177F7BB151A10AEDA526F73 /* PreconCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EC7F366BBFC899D5DD7671C /* PreconCatalog.swift */; };
 		01F099FBC7DBF11AB99CE4AC /* AppConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B5855C04ACB4529CFCD6DF2 /* AppConfigTests.swift */; };
@@ -413,6 +414,7 @@
 		F127F0729E689EB306C40293 /* DeckStudioReplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 617C22961151F12CBFFA4E39 /* DeckStudioReplayTests.swift */; };
 		F19AAA7C33B64B6B73E686E4 /* DeckStudioCardGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14A9E7B17B8E893749658AE /* DeckStudioCardGridView.swift */; };
 		F19E49FA67043E6BC9991B4D /* BoardFXCardMoments.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BBD7C24C0A74B484A9C5321 /* BoardFXCardMoments.swift */; };
+		F23FDACEBD7ED426E1EC8510 /* BadgeArtStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4780423BB8E0233496FC53A0 /* BadgeArtStoreTests.swift */; };
 		F29CABBC0F86CA39828ACF59 /* OnDeviceMessageLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D59BA72DAE656609C8EA9241 /* OnDeviceMessageLog.swift */; };
 		F31B0E2CF2886B357C1E475F /* NativeDeckBuilderComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9176C5EA78AC115482913575 /* NativeDeckBuilderComponents.swift */; };
 		F42133CC6729C70047FB4CFB /* life-loss.m4a in Resources */ = {isa = PBXBuildFile; fileRef = CC1B682469EF7A9B45FC1468 /* life-loss.m4a */; };
@@ -573,6 +575,7 @@
 		43757BDA8C9BB55A8A1C9FFB /* NativeDeckBuilderLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDeckBuilderLayoutTests.swift; sourceTree = "<group>"; };
 		45FC289EBB6446A118BA5F4E /* NativeGameView+ArenaActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NativeGameView+ArenaActions.swift"; sourceTree = "<group>"; };
 		4669E17CA7BDD580060C9716 /* ArenaWorldFlow.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = ArenaWorldFlow.metal; sourceTree = "<group>"; };
+		4780423BB8E0233496FC53A0 /* BadgeArtStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeArtStoreTests.swift; sourceTree = "<group>"; };
 		47E7D0518F79D4F055DFCBA1 /* lesson-combat.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "lesson-combat.json"; sourceTree = "<group>"; };
 		487F7755E745AB1466FD171F /* creature-faerie-1.m4a */ = {isa = PBXFileReference; path = "creature-faerie-1.m4a"; sourceTree = "<group>"; };
 		495985ED8684F740F75B1111 /* creature-goblin.m4a */ = {isa = PBXFileReference; path = "creature-goblin.m4a"; sourceTree = "<group>"; };
@@ -581,6 +584,7 @@
 		49FED4AF9E62808A6FB79605 /* DeckStudioPlaytestStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioPlaytestStore.swift; sourceTree = "<group>"; };
 		4A0558E7561DEF2A95235ADB /* PrivacyManifestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyManifestTests.swift; sourceTree = "<group>"; };
 		4A8AB3E92C8E6BBBE67EFE6A /* FriendChallenges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FriendChallenges.swift; sourceTree = "<group>"; };
+		4B19984AA40B72C79F0FC8ED /* BadgeArtStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeArtStore.swift; sourceTree = "<group>"; };
 		4BA70C9674983BCF14FFA981 /* BoardCardChoiceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardCardChoiceView.swift; sourceTree = "<group>"; };
 		4C8C847CE9842FA9A99B2ACD /* GameResume.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameResume.swift; sourceTree = "<group>"; };
 		4CD073C390A414C9A10BA045 /* DeckStudioReadabilityUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioReadabilityUITests.swift; sourceTree = "<group>"; };
@@ -1193,6 +1197,7 @@
 				3B5855C04ACB4529CFCD6DF2 /* AppConfigTests.swift */,
 				08596B5DEE60AE58FE82EA3A /* ArenaBoardModelTests.swift */,
 				A736FE63448EAD623FE412FA /* ArenaBoardPresentationTests.swift */,
+				4780423BB8E0233496FC53A0 /* BadgeArtStoreTests.swift */,
 				F675833239E93937C36ABD7C /* BattlefieldAdaptiveSizingTests.swift */,
 				77E01CDDFBE4A2CB47963D37 /* BattlefieldBackdropTests.swift */,
 				FE7A1008F2215F9CB7E25B2F /* BattlefieldViewportTests.swift */,
@@ -1370,6 +1375,7 @@
 				3572CF391B01366995DFCEF2 /* AIDeckPool.swift */,
 				F839A6F55284552D59CECB83 /* Award.swift */,
 				AED2804F4BCF3E56F1CDC014 /* AwardViews.swift */,
+				4B19984AA40B72C79F0FC8ED /* BadgeArtStore.swift */,
 				12F457964FEFD80DA6348A99 /* CommanderBrackets.swift */,
 				4A8AB3E92C8E6BBBE67EFE6A /* FriendChallenges.swift */,
 				ADA635ADA555D5641F3EEA92 /* FriendChallengeViews.swift */,
@@ -1853,6 +1859,7 @@
 				84DD77CA70C8EC41271ECDD3 /* ArenaWorldLife.swift in Sources */,
 				37A5150379B8D713CCB4B277 /* Award.swift in Sources */,
 				34242D351E0EB836CD2C6FC8 /* AwardViews.swift in Sources */,
+				00CFBDF3E22D406A5544DC03 /* BadgeArtStore.swift in Sources */,
 				CA5EFC25898ACFEDEA8D650C /* BattlefieldAdaptiveSizing.swift in Sources */,
 				287E5F55CA27719D6983FF70 /* BattlefieldRow.swift in Sources */,
 				D2B46EEE34E03522188A8F54 /* BattlefieldViewportMetrics.swift in Sources */,
@@ -2046,6 +2053,7 @@
 				01F099FBC7DBF11AB99CE4AC /* AppConfigTests.swift in Sources */,
 				C7C18A4FFA1D4DAFC55268EA /* ArenaBoardModelTests.swift in Sources */,
 				5D698217377DD63E6EA31CB9 /* ArenaBoardPresentationTests.swift in Sources */,
+				F23FDACEBD7ED426E1EC8510 /* BadgeArtStoreTests.swift in Sources */,
 				7B5832D9238D0C17B22BAED4 /* BattlefieldAdaptiveSizingTests.swift in Sources */,
 				A2ED80A1AAEC165CA264AE59 /* BattlefieldBackdropTests.swift in Sources */,
 				D9356C6D34D8829E5AA844DE /* BattlefieldViewportTests.swift in Sources */,

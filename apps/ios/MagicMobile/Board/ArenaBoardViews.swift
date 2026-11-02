@@ -31,6 +31,8 @@ struct ArenaTableLean: Equatable {
 
 struct ArenaTableLeanKey: EnvironmentKey { static let defaultValue: ArenaTableLean? = nil }
 
+struct ArenaWorldMotionKey: EnvironmentKey { static let defaultValue = WorldMotion.full }
+
 extension EnvironmentValues {
     /// True while the Arena board draws: battlefield tiles lean back with the table and tapped ones tilt instead of turning.
     var arenaBoard: Bool {
@@ -44,6 +46,11 @@ extension EnvironmentValues {
     var arenaTableLean: ArenaTableLean? {
         get { self[ArenaTableLeanKey.self] }
         set { self[ArenaTableLeanKey.self] = newValue }
+    }
+    /// How much the table's world moves this game (WorldMotion).
+    var arenaWorldMotion: WorldMotion {
+        get { self[ArenaWorldMotionKey.self] }
+        set { self[ArenaWorldMotionKey.self] = newValue }
     }
     /// Tavern frames on battlefield cards (CardFramesPreference); off draws the reference game's cards.
     var cardFrames: Bool {

@@ -62,9 +62,7 @@ enum ArenaTableDraw {
     static func table(match: String?, pinned: String, pinnedMatch: String) -> ArenaTableTheme {
         if pinnedMatch.isEmpty || pinnedMatch == match, let table = ArenaTableTheme(rawValue: pinned) { return table }
         guard let match else { return .walnut }
-        // FNV-1a, because Swift's own hash changes with every launch.
-        let hash = match.utf8.reduce(UInt64(0xcbf2_9ce4_8422_2325)) { ($0 ^ UInt64($1)) &* 0x0000_0100_0000_01B3 }
-        return ArenaTableTheme.allCases[Int(hash % UInt64(ArenaTableTheme.allCases.count))]
+        return ArenaTableTheme.allCases[Int(stableHash(match) % UInt64(ArenaTableTheme.allCases.count))]
     }
 }
 

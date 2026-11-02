@@ -43,6 +43,7 @@ extension NativeGameView {
         let screen = CGSize(width: rootProxy.size.width + rootProxy.safeAreaInsets.leading + rootProxy.safeAreaInsets.trailing,
                             height: rootProxy.size.height + rootProxy.safeAreaInsets.top + rootProxy.safeAreaInsets.bottom)
         let canvas = ArenaCanvas(screen: screen)
+        let motion = WorldMotion.plan(match: snapshot.id, config: AppConfigStore.shared.current)
         return ZStack {
             ArenaTableBackdrop()
             ArenaWorldLife(theme: worldTable, dread: arenaWorldDread(human), covered: arenaScreenUp(snapshot))
@@ -67,6 +68,7 @@ extension NativeGameView {
         .environment(\.tavernBoard, true)
         .environment(\.arenaBoard, true)
         .environment(\.arenaTableTheme, worldTable)
+        .environment(\.arenaWorldMotion, motion)
         .environment(\.arenaTableLean, ArenaTableLean(canvas: canvas))
         .environment(\.arenaSafeArea, ArenaSafeArea(insets: rootProxy.safeAreaInsets))
         // Every new answer from XMage steps the helpers: its revision, a new prompt or the pending answer clearing.
