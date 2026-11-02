@@ -3,7 +3,7 @@
   "bundleId": "com.calebfeliciano.magicmobile",
   "marketingVersion": "0.1.1",
   "nextBuildFloor": "5000000000",
-  "lastPreparedBuild": "77",
+  "lastPreparedBuild": "78",
   "lastInstalledBuild": "2026091501",
   "lastUploadedBuild": "77",
   "uploads": [
@@ -716,7 +716,7 @@
       "ipaPath": "build_output/testflight/native-release.UNbWBv/export/MagicMobile.ipa"
     }
   ],
-  "lastPreparedAt": "2026-11-01T20:36:03.357Z",
+  "lastPreparedAt": "2026-11-02T04:19:55.286Z",
   "lastPreparedMarketingVersion": "0.1.1",
   "lastUploadedMarketingVersion": "0.1.1",
   "lastInstalledMarketingVersion": "0.1.0",
