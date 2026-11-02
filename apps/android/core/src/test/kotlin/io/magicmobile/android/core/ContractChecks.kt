@@ -15,6 +15,7 @@ fun main(args:Array<String>){
     io.magicmobile.android.game.EnginePollMemoTest().repeatedRepliesReturnThePreviousPoll()
     io.magicmobile.android.game.ArenaBoardModelTest().pilesLeanAwayFromTheMiddleOfTheTable()
     io.magicmobile.android.game.AppConfigTest().trophiesParseWhatTheServerSends()
+    io.magicmobile.android.game.AppConfigTest().builtInTrophiesNameTheirPaintedCoins()
     val id=UUID.randomUUID().toString()
     val base=mapOf("promptId" to "p", "revision" to 9007199254740993L,"kind" to "ASK","payload" to mapOf("message" to "Keep hand?"),"responseTypes" to listOf("boolean"),"min" to 0,"max" to 1)
     val d=Decision.parse(Wire.decode(Wire.encode(base)))

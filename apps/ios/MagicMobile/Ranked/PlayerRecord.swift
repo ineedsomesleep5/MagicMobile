@@ -142,6 +142,11 @@ enum Achievement: String, CaseIterable, Codable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
+    /// Its painted coin, served like the server trophies' art. The brass coin stands in until it loads.
+    var artURL: URL? {
+        URL(string: "https://raw.githubusercontent.com/ineedsomesleep5/MagicMobile/main/design/awards/classic-\(rawValue).png")
+    }
+
     var title: String {
         switch self {
         case .firstWin: return String(localized: "Rising Star")

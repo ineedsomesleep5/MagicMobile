@@ -599,16 +599,12 @@ struct TrophyShelf: View {
         let earned = unlocked.contains(achievement)
         return Button { chosen = achievement.rawValue } label: {
             VStack(spacing: 3) {
-                ZStack {
-                    Circle().fill(earned ? AnyShapeStyle(RadialGradient(colors: [Color(red: 1, green: 0.9, blue: 0.62), Color(red: 0.72, green: 0.48, blue: 0.16), Color(red: 0.36, green: 0.22, blue: 0.08)],
-                                                                           center: .init(x: 0.35, y: 0.3), startRadius: 0, endRadius: 30))
-                                         : AnyShapeStyle(Color.black.opacity(0.5)))
-                        .shadow(color: earned ? ProfilePalette.win.opacity(0.4) : .black.opacity(0.4), radius: earned ? 5 : 2, y: 2)
-                    Circle().strokeBorder(earned ? TavernPalette.brassLine : LinearGradient(colors: [.gray.opacity(0.5)], startPoint: .top, endPoint: .bottom), lineWidth: 2)
-                    Image(systemName: achievement.systemImage)
-                        .font(.system(size: 18, weight: .black))
-                        .foregroundStyle(earned ? Color(red: 0.30, green: 0.15, blue: 0.04) : Color.gray.opacity(0.55))
-                        .shadow(color: earned ? .white.opacity(0.35) : .clear, radius: 0, y: 1)
+                AsyncImage(url: achievement.artURL) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().scaledToFit().saturation(earned ? 1 : 0).opacity(earned ? 1 : 0.32)
+                    } else {
+                        brassCoin(achievement, earned: earned)
+                    }
                 }
                 .frame(width: 46, height: 46)
                 Text(achievement.title).font(ArenaMenuStyle.font(9, .heavy)).lineLimit(2).multilineTextAlignment(.center)
@@ -624,6 +620,20 @@ struct TrophyShelf: View {
         .accessibilityValue(earned ? String(localized: "Earned") : String(localized: "Locked"))
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("profile.trophy.\(achievement.rawValue)")
+    }
+
+    private func brassCoin(_ achievement: Achievement, earned: Bool) -> some View {
+        ZStack {
+            Circle().fill(earned ? AnyShapeStyle(RadialGradient(colors: [Color(red: 1, green: 0.9, blue: 0.62), Color(red: 0.72, green: 0.48, blue: 0.16), Color(red: 0.36, green: 0.22, blue: 0.08)],
+                                                                   center: .init(x: 0.35, y: 0.3), startRadius: 0, endRadius: 30))
+                                 : AnyShapeStyle(Color.black.opacity(0.5)))
+                .shadow(color: earned ? ProfilePalette.win.opacity(0.4) : .black.opacity(0.4), radius: earned ? 5 : 2, y: 2)
+            Circle().strokeBorder(earned ? TavernPalette.brassLine : LinearGradient(colors: [.gray.opacity(0.5)], startPoint: .top, endPoint: .bottom), lineWidth: 2)
+            Image(systemName: achievement.systemImage)
+                .font(.system(size: 18, weight: .black))
+                .foregroundStyle(earned ? Color(red: 0.30, green: 0.15, blue: 0.04) : Color.gray.opacity(0.55))
+                .shadow(color: earned ? .white.opacity(0.35) : .clear, radius: 0, y: 1)
+        }
     }
 }
 

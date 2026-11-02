@@ -46,6 +46,12 @@ class AppConfigTest {
     }
 
     /** mm_trophies' rows: every trophy, `awardedAt` null until earned. mm_my_awards marks the same ones with `shelf`. */
+    @Test fun builtInTrophiesNameTheirPaintedCoins() {
+        assertTrue(Achievement.GIANT_SLAYER.artUrl.endsWith("/classic-giantSlayer.png"))
+        assertTrue(Achievement.STREAK5.artUrl.endsWith("/classic-streak5.png"))
+        assertTrue(Achievement.FIRST_RANKED_WIN.artUrl.endsWith("/classic-firstRankedWin.png"))
+    }
+
     @Test fun trophiesParseWhatTheServerSends() {
         val shelf = Award.parse(Json.parseToJsonElement("""[
             {"id": "regular", "name": "Regular", "description": "Play 100 games.", "imageUrl": "https://example.com/r.png",
