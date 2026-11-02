@@ -1247,3 +1247,9 @@ contradicting one.
   output behind a `tail`. Ad-hoc sign `Products/Debug-iphonesimulator/*.framework` and the copies in the app first, and put a hard limit on every run:
   `perl -e 'alarm shift; exec @ARGV' 900 xcodebuild ... -test-timeouts-enabled YES -maximum-test-execution-time-allowance 240`. (5) Whether a world is still can be proved with no eyes:
   three `simctl io screenshot`s and ffmpeg's `psnr` on the plate: `inf` is pixel-identical.
+
+- 2026-11-01 (Claude, painted coins): (1) A release script copied with `sed` kept an old build number in its wait loop (`=="76"`
+  in `ios77.sh`), so "VALID" was the previous build and the wait ended at once. Grep a copied script for old numbers. (2) `apksigner`
+  needs `JAVA_HOME` set. With stderr hidden it prints nothing, and comparing two blanks reads as "same key": check the digest isn't
+  empty. (3) To drive the harness app by hand, sign each `Frameworks/*.framework` ad hoc, then the debug dylib, then the app, and launch
+  with `--ondevice-setup-ui-test` and `MAGICMOBILE_UI_TEST_PREFERENCES`, or it stops at launch or shows "Native engine missing".
