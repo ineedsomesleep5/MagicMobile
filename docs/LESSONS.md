@@ -1239,3 +1239,9 @@ contradicting one.
   (4) `swift test` builds a package without the SwiftUI board views, so a test naming one passes the app harness and fails
   there as `error: fatalError`, which is a compile failure despite the name: read the lines above it. (5) A UI test seeding a rank
   must also count as placed (`MAGICMOBILE_UI_TEST_RANK` now does), or the home button says Placements.
+
+- 2026-11-01 (Claude, painted coins): (1) A release script copied with `sed` kept an old build number in its wait loop (`=="76"`
+  in `ios77.sh`), so "VALID" was the previous build and the wait ended at once. Grep a copied script for old numbers. (2) `apksigner`
+  needs `JAVA_HOME` set. With stderr hidden it prints nothing, and comparing two blanks reads as "same key": check the digest isn't
+  empty. (3) To drive the harness app by hand, sign each `Frameworks/*.framework` ad hoc, then the debug dylib, then the app, and launch
+  with `--ondevice-setup-ui-test` and `MAGICMOBILE_UI_TEST_PREFERENCES`, or it stops at launch or shows "Native engine missing".
