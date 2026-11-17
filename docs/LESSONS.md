@@ -323,6 +323,7 @@ contradicting one.
 
 ## Website
 
+- 2026-11-17 (Cursor, download site): build 56's APK is 144,310,775 bytes (SHA-256 `ab8621cee1189acbc247ae3b910ad8bba1c3f353dd1fdcb7a008d5da5860a9d1`), so it cannot be a normal git file, and `apps/site` must not link github.com. **Rule:** `releases.android.url` is the Cloudflare R2 file `https://downloads.calebfeliciano.com/android/MagicMobile-Android-0.1.1-build56.apk`. Updated 2026-11-17: a same-origin `/downloads/` path 404s; Caleb hosts the APK on R2. Where: `apps/site/src/releases.ts`.
 - 2026-10-23 (Claude, web game speed and inspect): (1) Pacing the board (`core/gameSpeed.ts`,
   `ui/arena/usePacedSnapshot.ts`) delays only what the board shows; the session keeps the live game. Two traps came with
   it: a snapshot the board shows while newer ones wait still carries its prompt, which the engine has already moved past,

@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" href="/favicon.png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <style>
-    /* Arena, as on the download site (see ../../DESIGN.md): dark glass, gold hairline, serif titles over sans text. */
+    /* Same look as the download site (see ../../DESIGN.md): dark glass, gold hairline, serif titles over sans text. */
     :root { color-scheme: dark; --canvas: #0c0d11; --ink: #f2ebdb; --soft: #c2b8a6; --gold: #fad685; --hair: rgba(232, 190, 112, 0.4);
       --serif: "Iowan Old Style", "Source Serif 4", Georgia, serif; --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
     * { box-sizing: border-box; }
@@ -25,6 +25,8 @@
     a:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; border-radius: 4px; }
     ul { padding-left: 20px; }
     .updated { margin: 0 0 24px; font-size: 15px; }
+    footer { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--hair); }
+    footer .disclaimer { margin: 0 0 12px; color: var(--ink); font: 600 18px/1.45 var(--serif); }
   </style>
 </head>
 <body>
@@ -81,7 +83,10 @@
     <h2>Changes</h2>
     <p>If this policy changes, the date above changes with it.</p>
 
-    <p>MagicMobile is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p>
+    <footer>
+      <p class="disclaimer">Unofficial fan project. Not affiliated with or endorsed by Wizards of the Coast.</p>
+      <p>MagicMobile is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p>
+    </footer>
   </main>
 </body>
 </html>
