@@ -1269,6 +1269,11 @@ struct NativeGameView: View {
     }
 
     func boardObservation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
+        // Two functions, so the type checker does not infer one chain past the board budget.
+        boardObservationChanges(boardObservationChrome(content, snapshot: snapshot), snapshot: snapshot)
+    }
+
+    private func boardObservationChrome<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
             // Touches and game changes keep the breathing glows awake (BoardActivity).
             .background { BoardTouchActivity() }
@@ -1292,6 +1297,10 @@ struct NativeGameView: View {
                 isCardChoiceOpen = boardCardChoiceKey(snapshot) != nil
                 isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
             }
+    }
+
+    private func boardObservationChanges<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
+        content
             // The tracker starts over by itself when the game changes.
             .onChange(of: BoardFocusTracker.observationKey(snapshot, followTurns: followTurns), initial: true) { _, _ in
                 focusTracker.observe(snapshot, followTurns: followTurns)
@@ -1344,8 +1353,10 @@ struct NativeGameView: View {
             .onChange(of: isLogOpen) { _, open in GameAudio.shared.play(open ? .pageFlip : .uiClose) }
             #if DEBUG
             // Visual QA: MAGICMOBILE_PREVIEW_OPEN_LOG=<seconds> opens a design preview's log after that delay.
-            // A task closure here sits in the long chain and type-checks over the board budget (CI, 2026-11-17).
-            .modifier(PreviewLogTask(source: snapshot.source, openLog: { isLogOpen = true }))
+            .task(id: snapshot.source) {
+                guard snapshot.source == "design-preview" else { return }
+                await openPreviewLog()
+            }
             #endif
             .onChange(of: isGameMenuOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
             .onChange(of: isLandscapeStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
@@ -1371,19 +1382,10 @@ struct NativeGameView: View {
     }
 
     #if DEBUG
-    /// Opens a design preview's log. Kept out of the board's modifier chain so that chain stays under the type-check budget.
-    private struct PreviewLogTask: ViewModifier {
-        var source: String
-        var openLog: () -> Void
-
-        func body(content: Content) -> some View {
-            content.task(id: source) {
-                guard source == "design-preview" else { return }
-                guard let delay = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_OPEN_LOG"].flatMap(Double.init) else { return }
-                try? await Task.sleep(for: .seconds(delay))
-                openLog()
-            }
-        }
+    private func openPreviewLog() async {
+        guard let delay = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_OPEN_LOG"].flatMap(Double.init) else { return }
+        try? await Task.sleep(for: .seconds(delay))
+        isLogOpen = true
     }
     #endif
 

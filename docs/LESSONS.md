@@ -602,9 +602,10 @@ contradicting one.
 
 ## Agent environment
 
-- 2026-11-17 (Cursor, send feedback): `NativeGameView.boardObservation`'s debug `.task` (the preview log) type-checks at 200–260 ms
-  inside that chain, so the board budget fails on a slow runner even when the line is unchanged. **Rule:** keep that task in
-  `PreviewLogTask`, not in the chain. Also: `swift test --package-path apps/ios` compiles an explicit `sources` list in `apps/ios/Package.swift`.
+- 2026-11-17 (Cursor, send feedback): `NativeGameView.boardObservation` is one modifier chain. A `.task` at the end measured
+  200–260 ms, and wrapping that task in a `ViewModifier` called from the chain made the same function 7–9 seconds.
+  **Rule:** split the chain into two functions that return `some View`. A modifier inserted in the chain does not help.
+  Also: `swift test --package-path apps/ios` compiles an explicit `sources` list in `apps/ios/Package.swift`.
   A new Swift file the Xcode target picks up from the folder is invisible there, so a type it calls fails with "cannot find in scope"
   and the test file is reported as unhandled. **Rule:** add the type to the MagicMobile target's `sources` and its tests to
   `OnDevicePresentationTests`.
