@@ -1269,37 +1269,36 @@ struct NativeGameView: View {
     }
 
     func boardObservation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
-        // Two functions, so the type checker does not infer one chain past the board budget.
-        boardObservationChanges(boardObservationChrome(content, snapshot: snapshot), snapshot: snapshot)
+        // Separate functions, each a short chain. One chain here type-checks for seconds (CI, 2026-11-17).
+        let chrome = boardObservationChrome(content, snapshot: snapshot)
+        let focus = boardObservationFocus(chrome, snapshot: snapshot)
+        return attachPreviewLog(boardObservationAnswers(focus, snapshot: snapshot), source: snapshot.source)
+    }
+
+    private var boardObservationMotion: Animation {
+        GameBoardMotion.reduced(accessibilityReduceMotion)
+            ? .easeOut(duration: 0.12)
+            : .spring(response: 0.28, dampingFraction: 0.88)
     }
 
     private func boardObservationChrome<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
             // Touches and game changes keep the breathing glows awake (BoardActivity).
-            .background { BoardTouchActivity() }
+            .modifier(BoardTouchActivityBackground())
             .modifier(BoardImpactShake(animatableData: boardShake, amplitude: boardShakeAmplitude))
-            .overlay { if hitVignette > 0 { BoardHitVignette(strength: hitVignette) } }
+            .modifier(BoardHitVignetteOverlay(strength: hitVignette))
             .environment(\.boardFXCardMotion, boardFX.cardMotion(viewerID: snapshot.viewerID))
             .environment(\.boardFXClock, boardFXClock)
             .environment(\.boardHUDPulse, hudPulse)
             .environment(\.boardZoneInspectionAction, inspectBoardZone)
-            .onChange(of: BoardFXRevisionKey(snapshot: snapshot), initial: true) { _, _ in
-                BoardActivity.shared.note()
-                ingestBoardFX(snapshot)
-                gameStats.record(snapshot)
-                combatLogReasons.observe(snapshot)
-            }
+            .onChange(of: BoardFXRevisionKey(snapshot: snapshot), initial: true) { _, _ in recordBoardRevision(snapshot) }
             .modifier(CombatDeclarationObserver(ids: declaredCombatCards(in: snapshot).map(\.id), order: $combatDeclarationOrder))
-            .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectingZoneTitle)
-            .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectedCard?.id)
-            .onAppear {
-                updateAIWaitStart(for: snapshot)
-                isCardChoiceOpen = boardCardChoiceKey(snapshot) != nil
-                isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
-            }
+            .animation(boardObservationMotion, value: inspectingZoneTitle)
+            .animation(boardObservationMotion, value: inspectedCard?.id)
+            .onAppear { prepareBoardObservation(snapshot) }
     }
 
-    private func boardObservationChanges<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
+    private func boardObservationFocus<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
             // The tracker starts over by itself when the game changes.
             .onChange(of: BoardFocusTracker.observationKey(snapshot, followTurns: followTurns), initial: true) { _, _ in
@@ -1310,82 +1309,129 @@ struct NativeGameView: View {
             .onChange(of: Self.questionKey(snapshot), initial: true) { _, _ in showTargets(snapshot) }
             .onChange(of: focusTracker.focusedID) { _, id in if let id { lessonFocusReport?(id) } }
             .onChange(of: lessonCover, initial: true) { _, cover in lessonCoverReport?(cover) }
-            .onChange(of: snapshot.id) { _, _ in
-                cardChoiceCompletionTask?.cancel()
-                cardChoiceCompletionTask = nil
-                committedCardChoice = nil
-                reviewCardChoiceAfterPending = false
-                lastTurnCueKey = nil
-                lastTurnBannerKey = nil
-                inspectingZoneTitle = nil
-                inspectingZoneCards = []
-                inspectingZoneReference = nil
-                selectedCard = nil
-                inspectedCard = nil
-            }
-            .onChange(of: snapshot.bridgeRevision) { _, _ in
-                advanceCommittedCardChoice()
-                let cards = PortraitInteractionPolicy.authorizedCards(snapshot)
-                if let card = inspectedCard { inspectedCard = cards.first { $0.id == card.id } }
-                if let card = selectedCard { selectedCard = cards.first { $0.id == card.id } }
-                if let reference = inspectingZoneReference, inspectingZoneTitle != nil {
-                    inspectingZoneCards = reference.cards(in: snapshot)
-                    inspectingZoneTitle = reference.title(in: snapshot)
-                } else if inspectingZoneTitle != nil {
-                    // Unscoped legacy inspections cannot safely infer zone membership.
-                    inspectingZoneCards = []
-                    inspectingZoneTitle = nil
-                }
-                if let choice = dragActionChoice, !choice.actions.allSatisfy({ old in
-                    snapshot.legalActions?.contains(where: { $0.id == old.id && $0.messageId == old.messageId }) == true
-                }) { dragActionChoice = nil }
-            }
-            .onChange(of: snapshot.promptEnvelopeV2?.id) { _, _ in
-                advanceCommittedCardChoice()
-                isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
-            }
-            .onChange(of: snapshot.promptEnvelopeV2?.messageId) { _, _ in
-                advanceCommittedCardChoice()
-            }
+            .onChange(of: snapshot.id) { _, _ in resetObservedGame() }
+    }
+
+    private func boardObservationAnswers<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
+        boardObservationMenus(boardObservationPrompts(content, snapshot: snapshot), snapshot: snapshot)
+    }
+
+    private func boardObservationPrompts<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
+        content
+            .onChange(of: snapshot.bridgeRevision) { _, _ in refreshObservedCards(snapshot) }
+            .onChange(of: snapshot.promptEnvelopeV2?.id) { _, _ in notePromptIdentity(snapshot) }
+            .onChange(of: snapshot.promptEnvelopeV2?.messageId) { _, _ in advanceCommittedCardChoice() }
             .onChange(of: pendingActionId) { oldValue, newValue in
                 handleCardChoicePendingChange(from: oldValue, to: newValue, snapshot: snapshot)
             }
+    }
+
+    private func boardObservationMenus<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
+        content
             .onChange(of: isLogOpen) { _, open in GameAudio.shared.play(open ? .pageFlip : .uiClose) }
-            #if DEBUG
-            // Visual QA: MAGICMOBILE_PREVIEW_OPEN_LOG=<seconds> opens a design preview's log after that delay.
-            .task(id: snapshot.source) {
-                guard snapshot.source == "design-preview" else { return }
-                await openPreviewLog()
-            }
-            #endif
             .onChange(of: isGameMenuOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
             .onChange(of: isLandscapeStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
-            .onChange(of: lastActionRejection?.message) { _, newValue in
-                if newValue != nil { GameAudio.shared.play(.uiError) }
-                if newValue != nil && committedCardChoice != nil { cancelCommittedCardChoice() }
-            }
+            .onChange(of: lastActionRejection?.message) { _, newValue in noteActionRejection(newValue) }
             .onChange(of: commandFailure) { oldValue, newValue in
                 handleCardChoiceFailureChange(from: oldValue, to: newValue)
             }
-            .onChange(of: boardDetailChoiceKey(snapshot)) { _, key in
-                isPromptDetailOpen = key != nil
-                // A decision that needs you, not a routine priority pass (the starting roll answers its own).
-                if key != nil && !startingRollVisible { GameAudio.shared.play(.responseAlert) }
-            }
-            .onChange(of: boardCardChoiceKey(snapshot)) { _, key in
-                if key != nil && committedCardChoice == nil && !startingRollVisible { GameAudio.shared.play(.responseAlert) }
-                isCardChoiceOpen = key != nil && committedCardChoice == nil && !reviewCardChoiceAfterPending
-                inspectedCard = nil
-                selectedCard = nil
-                if key != nil { isPromptDetailOpen = false; isLandscapeStackOpen = false }
-            }
+            .onChange(of: boardDetailChoiceKey(snapshot)) { _, key in noteDetailChoice(key) }
+            .onChange(of: boardCardChoiceKey(snapshot)) { _, key in noteCardChoice(key) }
+    }
+
+    /// Visual QA: MAGICMOBILE_PREVIEW_OPEN_LOG opens a design preview's log. Its own function, not the long chain.
+    /// `source` is optional: `GameSnapshot.source` is `String?`.
+    private func attachPreviewLog<V: View>(_ content: V, source: String?) -> some View {
+        #if DEBUG
+        return content.modifier(PreviewLogTask(source: source, openLog: { isLogOpen = true }))
+        #else
+        return content
+        #endif
+    }
+
+    private func recordBoardRevision(_ snapshot: GameSnapshot) {
+        BoardActivity.shared.note()
+        ingestBoardFX(snapshot)
+        gameStats.record(snapshot)
+        combatLogReasons.observe(snapshot)
+    }
+
+    private func prepareBoardObservation(_ snapshot: GameSnapshot) {
+        updateAIWaitStart(for: snapshot)
+        isCardChoiceOpen = boardCardChoiceKey(snapshot) != nil
+        isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
+    }
+
+    private func resetObservedGame() {
+        cardChoiceCompletionTask?.cancel()
+        cardChoiceCompletionTask = nil
+        committedCardChoice = nil
+        reviewCardChoiceAfterPending = false
+        lastTurnCueKey = nil
+        lastTurnBannerKey = nil
+        inspectingZoneTitle = nil
+        inspectingZoneCards = []
+        inspectingZoneReference = nil
+        selectedCard = nil
+        inspectedCard = nil
+    }
+
+    private func refreshObservedCards(_ snapshot: GameSnapshot) {
+        advanceCommittedCardChoice()
+        let cards = PortraitInteractionPolicy.authorizedCards(snapshot)
+        if let card = inspectedCard { inspectedCard = cards.first { $0.id == card.id } }
+        if let card = selectedCard { selectedCard = cards.first { $0.id == card.id } }
+        if let reference = inspectingZoneReference, inspectingZoneTitle != nil {
+            inspectingZoneCards = reference.cards(in: snapshot)
+            inspectingZoneTitle = reference.title(in: snapshot)
+        } else if inspectingZoneTitle != nil {
+            // Unscoped legacy inspections cannot safely infer zone membership.
+            inspectingZoneCards = []
+            inspectingZoneTitle = nil
+        }
+        if let choice = dragActionChoice, !choice.actions.allSatisfy({ old in
+            snapshot.legalActions?.contains(where: { $0.id == old.id && $0.messageId == old.messageId }) == true
+        }) { dragActionChoice = nil }
+    }
+
+    private func notePromptIdentity(_ snapshot: GameSnapshot) {
+        advanceCommittedCardChoice()
+        isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
+    }
+
+    private func noteActionRejection(_ message: String?) {
+        if message != nil { GameAudio.shared.play(.uiError) }
+        if message != nil && committedCardChoice != nil { cancelCommittedCardChoice() }
+    }
+
+    private func noteDetailChoice(_ key: String?) {
+        isPromptDetailOpen = key != nil
+        // A decision that needs you, not a routine priority pass (the starting roll answers its own).
+        if key != nil && !startingRollVisible { GameAudio.shared.play(.responseAlert) }
+    }
+
+    private func noteCardChoice(_ key: String?) {
+        if key != nil && committedCardChoice == nil && !startingRollVisible { GameAudio.shared.play(.responseAlert) }
+        isCardChoiceOpen = key != nil && committedCardChoice == nil && !reviewCardChoiceAfterPending
+        inspectedCard = nil
+        selectedCard = nil
+        if key != nil { isPromptDetailOpen = false; isLandscapeStackOpen = false }
     }
 
     #if DEBUG
-    private func openPreviewLog() async {
-        guard let delay = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_OPEN_LOG"].flatMap(Double.init) else { return }
-        try? await Task.sleep(for: .seconds(delay))
-        isLogOpen = true
+    /// Opens a design preview's log. `source` is optional because `GameSnapshot.source` is.
+    private struct PreviewLogTask: ViewModifier {
+        var source: String?
+        var openLog: () -> Void
+
+        func body(content: Content) -> some View {
+            content.task(id: source) {
+                guard source == "design-preview" else { return }
+                guard let delay = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_OPEN_LOG"].flatMap(Double.init) else { return }
+                try? await Task.sleep(for: .seconds(delay))
+                openLog()
+            }
+        }
     }
     #endif
 
@@ -2192,6 +2238,24 @@ private struct PhaseCueChrome: ViewModifier {
             content
                 .background(MagicPalette.iron.opacity(0.92), in: Capsule())
                 .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.7), lineWidth: 1))
+        }
+    }
+}
+
+/// The touch layer that keeps breathing glows awake. Its own modifier so the board chain has no view-builder closure.
+private struct BoardTouchActivityBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        content.background { BoardTouchActivity() }
+    }
+}
+
+/// The red flare after a big hit. Empty when the strength is zero.
+private struct BoardHitVignetteOverlay: ViewModifier {
+    var strength: Double
+
+    func body(content: Content) -> some View {
+        content.overlay {
+            if strength > 0 { BoardHitVignette(strength: strength) }
         }
     }
 }
