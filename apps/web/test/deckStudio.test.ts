@@ -384,4 +384,21 @@ describe("card names from deck links (parity/card-name-cases.json)", () => {
     expect(resolver.canonicalName("Fire // Ice")).toBe("Fire // Ice");
     expect(resolver.canonicalName("Not A Real Card // Nope")).toBeUndefined();
   });
+
+  it("a deck saved with the old ellipsis still loads those cards (parity/ellipsis-deck-cases.json)", async () => {
+    const root = JSON.parse(readFileSync(join(__dirname, "..", "..", "..", "apps/android/core/src/test/resources/parity/ellipsis-deck-cases.json"), "utf8"));
+    const lines = [`#\t${"c".repeat(64)}\t${"a".repeat(40)}`];
+    for (const card of root.cards) lines.push([card.name, card.setCode, card.collectorNumber].join("\t"));
+    const { DeckResolver } = await import("../src/core/deckResolver");
+    const resolver = new DeckResolver(`${lines.join("\n")}\n`);
+    const resolved = resolver.resolve({
+      id: "saved", name: root.deck.name,
+      entries: [
+        { name: root.deck.commander, quantity: 1, section: "commanders" },
+        ...root.deck.main.map((name: string) => ({ name, quantity: 1, section: "deck" })),
+      ],
+    }) as { main: Array<{ name: string; setCode: string; collectorNumber: string }>; commanders: Array<{ name: string }> };
+    expect(resolved.main.map(({ name, setCode, collectorNumber }) => ({ name, setCode, collectorNumber }))).toEqual(root.resolvedMain);
+    expect(resolved.commanders[0].name).toBe("Sol Ring");
+  });
 });

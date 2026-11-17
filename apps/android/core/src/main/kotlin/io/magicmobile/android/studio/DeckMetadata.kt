@@ -19,10 +19,22 @@ import kotlinx.serialization.json.JsonPrimitive
 /** Resolves only reverse faces attested by the bundled, selected-printing aliases. */
 object NativeDeckCanonicalNames {
     /**
+     * Saved decks from before XMage 1.4.63 spell three cards with a tight ellipsis. The same printing
+     * (TRK 203, TRK 34, SPM 24) is now spaced dots. Not a general fold: "More of That Strange Oil..." still
+     * uses tight dots, and "Welcome to . . ." already used spaced dots.
+     */
+    private val spellingAliases = mapOf(
+        "I'm a Doctor, Not a ..." to "I'm a Doctor, Not a . . .",
+        "Set Phasers to..." to "Set Phasers to . . .",
+        "With Great Power..." to "With Great Power . . .",
+    )
+
+    /**
      * The names a deck's card is looked up by, in order (iOS NativeDeckCanonicalNames.candidates, parity/card-name-cases.json;
      * Caleb, 2026-10-26: Archidekt links dropped cards that search then found). The exact name first, then plain letters for
-     * accents ("Troll of Khazad-dûm": XMage spells names without them), then the front of a two-part name ("Brazen Borrower //
-     * Petty Theft": adventure, omen and prepare cards, whose full name only Archidekt sends). An exact split-card name wins.
+     * accents ("Troll of Khazad-dûm": XMage spells names without them), then a spelling alias, then the front of a two-part
+     * name ("Brazen Borrower // Petty Theft": adventure, omen and prepare cards, whose full name only Archidekt sends).
+     * An exact split-card name wins.
      */
     fun candidates(raw: String): List<String> {
         val name = raw.trim()
@@ -30,6 +42,10 @@ object NativeDeckCanonicalNames {
         fun add(value: String) { if (value.isNotEmpty()) found += value }
         add(name)
         add(plainLetters(name))
+        spellingAliases[name]?.let { alias ->
+            add(alias)
+            add(plainLetters(alias))
+        }
         val split = name.indexOf(" // ")
         if (split > 0) {
             val front = name.substring(0, split).trim()

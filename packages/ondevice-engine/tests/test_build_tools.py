@@ -37,10 +37,9 @@ class PatchTests(unittest.TestCase):
         rng=patch.patch_random('private static final Random random = new Random(); // thread safe with seed support\n'
             '    public static void setSeed(long newSeed) {')
         self.assertIn('public static void restoreRandom(Random state)',rng);self.assertIn('private static volatile Random random',rng)
-        ai=patch.patch_computer('private final transient List<PickedCard> pickedCards = new ArrayList<>();\n'
-            'private final transient List<ColoredManaSymbol> chosenColors = new ArrayList<>();\n'
-            'private final transient Map<UUID, ManaCost> lastUnpaidMana = new LinkedHashMap<>();')
+        ai=patch.patch_computer('private final transient Map<UUID, ManaCost> lastUnpaidMana = new LinkedHashMap<>();')
         self.assertNotIn('final transient',ai);self.assertIn('lastUnpaidMana = new LinkedHashMap<>();\n    }',ai)
+        self.assertNotIn('pickedCards',ai);self.assertNotIn('chosenColors',ai)
         for function in (patch.patch_exile,patch.patch_game,patch.patch_random,patch.patch_computer):
             with self.assertRaises(ValueError):function('class Changed {}')
         lock=json.loads((ROOT/'upstream.lock.json').read_text())

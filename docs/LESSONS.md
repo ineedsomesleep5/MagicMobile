@@ -432,6 +432,8 @@ contradicting one.
 
 ## Native engine and releases
 
+- 2026-11-17 (upstream 1.4.63V2): `upstream.py prepare` refuses the whole candidate when `git archive` contains a symlink. Main had `apps/web/node_modules` as a symlink to a local Mac path (`120000`), so prepare dies with `Unsafe archive entry: apps/web/node_modules` before it writes a receipt. **Rule:** remove that symlink in the commit prepare archives, then use a new destination; do not reuse the partial tree. The catalogue drops three exact names that return on the same printing with spaced dots. Do not fold every `...`: `More of That Strange Oil...` still uses tight dots and `Welcome to . . .` already used spaced dots. The three old strings are an explicit alias in `NativeDeckCanonicalNames.spellingAliases` / `spellingAliases` (parity/ellipsis-deck-cases.json). `ComputerPlayer`'s draft fields are gone upstream, so the checkpoint patch only rebuilds `lastUnpaidMana`; change the patcher, then prepare a fresh tree. Where: `scripts/magicmobile-maintenance/upstream.py`, `packages/ondevice-engine/scripts/prepare_upstream.py`.
+
 - 2026-10-21 (Claude, web engine M1): the full engine's Web Image build fails in three places that the phone builds
   never hit.
   - **Compiling** ran out of a 10 GB builder heap with 4 threads. Two threads fit.

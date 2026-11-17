@@ -20,7 +20,7 @@ import java.util.concurrent.*;
  * This adapter must pass the real-engine and native build gates before being released.
  */
 public final class XmageEngine implements EnginePort {
-    public static final String UPSTREAM="dac400ba1380f17492c9ad6a65ab60f12f28cd97";
+    public static final String UPSTREAM="c5a5215fa086f487c793627446d5d27e81dfbc97";
     private final Map<String,Running> matches=new HashMap<>();
     private final String execution;
     private boolean closed;

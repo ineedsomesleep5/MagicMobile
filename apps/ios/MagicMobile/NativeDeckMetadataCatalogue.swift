@@ -42,16 +42,30 @@ enum BundledCatalogueData {
 
 /// Resolves only reverse faces attested by the bundled, selected-printing aliases, and the names a card is looked up by.
 enum NativeDeckCanonicalNames {
+    /// Saved decks from before XMage 1.4.63 spell three cards with a tight ellipsis. The same printing
+    /// (TRK 203, TRK 34, SPM 24) is now spaced dots. Not a general fold: "More of That Strange Oil..." still
+    /// uses tight dots, and "Welcome to . . ." already used spaced dots.
+    static let spellingAliases = [
+        "I'm a Doctor, Not a ...": "I'm a Doctor, Not a . . .",
+        "Set Phasers to...": "Set Phasers to . . .",
+        "With Great Power...": "With Great Power . . .",
+    ]
+
     /// The names a deck's card is looked up by, in order (parity/card-name-cases.json; Caleb, 2026-10-26: Archidekt links
     /// dropped cards that search then found). The exact name first, then plain letters for accents ("Troll of Khazad-dûm":
-    /// XMage spells names without them), then the front of a two-part name ("Brazen Borrower // Petty Theft": adventure,
-    /// omen and prepare cards, whose full name only Archidekt sends). An exact split-card name wins by coming first.
+    /// XMage spells names without them), then a spelling alias, then the front of a two-part name ("Brazen Borrower //
+    /// Petty Theft": adventure, omen and prepare cards, whose full name only Archidekt sends). An exact split-card name
+    /// wins by coming first.
     static func candidates(_ raw: String) -> [String] {
         let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         var found: [String] = []
         func add(_ value: String) { if !value.isEmpty, !found.contains(value) { found.append(value) } }
         add(name)
         add(plainLetters(name))
+        if let alias = spellingAliases[name] {
+            add(alias)
+            add(plainLetters(alias))
+        }
         if let split = name.range(of: " // ") {
             let front = name[..<split.lowerBound].trimmingCharacters(in: .whitespaces)
             add(front)
