@@ -40,7 +40,7 @@ Caleb's pick of three mock-ups (October 23–24, 2026): **The Hall** and **Cut t
 4. **The roll** (the peak): a pinned stage where the bar's real 3D D20 leaves the bar, plays one of the app's recorded
    throws under your scroll, lands on 20 and glows: *You go first.* It goes back to the bar showing its 20.
 5. **Your turn.**: the close, on Giada's art, with the three screens. Then **Get MagicMobile**: a row per screen with
-   its build, the Obtainium steps for Android, the FAQ, the support card and the footer.
+   its build, the Android install steps, the FAQ, the support card and the footer.
 
 ## Rules
 

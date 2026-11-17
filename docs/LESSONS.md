@@ -323,6 +323,7 @@ contradicting one.
 
 ## Website
 
+- 2026-11-17 (Cursor, download site): build 56's APK is 144,310,775 bytes, so it cannot be a normal git file (GitHub rejects files over 100 MB) and it cannot be linked from `apps/site` with a github.com URL. **Rule:** `releases.android.url` stays a same-origin path (`/downloads/MagicMobile-Android-0.1.1-build56.apk`). Obtainium is gone because adding the app there required the public repository URL. The binary is not in the repo, so that path 404s until the file is hosted beside the site. Where: `apps/site/src/releases.ts`.
 - 2026-10-23 (Claude, web game speed and inspect): (1) Pacing the board (`core/gameSpeed.ts`,
   `ui/arena/usePacedSnapshot.ts`) delays only what the board shows; the session keeps the live game. Two traps came with
   it: a snapshot the board shows while newer ones wait still carries its prompt, which the engine has already moved past,

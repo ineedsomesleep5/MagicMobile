@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/source-serif-4/opsz.css";
 import "./style.css";
-import { obtainium, releases } from "./releases";
+import { releases } from "./releases";
 import { startHall } from "./hall";
 import { startBarDie } from "./barDie";
 
@@ -82,6 +82,7 @@ const exhibits: Exhibit[] = [
   },
 ];
 const TIERS = ["bronze", "silver", "gold", "platinum", "diamond", "mythic"];
+const FAN_DISCLAIMER = "Unofficial fan project. Not affiliated with or endorsed by Wizards of the Coast.";
 
 function App() {
   useEffect(() => {
@@ -111,19 +112,11 @@ function App() {
         </div>
         <a className={`pill ${mine === "android" ? "pill--primary" : "pill--glass"}`} href={releases.android.url}>Download APK</a>
         <details className="updates">
-          <summary>Get every update with Obtainium</summary>
+          <summary>Install the APK</summary>
           <ol>
-            <li>
-              <a className="pill pill--glass" href={obtainium.download}>Download Obtainium</a>
-              <br />A free, open-source app updater. Open the file and allow the install.
-            </li>
-            <li>
-              <a className="pill pill--glass" href={obtainium.addApp}>Add MagicMobile to Obtainium</a>
-              <br />
-              Opens Obtainium with MagicMobile filled in. Tap Add, then Install. If nothing opens, choose Add App in
-              Obtainium and paste {obtainium.source}.
-            </li>
-            <li>Done. Obtainium shows each new build; tap Update. Your decks and settings stay.</li>
+            <li>Tap Download APK above and open the file on your phone.</li>
+            <li>If asked, allow your browser to install this app. You can turn that permission off after installation.</li>
+            <li>A newer build from this page keeps your decks and settings.</li>
           </ol>
         </details>
       </article>
@@ -214,7 +207,7 @@ function App() {
               <img src="/site/shots/draw.webp" width="1206" height="900" loading="lazy"
                 alt="The Opening Hand screen: eight cards fanned, Mulligan to 6 cards?, and the Mulligan and Keep buttons" />
             </figure>
-            <div className="cut__text" data-sc-in><h2 className="word">Draw.</h2><p className="fact">Mulligan or keep, the way Arena asks.</p></div>
+            <div className="cut__text" data-sc-in><h2 className="word">Draw.</h2><p className="fact">Mulligan or keep.</p></div>
           </div>
         </section>
 
@@ -224,10 +217,10 @@ function App() {
               <picture>
                 <source media="(max-width: 860px)" srcSet="/site/shots/attack-phone.webp" width="1080" height="839" />
                 <img src="/site/shots/attack.webp" width="2200" height="886" loading="lazy"
-                  alt="The Arena board in landscape: Serra Angels and Silvercoat Lions on the battlefield, the hand below, Next to combat" />
+                  alt="The board in landscape: Serra Angels and Silvercoat Lions on the battlefield, the hand below, Next to combat" />
               </picture>
             </figure>
-            <div className="cut__text" data-sc-in><h2 className="word">Attack.</h2><p className="fact">The Arena board, held either way.</p></div>
+            <div className="cut__text" data-sc-in><h2 className="word">Attack.</h2><p className="fact">The board, held either way.</p></div>
           </div>
         </section>
 
@@ -286,16 +279,16 @@ function App() {
         <section className="get" id="download" data-sc-act="flow">
           <div className="get__in">
             <h2>Get MagicMobile</h2>
+            <p className="disclaimer">{FAN_DISCLAIMER}</p>
             <div className="rows glass">{order.map((p) => rows[p])}</div>
 
             <div className="faq">
               <details>
                 <summary>Installing on Android</summary>
                 <p>
-                  Easiest: install Obtainium, then add MagicMobile in it (the steps under Android above). It installs the
-                  newest build and tells you when another one is out. Or open the APK link on your phone and open the
-                  downloaded file; if asked, allow your browser to install this app. You can turn that permission off after
-                  installation. If an install ever fails, check that the phone has about 1 GB free.
+                  Tap Download APK on this page and open the file on your phone. If asked, allow your browser to install
+                  this app. You can turn that permission off after installation. If an install ever fails, check that the
+                  phone has about 1 GB free. A newer build from this page keeps your decks and settings.
                 </p>
               </details>
               <details>
@@ -306,7 +299,7 @@ function App() {
                   browser you sign in on, and five short lessons with Maren teach Commander on the real board. You can talk with the other players at online tables
                   with the mic under the gear. Tables keep going when a player leaves, and the leaderboard and profile show
                   more of your games. AI opponents match your rank, and your decks stay in
-                  sync across every phone signed in to the same profile. Arena stays the default board, with Hearth in Options. It keeps the lighter engine from
+                  sync across every phone signed in to the same profile. The default board stays in place, with Hearth in Options. It keeps the lighter engine from
                   build 31. Android is an early alpha; physical-phone acceptance is still pending.
                 </p>
               </details>
@@ -314,7 +307,7 @@ function App() {
                 <summary>What’s new on iPhone and iPad?</summary>
                 <p>
                   Build 59 keeps your decks in sync: sign in and the decks you build show up on every phone signed in to the
-                  same profile. Arena stays the default board. It runs on iPhone and iPad. Apple has approved this build for
+                  same profile. The default board stays in place. It runs on iPhone and iPad. Apple has approved this build for
                   Internal and External TestFlight.
                 </p>
               </details>
@@ -345,6 +338,7 @@ function App() {
                 <a href="/support/">Support</a>
                 <a href="/privacy/">Privacy</a>
               </nav>
+              <p className="foot__disclaimer">{FAN_DISCLAIMER}</p>
               <p>
                 MagicMobile is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by
                 Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.
