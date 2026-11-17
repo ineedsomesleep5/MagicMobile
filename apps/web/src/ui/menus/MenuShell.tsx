@@ -52,7 +52,7 @@ import { DeckStudioScreen, type StudioRoute } from "./DeckStudio";
 import { Home, type HomeContent } from "./Home";
 import { MenuPanel, MetalDefs, PanelHeader, useMenuZoom } from "./kit";
 import { LearnPanel } from "./Learn";
-import { Options } from "./Options";
+import { Options, type OptionsPage } from "./Options";
 import { startPerformanceSample } from "./performanceLog";
 import { type ArenaPlayMode, type DeckSection, PlayPanel, type PlayModel, type PlayTab, type RecentGame } from "./PlayPanel";
 import { ProfilePage } from "./ProfilePage";
@@ -261,6 +261,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   const [custom, setCustom] = useState(initialJoinCode !== "");
   useEffect(() => { if (initialJoinCode) setPlayerMode("online"); }, [initialJoinCode, setPlayerMode]);
   const [panel, setPanel] = useState<"settings" | "updates" | "learn" | "bracket" | "friends">();
+  const [settingsPage, setSettingsPage] = useState<OptionsPage>();
   /** A player's public profile or a conversation, over the menus (and over Friends when opened from it). */
   const [social, setSocial] = useState<{ kind: "profile" | "conversation"; username: string }>();
   const [leaderboard, setLeaderboard] = useState(false);
@@ -774,7 +775,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
       )}
       <TopBar selected={covered && lit ? undefined : panel === "learn" ? "learn" : custom ? undefined : menuTab} select={selectTab} lit={lit}
         rank={{ tier: shownRank.tier, title: RankState.shownTitle(rank), placing: RankState.isPlacing(rank) }} openRank={() => selectTab("ranked")}
-        updates={() => setPanel("updates")} settings={() => setPanel("settings")}
+        updates={() => setPanel("updates")} settings={() => { setSettingsPage(undefined); setPanel("settings"); }}
         messages={() => setPanel("friends")} unread={player.state.incomingCount + player.state.unreadMessages > 0} />
       {challenges.incoming[0] && !challenges.isWaiting && (
         <ChallengeBanner challenge={challenges.incoming[0]} accept={() => { void acceptChallenge(challenges.incoming[0]); }} decline={() => { void challenges.decline(challenges.incoming[0]); }} />
@@ -802,10 +803,11 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
           openProfile={(username) => setSocial({ kind: "profile", username })} />}
       </MenuPanel>
       <MenuPanel open={panel === "settings"} onClose={() => setPanel(undefined)} label="Options" maxWidth={560} fits>
-        <Options onClose={() => setPanel(undefined)} upstream={data.resolver.upstreamCommit} />
+        <Options key={settingsPage ?? "root"} onClose={() => setPanel(undefined)} start={settingsPage} upstream={data.resolver.upstreamCommit}
+          sendFeedback={(kind, message, contact) => player.sendFeedback(kind, message, contact)} />
       </MenuPanel>
       <MenuPanel open={panel === "updates"} onClose={() => setPanel(undefined)} placement="trailing" label="Updates">
-        <UpdatesPanel onClose={() => setPanel(undefined)} />
+        <UpdatesPanel onClose={() => setPanel(undefined)} onFeedback={() => { setSettingsPage("feedback"); setPanel("settings"); }} />
       </MenuPanel>
       <MenuPanel open={panel === "learn"} onClose={() => setPanel(undefined)} label="How to Play" maxWidth={680} fits>
         <LearnPanel onClose={() => setPanel(undefined)} lessons={lessons} playLesson={startLesson} />

@@ -61,3 +61,23 @@ jobs:
       # The shared parity cases, the replay against iOS's golden, and the scripted-engine flows.
       - name: Test
         run: npm test
+
+  feedback-sql:
+    name: Feedback SQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: supabase/tests/package-lock.json
+      - name: Install
+        run: npm ci --prefix supabase/tests --ignore-scripts
+      - name: Test the feedback migration
+        run: npm run test:feedback --prefix supabase/tests

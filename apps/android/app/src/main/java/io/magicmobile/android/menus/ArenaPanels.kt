@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -221,15 +223,15 @@ private fun BackChevron(action: () -> Unit, size: Dp, width: Dp) {
 /** Options' pages: the column of pills, the links along the foot, and the pages opened from Audio and Gameplay. */
 enum class ArenaOptionsPage(val raw: String, val title: String) {
     GAMEPLAY("gameplay", "Gameplay"), BOARD("board", "Board"), AUDIO("audio", "Audio"), DISPLAY("display", "Display & Artwork"),
-    PERFORMANCE("performance", "Performance"), SUPPORT("support", "Support"), ABOUT("about", "About"), SOUND_LAB("soundLab", "Sound Lab"),
-    PHASE_STOPS("phaseStops", "Phase Stops");
+    PERFORMANCE("performance", "Performance"), SUPPORT("support", "Support"), ABOUT("about", "About"),
+    FEEDBACK("feedback", "Send feedback"), SOUND_LAB("soundLab", "Sound Lab"), PHASE_STOPS("phaseStops", "Phase Stops");
 
     /** Where the back chevron goes from this page. */
     val parent: ArenaOptionsPage? get() = when (this) { SOUND_LAB -> AUDIO; PHASE_STOPS -> GAMEPLAY; else -> null }
 
     companion object {
         val listed = listOf(GAMEPLAY, BOARD, AUDIO, DISPLAY, PERFORMANCE)
-        val links = listOf(SUPPORT, ABOUT)
+        val links = listOf(SUPPORT, ABOUT, FEEDBACK)
         fun of(raw: String?): ArenaOptionsPage? = entries.firstOrNull { it.raw == raw }
     }
 }
@@ -241,7 +243,7 @@ enum class ArenaOptionsPage(val raw: String, val title: String) {
  */
 @Composable
 fun ArenaOptionsView(portraitModeEnabled: Boolean, setPortraitModeEnabled: (Boolean) -> Unit, upstreamCommit: String? = null,
-                     startPage: ArenaOptionsPage? = null) {
+                     startPage: ArenaOptionsPage? = null, sendFeedback: suspend (String, String, String) -> String = { _, _, _ -> "offline" }) {
     var pageRaw by rememberSaveable { mutableStateOf(startPage?.raw) }
     val page = ArenaOptionsPage.of(pageRaw)
     val configuration = LocalConfiguration.current
@@ -266,7 +268,7 @@ fun ArenaOptionsView(portraitModeEnabled: Boolean, setPortraitModeEnabled: (Bool
                     // The pages lay their settings flat on the glass, as Arena's do.
                     CompositionLocalProvider(LocalArenaOptionsFlat provides true, LocalArenaOpenSoundLab provides { pageRaw = ArenaOptionsPage.SOUND_LAB.raw },
                         LocalArenaOpenPhaseStops provides { pageRaw = ArenaOptionsPage.PHASE_STOPS.raw }) {
-                        OptionsPage(shown, wide, portraitModeEnabled, setPortraitModeEnabled, upstreamCommit)
+                        OptionsPage(shown, wide, portraitModeEnabled, setPortraitModeEnabled, upstreamCommit, { pageRaw = it.raw }, sendFeedback)
                     }
                 }
             }
@@ -275,6 +277,7 @@ fun ArenaOptionsView(portraitModeEnabled: Boolean, setPortraitModeEnabled: (Bool
 }
 
 /** The column of pills, then the links along the foot. Fits a phone held sideways without scrolling. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun OptionsRoot(wide: Boolean, open: (ArenaOptionsPage) -> Unit) {
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -282,7 +285,8 @@ private fun OptionsRoot(wide: Boolean, open: (ArenaOptionsPage) -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally) {
             ArenaOptionsPage.listed.forEach { item -> ArenaOptionsPill(item.title, "settings.open.${item.raw}") { open(item) } }
         }
-        Row(Modifier.padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+        FlowRow(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(0.dp)) {
             ArenaOptionsPage.links.forEach { item -> ArenaLink(item.title, { open(item) }, identifier = "settings.open.${item.raw}") }
         }
     }
@@ -302,7 +306,7 @@ private fun ArenaOptionsPill(title: String, identifier: String, action: () -> Un
 
 @Composable
 private fun ColumnScope.OptionsPage(page: ArenaOptionsPage, wide: Boolean, portraitModeEnabled: Boolean, setPortraitModeEnabled: (Boolean) -> Unit,
-                                    upstreamCommit: String?) {
+                                    upstreamCommit: String?, open: (ArenaOptionsPage) -> Unit, sendFeedback: suspend (String, String, String) -> String) {
     when (page) {
         // Two columns sideways, so every label stays on one line.
         ArenaOptionsPage.GAMEPLAY -> GameplayOptions(if (wide) 2 else 1)
@@ -330,7 +334,9 @@ private fun ColumnScope.OptionsPage(page: ArenaOptionsPage, wide: Boolean, portr
             AboutRow("MagicMobile", "${BuildConfig.VERSION_NAME} (${BuildConfig.RELEASE_BUILD})")
             upstreamCommit?.let { AboutRow("XMage revision", it.take(12)) }
             Text(SupportProject.NOTE, color = ArenaMenuStyle.dim, style = ArenaMenuStyle.font(12f, SfWeight.medium))
+            ArenaPillButton("Send feedback", { open(ArenaOptionsPage.FEEDBACK) }, lit = true, identifier = "settings.about.feedback")
         }
+        ArenaOptionsPage.FEEDBACK -> FeedbackForm(sendFeedback)
     }
 }
 

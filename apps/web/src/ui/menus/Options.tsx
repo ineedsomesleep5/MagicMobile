@@ -5,6 +5,7 @@
  * Lab opens from Audio and Phase Stops from Gameplay. Every setting is the one the board reads, saved in this browser.
  */
 import { useEffect, useState } from "react";
+import { WEB_APP_BUILD, WEB_APP_VERSION } from "../../core/account";
 import { loadSmartPass, saveSmartPass, type SmartPassSettings } from "../../core/smartPass";
 import { GAME_SPEED_KEY, GAME_SPEED_TITLES, GAME_SPEEDS, type GameSpeed, loadGameSpeed } from "../../core/gameSpeed";
 import {
@@ -13,14 +14,15 @@ import {
 import { PhaseStops } from "../arena/Menus";
 import { storage } from "../storage";
 import { performanceReport, readPerformance } from "./performanceLog";
+import { FeedbackForm } from "./Feedback";
 import { BackChevron, Caps, Checkbox, CloseButton, Pill, Segmented, Slider, TalkKeyButton } from "./kit";
 import { DEFAULT_PUSH_TO_TALK_BIND, PUSH_TO_TALK_BIND_KEY, PUSH_TO_TALK_KEY } from "../../core/voiceChat";
 
-export type OptionsPage = "gameplay" | "board" | "audio" | "display" | "performance" | "support" | "about" | "soundLab" | "phaseStops";
+export type OptionsPage = "gameplay" | "board" | "audio" | "display" | "performance" | "support" | "about" | "feedback" | "soundLab" | "phaseStops";
 
 const TITLES: Record<OptionsPage, string> = {
   gameplay: "Gameplay", board: "Board", audio: "Audio", display: "Display & Artwork", performance: "Performance", support: "Support", about: "About",
-  soundLab: "Sound Lab", phaseStops: "Phase Stops",
+  feedback: "Send feedback", soundLab: "Sound Lab", phaseStops: "Phase Stops",
 };
 const LISTED: OptionsPage[] = ["gameplay", "board", "audio", "display", "performance"];
 const PARENT: Partial<Record<OptionsPage, OptionsPage>> = { soundLab: "audio", phaseStops: "gameplay" };
@@ -31,7 +33,10 @@ export const SUPPORT = {
   note: "MagicMobile is free with no ads. Tips help pay for the servers and open in your browser. Unofficial fan app, not affiliated with Wizards of the Coast.",
 };
 
-export function Options({ onClose, start, upstream }: { onClose: () => void; start?: OptionsPage; upstream?: string }) {
+export function Options({ onClose, start, upstream, sendFeedback }: {
+  onClose: () => void; start?: OptionsPage; upstream?: string;
+  sendFeedback?: (kind: string, message: string, contact: string) => Promise<string>;
+}) {
   const [page, setPage] = useState<OptionsPage | undefined>(start);
   useEffect(() => () => gameAudio.endPreview(), []);
   return (
@@ -43,7 +48,7 @@ export function Options({ onClose, start, upstream }: { onClose: () => void; sta
       </header>
       {page ? (
         <div className="moptionspage mscroll" data-id={`settings.page.${page}`}>
-          <div className={`moptionsbody ${page}`}><Page page={page} open={setPage} upstream={upstream} /></div>
+          <div className={`moptionsbody ${page}`}><Page page={page} open={setPage} upstream={upstream} sendFeedback={sendFeedback} /></div>
         </div>
       ) : (
         <div className="moptionsroot">
@@ -53,7 +58,7 @@ export function Options({ onClose, start, upstream }: { onClose: () => void; sta
             ))}
           </div>
           <div className="moptionslinks">
-            {(["support", "about"] as OptionsPage[]).map((item) => (
+            {(["support", "about", "feedback"] as OptionsPage[]).map((item) => (
               <button key={item} type="button" data-id={`settings.open.${item}`} onClick={() => { gameAudio.play("ui-open"); setPage(item); }}>{TITLES[item]}</button>
             ))}
           </div>
@@ -69,7 +74,10 @@ function useSwitch(key: string, defaultOn = true): [boolean, (on: boolean) => vo
   return [on, (next) => { setOn(next); storage.set(key, next ? "on" : "off"); }];
 }
 
-function Page({ page, open, upstream }: { page: OptionsPage; open: (page: OptionsPage) => void; upstream?: string }) {
+function Page({ page, open, upstream, sendFeedback }: {
+  page: OptionsPage; open: (page: OptionsPage) => void; upstream?: string;
+  sendFeedback?: (kind: string, message: string, contact: string) => Promise<string>;
+}) {
   switch (page) {
     case "gameplay": return <Gameplay openStops={() => open("phaseStops")} />;
     case "phaseStops": return <StopsPage />;
@@ -87,11 +95,13 @@ function Page({ page, open, upstream }: { page: OptionsPage; open: (page: Option
     );
     case "about": return (
       <div className="mflat">
-        <div className="maboutrow"><span>MagicMobile</span><b>0.1.1 (web)</b></div>
+        <div className="maboutrow"><span>MagicMobile</span><b>{WEB_APP_VERSION} ({WEB_APP_BUILD})</b></div>
         {upstream && <div className="maboutrow"><span>XMage revision</span><b>{upstream.slice(0, 12)}</b></div>}
         <p className="mnote">{SUPPORT.note}</p>
+        <Pill lit id="settings.about.feedback" onClick={() => open("feedback")}>Send feedback</Pill>
       </div>
     );
+    case "feedback": return <FeedbackForm send={sendFeedback ?? (async () => "offline")} />;
   }
 }
 

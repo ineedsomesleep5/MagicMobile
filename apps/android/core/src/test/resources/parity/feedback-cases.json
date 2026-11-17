@@ -1,0 +1,50 @@
+{
+  "maxMessage": 4000,
+  "maxContact": 120,
+  "payloadKeys": ["p_app_version", "p_build", "p_contact", "p_device", "p_kind", "p_message", "p_platform"],
+  "messages": [
+    { "name": "trimmed", "input": "  The board froze  ", "output": "The board froze" },
+    { "name": "keeps a line break", "input": "line\nnext", "output": "line\nnext" },
+    { "name": "blank", "input": " \n\t ", "output": null },
+    { "name": "control", "input": "bad\u0001note", "output": null }
+  ],
+  "contacts": [
+    { "name": "blank is omitted", "input": "  ", "output": null, "ok": true },
+    { "name": "trimmed", "input": "  ada@example.com ", "output": "ada@example.com", "ok": true },
+    { "name": "newline refused", "input": "ada\n@example.com", "output": null, "ok": false }
+  ],
+  "payloads": [
+    {
+      "name": "bug with contact", "kind": "bug", "message": " Froze ", "contact": "ada",
+      "platform": "ios", "version": "0.1.1", "build": "79", "device": "iPhone17,2 · 18.1",
+      "ok": true, "messageOut": "Froze", "contactOut": "ada"
+    },
+    {
+      "name": "feature without contact", "kind": "feature", "message": "Add a clock", "contact": "",
+      "platform": "web", "version": "0.1.1", "build": "web", "device": "macOS · Safari",
+      "ok": true, "messageOut": "Add a clock", "contactOut": null
+    },
+    {
+      "name": "unknown kind", "kind": "praise", "message": "Nice", "contact": "",
+      "platform": "android", "version": "0.1.1", "build": "1", "device": "Pixel", "ok": false
+    },
+    {
+      "name": "empty", "kind": "bug", "message": "  ", "contact": "",
+      "platform": "ios", "version": "0.1.1", "build": "1", "device": "iPhone", "ok": false
+    },
+    {
+      "name": "unknown platform", "kind": "bug", "message": "Hi", "contact": "",
+      "platform": "desktop", "version": "0.1.1", "build": "1", "device": "Phone", "ok": false
+    }
+  ],
+  "notices": {
+    "sent": "Thanks. Your note was sent.",
+    "offline": "You're offline, so this note stayed here. Try again when you're back online.",
+    "invalid_feedback": "Write a note first, up to 4,000 characters.",
+    "invalid_contact": "Keep an email or handle to 120 characters.",
+    "too_many_feedback": "You've sent a few notes already. Try again in a little while.",
+    "not_signed_in": "This app isn't signed in yet. Open it online and try again.",
+    "feature_unavailable": "Feedback isn't on the server yet. Try again after the next update.",
+    "error": "This note couldn't be sent. Try again."
+  }
+}

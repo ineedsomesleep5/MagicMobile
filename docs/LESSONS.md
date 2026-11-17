@@ -594,8 +594,23 @@ contradicting one.
   source commit (`2c32482`). **Rule:** when the Android native library and the package source
   disagree, restore the package to the library's commit rather than rebuilding.
 
+## Server
+
+- 2026-11-17 (Cursor, send feedback): `grant execute ... to service_role` fails on a database that has no such role, and PGlite doesn't
+  create it. **Rule:** grant inside `do` after `pg_roles` shows the role, and create `service_role` in the PGlite harness
+  before the migration. `mm_feedback_summary(p_since)` is the start of the window (`created_at >= p_since`), not the end.
+  Where: `supabase/migrations/20261117180000_feedback.sql`, `supabase/tests/verify-feedback.mjs`.
+
 ## Agent environment
 
+- 2026-11-17 (Cursor, send feedback): `GameSnapshot.source` is `String?`. `PreviewLogTask` must take `String?`.
+  Calling that modifier from inside `boardObservation`'s one long chain made the chain type-check in 7–9 seconds
+  (`NativeGameView.swift` around the `onAppear`). **Rule:** keep the preview log in its own function, and split the
+  observation modifiers across short functions that return `some View`. A modifier dropped into the long chain does not help.
+  Also: `swift test --package-path apps/ios` compiles an explicit `sources` list in `apps/ios/Package.swift`.
+  A new Swift file the Xcode target picks up from the folder is invisible there, so a type it calls fails with "cannot find in scope"
+  and the test file is reported as unhandled. **Rule:** add the type to the MagicMobile target's `sources` and its tests to
+  `OnDevicePresentationTests`.
 - 2026-10-26 (Claude, voice chat): iPhones write the game's epoch upper case (`UUID().uuidString`), Android and the web
   lower case, so anything named from the raw epoch splits a mixed table. **Rule:** lowercase it (`VoiceChatRules.channel`).
   Agora's Android `io.agora.rtc:voice-sdk` pulls every extension (AI noise, spatial audio…); use `voice-rtc-basic` and iOS

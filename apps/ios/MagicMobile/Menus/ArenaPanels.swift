@@ -187,23 +187,27 @@ struct ArenaPanelHeader: View {
 struct ArenaOptionsView: View {
     @Binding var portraitModeEnabled: Bool
     var upstreamCommit: String? = nil
+    /// Bug or feature idea. Returns a FeedbackDraft notice code ("sent", "offline", …).
+    var sendFeedback: (String, String, String) async -> String = { _, _, _ in "offline" }
     @State private var page: Page?
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.arenaPanelClose) private var panelClose
 
-    init(portraitModeEnabled: Binding<Bool>, upstreamCommit: String? = nil, startPage: Page? = nil) {
+    init(portraitModeEnabled: Binding<Bool>, upstreamCommit: String? = nil, startPage: Page? = nil,
+         sendFeedback: @escaping (String, String, String) async -> String = { _, _, _ in "offline" }) {
         _portraitModeEnabled = portraitModeEnabled
         self.upstreamCommit = upstreamCommit
+        self.sendFeedback = sendFeedback
         _page = State(initialValue: startPage)
     }
 
     enum Page: String, CaseIterable, Identifiable {
-        case gameplay, board, audio, display, performance, support, about, soundLab, phaseStops
+        case gameplay, board, audio, display, performance, support, about, feedback, soundLab, phaseStops
         var id: String { rawValue }
         /// The column of pills; Support and About are the links along the foot; the Sound Lab opens from Audio and Phase
         /// Stops from Gameplay.
         static let listed: [Page] = [.gameplay, .board, .audio, .display, .performance]
-        static let links: [Page] = [.support, .about]
+        static let links: [Page] = [.support, .about, .feedback]
 
         var title: String {
             switch self {
@@ -214,6 +218,7 @@ struct ArenaOptionsView: View {
             case .performance: return String(localized: "Performance")
             case .support: return String(localized: "Support")
             case .about: return String(localized: "About")
+            case .feedback: return String(localized: "Send feedback")
             case .soundLab: return String(localized: "Sound Lab")
             case .phaseStops: return String(localized: "Phase Stops")
             }
@@ -309,7 +314,7 @@ struct ArenaOptionsView: View {
             }
             .padding(.top, wide ? 14 : 28)
             .padding(.bottom, wide ? 14 : 36)
-            HStack(spacing: 28) {
+            HStack(spacing: 18) {
                 ForEach(Page.links) { item in
                     Button {
                         GameAudio.shared.play(.uiOpen)
@@ -368,8 +373,13 @@ struct ArenaOptionsView: View {
                 if let upstreamCommit { aboutRow(String(localized: "XMage revision"), String(upstreamCommit.prefix(12))) }
                 Text(SupportProject.note).font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
                     .fixedSize(horizontal: false, vertical: true)
+                Button(String(localized: "Send feedback")) { self.page = .feedback }
+                    .buttonStyle(ArenaPillButtonStyle(lit: true))
+                    .accessibilityIdentifier("settings.about.feedback")
             }
             .modifier(TavernSettingsPanel())
+        case .feedback:
+            FeedbackForm(send: sendFeedback)
         }
     }
 

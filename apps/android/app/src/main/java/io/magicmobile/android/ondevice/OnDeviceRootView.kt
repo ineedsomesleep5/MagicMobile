@@ -1527,7 +1527,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                                     io.magicmobile.android.menus.ArenaPlayPanel(playModel(), compact)
                                 }
                             }
-                            if (!studioCovered) io.magicmobile.android.menus.ArenaTopBar(menuTab, compact, ::selectMenuTab, settings = { showAppearance = true },
+                            if (!studioCovered) io.magicmobile.android.menus.ArenaTopBar(menuTab, compact, ::selectMenuTab, settings = { optionsStartPage = null; showAppearance = true },
                                 rank = record.file.rank.shownPosition, rankTitle = record.file.rank.shownTitle.takeIf { record.file.rank.isPlacing }, openRank = { selectMenuTab(io.magicmobile.android.game.ArenaMenuTab.RANKED) },
                                 unread = vm.account.incomingCount + vm.account.unreadMessages > 0, messages = { showFriends = true },
                                 updates = { showUpdates = true }, downloads = { showDownloads = true },
@@ -1669,11 +1669,18 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             }
 
             // Panels, not sheets: the menu's pages open as Arena's glass over the dimmed menu (ArenaPanels.kt).
-            io.magicmobile.android.menus.ArenaPanel(showAppearance, { showAppearance = false; optionsStartPage = null }, maxWidth = 560.dp, fitsContent = true) {
-                io.magicmobile.android.menus.ArenaOptionsView(portraitModeEnabled, { portraitModeEnabled = it }, setup.identity?.upstreamCommit, optionsStartPage)
+            io.magicmobile.android.menus.ArenaPanel(showAppearance, { showAppearance = false }, maxWidth = 560.dp, fitsContent = true) {
+                androidx.compose.runtime.key(optionsStartPage?.raw ?: "root") {
+                    io.magicmobile.android.menus.ArenaOptionsView(portraitModeEnabled, { portraitModeEnabled = it }, setup.identity?.upstreamCommit, optionsStartPage,
+                        sendFeedback = { kind, message, contact -> vm.account.sendFeedback(kind, message, contact) })
+                }
             }
             io.magicmobile.android.menus.ArenaPanel(showUpdates, { showUpdates = false }, io.magicmobile.android.menus.ArenaPanelPlacement.TRAILING) {
-                NativeUpdateNewsView(setup.identity?.upstreamCommit)
+                NativeUpdateNewsView(setup.identity?.upstreamCommit) {
+                    optionsStartPage = io.magicmobile.android.menus.ArenaOptionsPage.FEEDBACK
+                    showUpdates = false
+                    showAppearance = true
+                }
             }
             io.magicmobile.android.menus.ArenaPanel(showHowToPlay, ::closeHowToPlay, fitsContent = true) {
                 // The first visit opens straight into the table's tutorial; the menu offers both.

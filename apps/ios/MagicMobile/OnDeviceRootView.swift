@@ -403,9 +403,18 @@ struct OnDeviceRootView: View {
         let social = learningSheets(menu)
         .arenaPanel(isPresented: $showAppearance, maxWidth: 560, fitsContent: true) {
             ArenaOptionsView(portraitModeEnabled: $portraitModeEnabled, upstreamCommit: setup.identity?.upstreamCommit,
-                             startPage: optionsStartPage)
+                             startPage: optionsStartPage, sendFeedback: { kind, message, contact in
+                                 await account.sendFeedback(kind: kind, message: message, contact: contact)
+                             })
+            .id(optionsStartPage?.rawValue ?? "root")
         }
-        .arenaPanel(isPresented: $showUpdates, placement: .trailing) { NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit) }
+        .arenaPanel(isPresented: $showUpdates, placement: .trailing) {
+            NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit, onFeedback: {
+                optionsStartPage = .feedback
+                showUpdates = false
+                showAppearance = true
+            })
+        }
         .arenaPanel(isPresented: $showFriends, placement: .leading) {
             FriendsView(account: account, join: { code in
                 // After the sheet closes, so the table setup can open.
@@ -1395,7 +1404,7 @@ struct OnDeviceRootView: View {
                             downloads: { showDownloads = true },
                             lit: showAppearance ? "menu.settings" : showUpdates ? "menu.updates" : showDownloads ? "menu.downloads"
                                 : showFriends ? "menu.friends" : nil,
-                            settings: { showAppearance = true })
+                            settings: { optionsStartPage = nil; showAppearance = true })
             }
         }
     }
