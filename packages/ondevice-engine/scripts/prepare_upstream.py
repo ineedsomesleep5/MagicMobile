@@ -90,13 +90,12 @@ def patch_random(text: str) -> str:
         '    public static void setSeed(long newSeed) {','RandomUtil.setSeed')
 
 def patch_computer(text: str) -> str:
-    for field in ('List<PickedCard> pickedCards = new ArrayList<>();','List<ColoredManaSymbol> chosenColors = new ArrayList<>();'):
-        text=exact(text,'private final transient '+field,'private transient '+field+' // MOBILE_CHECKPOINT','ComputerPlayer '+field)
+    # Draft memory (pickedCards, chosenColors) left this class upstream; only the mana-payment map remains.
     return exact(text,'private final transient Map<UUID, ManaCost> lastUnpaidMana = new LinkedHashMap<>();',
         'private transient Map<UUID, ManaCost> lastUnpaidMana = new LinkedHashMap<>(); // MOBILE_CHECKPOINT\n\n'
         '    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {\n'
-        '        in.defaultReadObject(); // MOBILE_CHECKPOINT: upstream leaves these working collections null\n'
-        '        pickedCards = new ArrayList<>();\n        chosenColors = new ArrayList<>();\n        lastUnpaidMana = new LinkedHashMap<>();\n    }',
+        '        in.defaultReadObject(); // MOBILE_CHECKPOINT: upstream leaves this working collection null\n'
+        '        lastUnpaidMana = new LinkedHashMap<>();\n    }',
         'ComputerPlayer lastUnpaidMana')
 
 # AI search memory (docs/LIGHTER_ENGINE_PLAN.md, step 3). Neither changes a rule or a choice: a copy of
