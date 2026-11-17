@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "about": "NativeDeckCanonicalNames.candidates (Archidekt link imports, 2026-10-26): the names a deck's card is looked up by, in order. The exact name first; then plain letters for accents (XMage spells names without them); then the front of a two-part name (adventure, omen and prepare cards, whose full name only Archidekt sends). Double-faced cards keep their aliases, and an exact split-card name always wins because it comes first.",
+  "about": "NativeDeckCanonicalNames.candidates (Archidekt link imports, 2026-10-26): the names a deck's card is looked up by, in order. The exact name first; then plain letters for accents (XMage spells names without them); then a spelling alias for the three XMage 1.4.63 ellipsis renames; then the front of a two-part name (adventure, omen and prepare cards, whose full name only Archidekt sends). A tight ellipsis that is still the catalogue name (More of That Strange Oil...) is not folded. Double-faced cards keep their aliases, and an exact split-card name always wins because it comes first.",
   "cases": [
     { "name": "Sol Ring", "candidates": ["Sol Ring"] },
     { "name": "Troll of Khazad-dûm", "candidates": ["Troll of Khazad-dûm", "Troll of Khazad-dum"] },
@@ -12,6 +12,10 @@
     { "name": "Fire // Ice", "candidates": ["Fire // Ice", "Fire"] },
     { "name": "Gríma, Saruman's Footman // Back", "candidates": ["Gríma, Saruman's Footman // Back", "Grima, Saruman's Footman // Back", "Gríma, Saruman's Footman", "Grima, Saruman's Footman"] },
     { "name": "  Lightning Bolt  ", "candidates": ["Lightning Bolt"] },
-    { "name": " // Back", "candidates": ["// Back"] }
+    { "name": " // Back", "candidates": ["// Back"] },
+    { "name": "I'm a Doctor, Not a ...", "candidates": ["I'm a Doctor, Not a ...", "I'm a Doctor, Not a . . ."] },
+    { "name": "Set Phasers to...", "candidates": ["Set Phasers to...", "Set Phasers to . . ."] },
+    { "name": "With Great Power...", "candidates": ["With Great Power...", "With Great Power . . ."] },
+    { "name": "More of That Strange Oil...", "candidates": ["More of That Strange Oil..."] }
   ]
 }

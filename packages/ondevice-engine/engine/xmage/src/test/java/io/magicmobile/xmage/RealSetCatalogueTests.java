@@ -41,7 +41,7 @@ public final class RealSetCatalogueTests {
             check(set instanceof MobileExpansionSet, "registry holds only catalogue sets: " + set.getCode());
             mobile.add((MobileExpansionSet) set);
         }
-        check(mobile.size() == 589, "pinned set inventory: " + mobile.size());
+        check(mobile.size() == 595, "pinned set inventory: " + mobile.size());
         // The old generated registry added the set classes in class-name order; a HashMap filled in that order
         // iterates exactly like Sets now does (CardImpl and Sets.findCardByClass depend on that order).
         List<MobileExpansionSet> registryOrder = new ArrayList<>(mobile);
@@ -82,7 +82,7 @@ public final class RealSetCatalogueTests {
             printings += expected.size();
             if (set.hasCustomBooster()) custom++;
         }
-        check(printings == 93420, "pinned printing inventory: " + printings);
+        check(printings == 94360, "pinned printing inventory: " + printings);
         System.out.println("PASS fields, card lists, class and number lookups of " + mobile.size() + " sets, " + printings
                 + " printings; " + custom + " sets make packs in their own class");
 

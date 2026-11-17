@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "about": "A deck saved under the pre-1.4.63 ellipsis spelling still resolves to the same printing (iOS OnDeviceDeckResolver, Android OnDeviceDeckResolver, web DeckResolver).",
+  "cards": [
+    {"name": "Sol Ring", "setCode": "C21", "collectorNumber": "263"},
+    {"name": "I'm a Doctor, Not a . . .", "setCode": "TRK", "collectorNumber": "203"},
+    {"name": "Set Phasers to . . .", "setCode": "TRK", "collectorNumber": "34"},
+    {"name": "With Great Power . . .", "setCode": "SPM", "collectorNumber": "24"}
+  ],
+  "deck": {
+    "name": "Saved before 1.4.63",
+    "commander": "Sol Ring",
+    "main": [
+      "I'm a Doctor, Not a ...",
+      "Set Phasers to...",
+      "With Great Power..."
+    ]
+  },
+  "resolvedMain": [
+    {"name": "I'm a Doctor, Not a . . .", "setCode": "TRK", "collectorNumber": "203"},
+    {"name": "Set Phasers to . . .", "setCode": "TRK", "collectorNumber": "34"},
+    {"name": "With Great Power . . .", "setCode": "SPM", "collectorNumber": "24"}
+  ]
+}

@@ -6,10 +6,22 @@ import { appConfig } from "./appConfig";
 import { EngineError, type J } from "./json";
 
 /**
+ * Saved decks from before XMage 1.4.63 spell three cards with a tight ellipsis. The same printing
+ * (TRK 203, TRK 34, SPM 24) is now spaced dots. Not a general fold: "More of That Strange Oil..." still
+ * uses tight dots, and "Welcome to . . ." already used spaced dots.
+ */
+export const spellingAliases: Record<string, string> = {
+  "I'm a Doctor, Not a ...": "I'm a Doctor, Not a . . .",
+  "Set Phasers to...": "Set Phasers to . . .",
+  "With Great Power...": "With Great Power . . .",
+};
+
+/**
  * The names a deck's card is looked up by, in order (NativeDeckCanonicalNames.candidates, parity/card-name-cases.json;
  * Caleb, 2026-10-26: Archidekt links dropped cards that search then found). The exact name first, then plain letters for
- * accents ("Troll of Khazad-dûm": XMage spells names without them), then the front of a two-part name ("Brazen Borrower //
- * Petty Theft": adventure, omen and prepare cards, whose full name only Archidekt sends). An exact split-card name wins.
+ * accents ("Troll of Khazad-dûm": XMage spells names without them), then a spelling alias, then the front of a two-part
+ * name ("Brazen Borrower // Petty Theft": adventure, omen and prepare cards, whose full name only Archidekt sends).
+ * An exact split-card name wins.
  */
 export function cardNameCandidates(raw: string): string[] {
   const name = raw.trim();
@@ -17,6 +29,8 @@ export function cardNameCandidates(raw: string): string[] {
   const add = (value: string) => { if (value && !found.includes(value)) found.push(value); };
   add(name);
   add(plainLetters(name));
+  const alias = spellingAliases[name];
+  if (alias) { add(alias); add(plainLetters(alias)); }
   const split = name.indexOf(" // ");
   if (split > 0) {
     const front = name.slice(0, split).trim();

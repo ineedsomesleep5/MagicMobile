@@ -1,11 +1,11 @@
 {
-  "commit": "dac400ba1380f17492c9ad6a65ab60f12f28cd97",
+  "commit": "c5a5215fa086f487c793627446d5d27e81dfbc97",
   "magicmobileBase": "058478f690b713332c13d0a8369e98f5b792a282",
   "repository": "https://github.com/magefree/mage.git",
   "sourceBlobs": {
-    "Mage.Server.Plugins/Mage.Player.AI.MAD/src/mage/player/ai/ComputerPlayer6.java": "ca070e50f84474c081b66a7e06cefaccdd0206fe",
-    "Mage.Server.Plugins/Mage.Player.AI/src/mage/player/ai/ComputerPlayer.java": "9d148fb1c9de93d0f59ad9d4877906eda58dd371",
-    "Mage.Server.Plugins/Mage.Player.Human/src/mage/player/human/HumanPlayer.java": "e13acd23c296aa9979b8c9672b4c4590fce6b94b",
+    "Mage.Server.Plugins/Mage.Player.AI.MAD/src/mage/player/ai/ComputerPlayer6.java": "ba691d3b0057fc009ec9d614fbcf8af4b93bc6da",
+    "Mage.Server.Plugins/Mage.Player.AI/src/mage/player/ai/ComputerPlayer.java": "75d9ecdef70213a806b80e1e12e95fe567d4b625",
+    "Mage.Server.Plugins/Mage.Player.Human/src/mage/player/human/HumanPlayer.java": "ae96117dfdf37af6b93191fa42fc365f99e704ac",
     "Mage.Sets/src/mage/cards/a/ArcaneBombardment.java": "3441716b459247082646c9bb294a458d8ce9c4d6",
     "Mage.Sets/src/mage/cards/c/CaptainNghathrod.java": "e1a1e39f4248f44cddec788f0e83080598969bad",
     "Mage.Sets/src/mage/cards/f/ForTheAncestors.java": "afffd910b71d534c94519086969f93ff24bab12f",
@@ -18,12 +18,12 @@
     "Mage.Sets/src/mage/cards/s/SurgeEngine.java": "37713904f2166b4b200b977a3ff554fb403b7aea",
     "Mage.Sets/src/mage/cards/s/SwordswornCavalier.java": "d18fdb16b9f34fb41bd7edf20f32eddb2de10574",
     "Mage.Sets/src/mage/cards/t/TalarasBattalion.java": "08cff739af0a3e849c7bd2148a368151c8e70636",
-    "Mage/src/main/java/mage/abilities/Modes.java": "9db7c89c6282e026df078f8d6dfaaf3d7ba5220f",
+    "Mage/src/main/java/mage/abilities/Modes.java": "7b5e82c117ae643b527a3231c94e3afa50c82668",
     "Mage/src/main/java/mage/abilities/keyword/ReconfigureAbility.java": "303b42e0d298075edd5a94dfd619e5dcb29db797",
-    "Mage/src/main/java/mage/cards/CardImpl.java": "ab184ebab0b1e0421e4165404fb9d49ea18b0981",
+    "Mage/src/main/java/mage/cards/CardImpl.java": "19a51581fa4fa7b3feca78b948bf6037cf8657b1",
     "Mage/src/main/java/mage/cards/Sets.java": "152d51e53bf55ea0a8337eba6e86964bcbb65a90",
     "Mage/src/main/java/mage/game/Exile.java": "4342443b3214932e5ca560ffa6060bbea398cf0d",
-    "Mage/src/main/java/mage/game/GameImpl.java": "2b6dbb6f0aaa87ce9b143dae4c4e99d7f06bf7aa",
+    "Mage/src/main/java/mage/game/GameImpl.java": "94dfd0afa4b038235fa6e8707db92617e94f574b",
     "Mage/src/main/java/mage/util/RandomUtil.java": "b0424863455056a82e2bed7ce7699cbdc30c81c3"
   }
 }

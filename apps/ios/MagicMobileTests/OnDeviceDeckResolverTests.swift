@@ -52,6 +52,34 @@ final class OnDeviceDeckResolverTests: XCTestCase {
         XCTAssertEqual(aliased.canonicalCardName("Fire // Something"), "Fire")
     }
 
+    /// parity/ellipsis-deck-cases.json: a deck saved with the tight ellipsis still loads the spaced-dot printing.
+    func testSavedEllipsisNamesStillResolve() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../android/core/src/test/resources/parity/ellipsis-deck-cases.json").standardizedFileURL
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let cards = try XCTUnwrap(root["cards"] as? [[String: String]])
+        let payload: [String: Any] = [
+            "schemaVersion": 1, "upstreamCommit": "c5a5215fa086f487c793627446d5d27e81dfbc97",
+            "catalogueHash": "registry", "sourceCatalogueSHA256": "source", "sourceRegistrySHA256": "report",
+            "cards": cards,
+        ]
+        let resolver = try OnDeviceDeckResolver(catalogueData: JSONSerialization.data(withJSONObject: payload))
+        let deckInfo = try XCTUnwrap(root["deck"] as? [String: Any])
+        let saved = try XCTUnwrap(deckInfo["main"] as? [String])
+        let deck = DeckList(name: deckInfo["name"] as! String,
+                            commander: DeckEntry(cardName: deckInfo["commander"] as! String, quantity: 1, section: "commander"),
+                            entries: saved.map { DeckEntry(cardName: $0, quantity: 1, section: "deck") })
+        let rows = try XCTUnwrap(resolver.resolve(deck)["main"]?.array)
+        let expected = try XCTUnwrap(root["resolvedMain"] as? [[String: String]])
+        XCTAssertEqual(rows.count, expected.count)
+        for (row, want) in zip(rows, expected) {
+            XCTAssertEqual(row["name"]?.string, want["name"])
+            XCTAssertEqual(row["setCode"]?.string, want["setCode"])
+            XCTAssertEqual(row["collectorNumber"]?.string, want["collectorNumber"])
+        }
+        XCTAssertEqual(try resolver.resolve(deck)["commanders"]?.array?.first?["name"]?.string, "Sol Ring")
+    }
+
     func testInvalidAliasTargetsAndMissingMetadataIdentityReject() throws {
         for aliases in [["Front // Back": "Missing"], ["Front // Back": "Front // Other"], ["Wrong // Back": "Front"], ["Front // ": "Front"]] {
             XCTAssertThrowsError(try OnDeviceDeckResolver(catalogueData: aliasCatalogue(aliases: aliases)))
