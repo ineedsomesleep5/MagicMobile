@@ -1344,10 +1344,8 @@ struct NativeGameView: View {
             .onChange(of: isLogOpen) { _, open in GameAudio.shared.play(open ? .pageFlip : .uiClose) }
             #if DEBUG
             // Visual QA: MAGICMOBILE_PREVIEW_OPEN_LOG=<seconds> opens a design preview's log after that delay.
-            .task(id: snapshot.source) {
-                guard snapshot.source == "design-preview" else { return }
-                await openPreviewLog()
-            }
+            // A task closure here sits in the long chain and type-checks over the board budget (CI, 2026-11-17).
+            .modifier(PreviewLogTask(source: snapshot.source, openLog: { isLogOpen = true }))
             #endif
             .onChange(of: isGameMenuOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
             .onChange(of: isLandscapeStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
@@ -1373,10 +1371,19 @@ struct NativeGameView: View {
     }
 
     #if DEBUG
-    private func openPreviewLog() async {
-        guard let delay = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_OPEN_LOG"].flatMap(Double.init) else { return }
-        try? await Task.sleep(for: .seconds(delay))
-        isLogOpen = true
+    /// Opens a design preview's log. Kept out of the board's modifier chain so that chain stays under the type-check budget.
+    private struct PreviewLogTask: ViewModifier {
+        var source: String
+        var openLog: () -> Void
+
+        func body(content: Content) -> some View {
+            content.task(id: source) {
+                guard source == "design-preview" else { return }
+                guard let delay = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_OPEN_LOG"].flatMap(Double.init) else { return }
+                try? await Task.sleep(for: .seconds(delay))
+                openLog()
+            }
+        }
     }
     #endif
 
