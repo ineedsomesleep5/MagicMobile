@@ -602,6 +602,10 @@ contradicting one.
 
 ## Agent environment
 
+- 2026-11-17 (Cursor, send feedback): `swift test --package-path apps/ios` compiles an explicit `sources` list in `apps/ios/Package.swift`.
+  A new Swift file the Xcode target picks up from the folder is invisible there, so a type it calls fails with "cannot find in scope"
+  and the test file is reported as unhandled. **Rule:** add the type to the MagicMobile target's `sources` and its tests to
+  `OnDevicePresentationTests`.
 - 2026-10-26 (Claude, voice chat): iPhones write the game's epoch upper case (`UUID().uuidString`), Android and the web
   lower case, so anything named from the raw epoch splits a mixed table. **Rule:** lowercase it (`VoiceChatRules.channel`).
   Agora's Android `io.agora.rtc:voice-sdk` pulls every extension (AI noise, spatial audio…); use `voice-rtc-basic` and iOS
