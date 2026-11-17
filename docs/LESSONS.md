@@ -593,6 +593,13 @@ contradicting one.
   source commit (`2c32482`). **Rule:** when the Android native library and the package source
   disagree, restore the package to the library's commit rather than rebuilding.
 
+## Server
+
+- 2026-11-17 (Cursor, send feedback): `grant execute ... to service_role` fails on a database that has no such role, and PGlite doesn't
+  create it. **Rule:** grant inside `do` after `pg_roles` shows the role, and create `service_role` in the PGlite harness
+  before the migration. `mm_feedback_summary(p_since)` is the start of the window (`created_at >= p_since`), not the end.
+  Where: `supabase/migrations/20261117180000_feedback.sql`, `supabase/tests/verify-feedback.mjs`.
+
 ## Agent environment
 
 - 2026-10-26 (Claude, voice chat): iPhones write the game's epoch upper case (`UUID().uuidString`), Android and the web

@@ -1,6 +1,7 @@
 package io.magicmobile.android.social
 
 import android.content.Context
+import android.os.Build
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -539,6 +540,29 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
         perform("mm_report", mapOf("p_username" to JsonPrimitive(name), "p_message" to (message?.let(::JsonPrimitive) ?: JsonNull),
             "p_context" to JsonPrimitive(context)), refreshAfter = false)
         if (notice == null) notice = "Thanks. $name was reported."
+    }
+
+    /**
+     * A bug or a feature idea (mm_send_feedback). Attaches this build and the phone. Returns a code
+     * FeedbackDraft.notice shows. Signed out, or not online yet, it returns "offline" and stores nothing.
+     * A username is not required: an anonymous account is enough, as with a freeze report.
+     */
+    suspend fun sendFeedback(kind: String, message: String, contact: String): String {
+        if (SocialFixtures.isActive || HowToPlayLaunch.isAutomated(LaunchEnvironment.values)) return "offline"
+        if (phase != Phase.READY) return "offline"
+        val device = runCatching {
+            "${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE}"
+        }.getOrDefault("Android")
+        val params = io.magicmobile.android.game.FeedbackDraft.params(
+            kind, message, contact, "android", io.magicmobile.android.BuildConfig.VERSION_NAME,
+            io.magicmobile.android.BuildConfig.RELEASE_BUILD.toString(), device)
+            ?: return "invalid_feedback"
+        return try {
+            api.rpc("mm_send_feedback", params.mapValues { (_, value) -> if (value == null) JsonNull else JsonPrimitive(value) })
+            "sent"
+        } catch (error: Exception) {
+            SupabaseLite.code(error)
+        }
     }
 
     /**

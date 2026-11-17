@@ -89,6 +89,9 @@ describe("PlayerAccountRules", () => {
       no_username: "Choose your name first.",
       too_many_requests: "You have too many friend requests waiting.",
       too_many_reports: "You've sent a lot of reports. Try again later.",
+      too_many_feedback: "You've sent a few notes already. Try again in a little while.",
+      invalid_feedback: "Write a note first, up to 4,000 characters.",
+      not_signed_in: "This app isn't signed in yet. Open it online and try again.",
       not_friends: "You can only message friends.",
       invalid_message: "Write something first (500 characters at most).",
       too_many_messages: "You're sending messages fast. Wait a moment and try again.",
@@ -472,6 +475,27 @@ describe("PlayerAccount", () => {
     await h.account.signOut();
     expect(h.calls.some((c) => c.path === "/auth/v1/signup")).toBe(true);
     expect(h.rpcCalls("mm_profile").at(-1)?.bearer).toBe("Bearer N1");
+  });
+
+  it("sends feedback as the note, the contact and this browser, and not while signed out", async () => {
+    const h = harness(profileServer({ mm_send_feedback: () => ok(true) }));
+    expect(await h.account.sendFeedback("bug", "  froze ", " ada ")).toBe("offline");
+    expect(h.rpcCalls("mm_send_feedback")).toHaveLength(0);
+    await h.account.start();
+    expect(await h.account.sendFeedback("bug", "  froze ", " ada ")).toBe("sent");
+    const body = h.rpcCalls("mm_send_feedback")[0].body;
+    expect(Object.keys(body).sort()).toEqual(["p_app_version", "p_build", "p_contact", "p_device", "p_kind", "p_message", "p_platform"]);
+    expect(body).toMatchObject({ p_kind: "bug", p_message: "froze", p_contact: "ada", p_platform: "web", p_app_version: "0.1.1", p_build: "web" });
+    expect(JSON.stringify(body).toLowerCase()).not.toContain("deck");
+    expect(String(body.p_device).length).toBeGreaterThan(0);
+    const calls = h.rpcCalls("mm_send_feedback").length;
+    expect(await h.account.sendFeedback("bug", "   ", "")).toBe("invalid_feedback");
+    expect(h.rpcCalls("mm_send_feedback")).toHaveLength(calls);
+
+    const limited = harness(profileServer({ mm_send_feedback: () => fail("too_many_feedback") }));
+    await limited.account.start();
+    expect(await limited.account.sendFeedback("feature", "A clock", "")).toBe("too_many_feedback");
+    expect(limited.rpcCalls("mm_send_feedback")[0].body.p_contact).toBeNull();
   });
 
   it("friends: request, respond, remove, block and report", async () => {

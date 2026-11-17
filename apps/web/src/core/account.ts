@@ -41,6 +41,9 @@ export const PlayerAccountRules = {
       case "no_username": return "Choose your name first.";
       case "too_many_requests": return "You have too many friend requests waiting.";
       case "too_many_reports": return "You've sent a lot of reports. Try again later.";
+      case "too_many_feedback": return "You've sent a few notes already. Try again in a little while.";
+      case "invalid_feedback": return "Write a note first, up to 4,000 characters.";
+      case "not_signed_in": return "This app isn't signed in yet. Open it online and try again.";
       case "not_friends": return "You can only message friends.";
       case "invalid_message": return "Write something first (500 characters at most).";
       case "too_many_messages": return "You're sending messages fast. Wait a moment and try again.";
@@ -65,6 +68,108 @@ export const PlayerAccountRules = {
     }
   },
 } as const;
+
+/** The web build attached to a feedback note. The About line uses the same pair. */
+export const WEB_APP_VERSION = "0.1.1";
+export const WEB_APP_BUILD = "web";
+
+const codePoints = (text: string) => [...text].length;
+const clipPoints = (text: string, max: number) => (codePoints(text) <= max ? text : [...text].slice(0, max).join(""));
+const allowedPoint = (value: number, newlines: boolean) => (value === 10 || value === 9 ? newlines : value >= 32 && value !== 127);
+const forbiddenPoints = (text: string, newlines: boolean) => [...text].some((char) => !allowedPoint(char.codePointAt(0) ?? 0, newlines));
+
+/**
+ * A note a player sends from Send feedback (mm_send_feedback). The message and an optional contact,
+ * nothing else they saved: the payload keys are fixed, and a deck list is not one of them.
+ * parity/feedback-cases.json checks this against iOS and Android.
+ */
+export const FeedbackDraft = {
+  MAX_MESSAGE: 4000,
+  MAX_CONTACT: 120,
+  MAX_VERSION: 40,
+  MAX_DEVICE: 80,
+
+  /** What the player reads after a send, including the offline and success lines the screen shows. */
+  notice(code: string): string {
+    switch (code) {
+      case "sent": return "Thanks. Your note was sent.";
+      case "offline": return "You're offline, so this note stayed here. Try again when you're back online.";
+      case "invalid_feedback": return "Write a note first, up to 4,000 characters.";
+      case "invalid_contact": return "Keep an email or handle to 120 characters.";
+      case "too_many_feedback": return "You've sent a few notes already. Try again in a little while.";
+      case "not_signed_in": return "This app isn't signed in yet. Open it online and try again.";
+      case "feature_unavailable": return "Feedback isn't on the server yet. Try again after the next update.";
+      default: return "This note couldn't be sent. Try again.";
+    }
+  },
+
+  chars: codePoints,
+
+  /** The field as the player types it: controls dropped (a line break stays in the note), then the cap. */
+  cleanMessage(raw: string): string {
+    return clipPoints([...raw].filter((char) => allowedPoint(char.codePointAt(0) ?? 0, true)).join(""), FeedbackDraft.MAX_MESSAGE);
+  },
+
+  cleanContact(raw: string): string {
+    return clipPoints([...raw].filter((char) => allowedPoint(char.codePointAt(0) ?? 0, false)).join(""), FeedbackDraft.MAX_CONTACT);
+  },
+
+  /** Trimmed note, or undefined when it is blank, too long, or still has a control character. */
+  message(raw: string): string | undefined {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0 || codePoints(trimmed) > FeedbackDraft.MAX_MESSAGE || forbiddenPoints(trimmed, true)) return undefined;
+    return trimmed;
+  },
+
+  /** Blank contact is left out. A contact that is too long or has a control character is refused. */
+  contact(raw: string): { value: string | null; ok: boolean } {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) return { value: null, ok: true };
+    if (codePoints(trimmed) > FeedbackDraft.MAX_CONTACT || forbiddenPoints(trimmed, false)) return { value: null, ok: false };
+    return { value: trimmed, ok: true };
+  },
+
+  /** The RPC body, or undefined when it should not be sent. Version, build and device are clipped to the server's caps. */
+  params(kind: string, message: string, contact: string, platform: string, version: string, build: string, device: string): Record<string, string | null> | undefined {
+    if (kind !== "bug" && kind !== "feature") return undefined;
+    if (platform !== "ios" && platform !== "android" && platform !== "web") return undefined;
+    const body = FeedbackDraft.message(message);
+    if (body === undefined) return undefined;
+    const who = FeedbackDraft.contact(contact);
+    if (!who.ok) return undefined;
+    const appVersion = FeedbackDraft.meta(version, FeedbackDraft.MAX_VERSION);
+    const appBuild = FeedbackDraft.meta(build, FeedbackDraft.MAX_VERSION);
+    const model = FeedbackDraft.meta(device, FeedbackDraft.MAX_DEVICE);
+    if (appVersion === undefined || appBuild === undefined || model === undefined) return undefined;
+    return {
+      p_kind: kind, p_message: body, p_contact: who.value, p_platform: platform,
+      p_app_version: appVersion, p_build: appBuild, p_device: model,
+    };
+  },
+
+  meta(raw: string, max: number): string | undefined {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0 || forbiddenPoints(trimmed, false)) return undefined;
+    const clipped = clipPoints(trimmed, max);
+    return clipped.length === 0 ? undefined : clipped;
+  },
+};
+
+/** "macOS · Safari" from a browser's user agent, capped like the server's device column. */
+export function webDeviceLabel(userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent): string {
+  const os = /Android/.test(userAgent) ? "Android"
+    : /iPhone|iPad/.test(userAgent) ? "iOS"
+    : /Windows/.test(userAgent) ? "Windows"
+    : /Mac OS X/.test(userAgent) ? "macOS"
+    : /Linux/.test(userAgent) ? "Linux"
+    : "Web";
+  const browser = /Edg\//.test(userAgent) ? "Edge"
+    : /Chrome\//.test(userAgent) ? "Chrome"
+    : /Firefox\//.test(userAgent) ? "Firefox"
+    : /Safari\//.test(userAgent) ? "Safari"
+    : "Browser";
+  return clipPoints(`${os} · ${browser}`, FeedbackDraft.MAX_DEVICE);
+}
 
 /** What the search field sends: at least two letters, digits or underscores (the server returns nothing otherwise). */
 export const PlayerSearchRules = {
@@ -1303,6 +1408,22 @@ export class PlayerAccount {
   async report(name: string, message: string | undefined, context: string): Promise<void> {
     await this.perform("mm_report", { p_username: name, p_message: message ?? null, p_context: context }, false);
     if (this.state.notice === undefined) this.set({ notice: `Thanks. ${name} was reported.` });
+  }
+
+  /**
+   * A bug or a feature idea (mm_send_feedback). Attaches this browser's version and a short device label.
+   * Returns a code FeedbackDraft.notice can show. Nothing but the note, the contact and that label is sent.
+   */
+  async sendFeedback(kind: string, message: string, contact: string): Promise<string> {
+    if (this.state.phase !== "ready") return "offline";
+    const params = FeedbackDraft.params(kind, message, contact, "web", WEB_APP_VERSION, WEB_APP_BUILD, webDeviceLabel());
+    if (!params) return "invalid_feedback";
+    try {
+      await this.api.rpc("mm_send_feedback", params);
+      return "sent";
+    } catch (error) {
+      return code(error);
+    }
   }
 
   /** Deletes the account and everything tied to it; a new one is made the next time. */

@@ -6,6 +6,8 @@ import SwiftUI
 /// The build, XMage news and the links sit in the last message, About & links.
 struct NativeUpdateNewsView: View {
     let upstreamCommit: String?
+    /// Opens Send feedback (the same screen as Options).
+    var onFeedback: () -> Void = {}
     @State private var expanded: String?
 
     private static let aboutID = "about"
@@ -110,6 +112,10 @@ struct NativeUpdateNewsView: View {
         ArenaNewsSection(title: String(localized: "About"),
                          footer: String(localized: "Independent fan project. Not affiliated with Wizards of the Coast. Magic: The Gathering and card artwork belong to their respective owners."),
                          footerIdentifier: "updates.fanContentNotice") {
+            Button(action: onFeedback) {
+                Label(String(localized: "Send feedback"), systemImage: "chevron.right")
+            }
+            .accessibilityIdentifier("updates.feedback")
             Text(String(localized: "Card images from Scryfall"))
             Link(destination: URL(string: "https://magicmobile-downloads.vercel.app/privacy/")!) {
                 Label("Privacy", systemImage: "arrow.up.right")

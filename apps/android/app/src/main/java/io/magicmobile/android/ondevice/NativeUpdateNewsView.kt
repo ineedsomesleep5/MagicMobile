@@ -71,7 +71,7 @@ import io.magicmobile.android.ui.SfWeight
  */
 
 @Composable
-fun NativeUpdateNewsView(upstreamCommit: String?) {
+fun NativeUpdateNewsView(upstreamCommit: String?, onFeedback: () -> Unit = {}) {
     var expanded by rememberSaveable { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxWidth()) {
         ArenaPanelHeader("Inbox", closeIdentifier = "updates.close")
@@ -83,7 +83,7 @@ fun NativeUpdateNewsView(upstreamCommit: String?) {
             InboxRow(UpdateNews.ABOUT_ID, "About & links", null, false, expanded, { expanded = it }) {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     InstalledBuild(upstreamCommit)
-                    LinkSections()
+                    LinkSections(onFeedback)
                 }
             }
         }
@@ -158,7 +158,7 @@ private fun InstalledBuild(upstreamCommit: String?) {
 }
 
 @Composable
-private fun LinkSections() {
+private fun LinkSections(onFeedback: () -> Unit) {
     val context = LocalContext.current
     fun open(url: String) { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } }
     ArenaNewsSection("XMage news", "Opens GitHub. Upstream changes are not installed automatically. New cards and abilities become available only after a compatible MagicMobile build is tested and released.") {
@@ -167,6 +167,7 @@ private fun LinkSections() {
     }
     ArenaNewsSection("About", "Independent fan project. Not affiliated with Wizards of the Coast. Magic: The Gathering and card artwork belong to their respective owners.",
         "updates.fanContentNotice") {
+        NewsLink("Send feedback", "updates.feedback", external = false, action = onFeedback)
         Text("Card images from Scryfall", Modifier.padding(vertical = 8.dp), color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(14f, SfWeight.medium))
         NewsLink("Privacy", "updates.privacy") { open("https://magicmobile-downloads.vercel.app/privacy/") }
     }
@@ -192,13 +193,13 @@ private fun ArenaNewsSection(title: String, footer: String? = null, footerIdenti
 
 /** A link in the news: the words, and its arrow in gold at the end of the line. */
 @Composable
-private fun NewsLink(title: String, identifier: String? = null, action: () -> Unit) {
+private fun NewsLink(title: String, identifier: String? = null, external: Boolean = true, action: () -> Unit) {
     BrandPressable(action, Modifier.fillMaxWidth().then(if (identifier != null) Modifier.testTag(identifier) else Modifier)
         .semantics(mergeDescendants = true) { contentDescription = title; role = Role.Button }) {
         Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Text(title, Modifier.weight(1f), color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(14f, SfWeight.medium))
-            SfImage("arrow.up.right", ArenaMenuStyle.gold, 12.dp)
+            SfImage(if (external) "arrow.up.right" else "chevron.right", ArenaMenuStyle.gold, 12.dp)
         }
     }
 }

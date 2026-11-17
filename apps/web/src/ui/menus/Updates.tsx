@@ -5,6 +5,7 @@
  */
 import { useState } from "react";
 import { gameAudio } from "../audio";
+import { WEB_APP_BUILD, WEB_APP_VERSION } from "../../core/account";
 import { SUPPORT } from "./Options";
 import { DeckArt } from "./DeckBox";
 import { Caps, PanelHeader } from "./kit";
@@ -69,7 +70,7 @@ const MESSAGES: Message[] = [
 
 const date = (day: number) => new Date(2026, 9, day).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 
-export function UpdatesPanel({ onClose }: { onClose: () => void }) {
+export function UpdatesPanel({ onClose, onFeedback }: { onClose: () => void; onFeedback?: () => void }) {
   const [open, setOpen] = useState<string>();
   const row = (id: string, title: string, when: string | undefined, isNew: boolean, body: React.ReactNode) => {
     const shown = open === id;
@@ -102,12 +103,13 @@ export function UpdatesPanel({ onClose }: { onClose: () => void }) {
         )))}
         {row("about", "About & links", undefined, false, (
           <>
-            <div className="minboxbuild"><span>Installed build</span><b>MagicMobile 0.1.1 (web)</b></div>
+            <div className="minboxbuild"><span>Installed build</span><b>MagicMobile {WEB_APP_VERSION} ({WEB_APP_BUILD})</b></div>
             <Section title="XMage news" footer="Opens GitHub. Upstream changes are not installed automatically. New cards and abilities become available only after a compatible MagicMobile build is tested and released.">
               <a href="https://github.com/magefree/mage/releases" target="_blank" rel="noopener">XMage release notes <i>↗</i></a>
               <a href="https://github.com/magefree/mage/commits/master/" target="_blank" rel="noopener">Latest upstream changes <i>↗</i></a>
             </Section>
             <Section title="About" footer="Independent fan project. Not affiliated with Wizards of the Coast. Magic: The Gathering and card artwork belong to their respective owners.">
+              <button type="button" data-id="updates.feedback" onClick={onFeedback}>Send feedback <i>›</i></button>
               <span>Card images from Scryfall</span>
               <a href="https://magicmobile-downloads.vercel.app/privacy/" target="_blank" rel="noopener">Privacy <i>↗</i></a>
             </Section>

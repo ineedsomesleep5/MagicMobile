@@ -173,13 +173,14 @@ export function BackChevron({ onBack }: { onBack: () => void }) {
 }
 
 /** Arena's tab strip: words over a faint hairline, the chosen one bright over a glowing gold bar (ArenaSegmented). */
-export function Segmented<T extends string | number>({ options, value, onChange, stretch, label }: {
-  options: { label: string; value: T }[]; value: T; onChange: (value: T) => void; stretch?: boolean; label?: string;
+export function Segmented<T extends string | number>({ options, value, onChange, stretch, label, id }: {
+  options: { label: string; value: T }[]; value: T; onChange: (value: T) => void; stretch?: boolean; label?: string; id?: string;
 }) {
   return (
     <div className={`msegmented ${stretch ? "stretch" : ""}`} role="radiogroup" aria-label={label}>
       {options.map((option) => (
         <button key={String(option.value)} type="button" role="radio" aria-checked={option.value === value} className={option.value === value ? "on" : ""}
+          data-id={id ? `${id}.${option.value}` : undefined}
           onClick={() => { gameAudio.play("ui-tap"); onChange(option.value); }}>{option.label}<i className="mtabbar" /></button>
       ))}
     </div>

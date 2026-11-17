@@ -18,6 +18,9 @@ enum PlayerAccountRules {
         case "no_username": return String(localized: "Choose your name first.")
         case "too_many_requests": return String(localized: "You have too many friend requests waiting.")
         case "too_many_reports": return String(localized: "You've sent a lot of reports. Try again later.")
+        case "too_many_feedback": return String(localized: "You've sent a few notes already. Try again in a little while.")
+        case "invalid_feedback": return String(localized: "Write a note first, up to 4,000 characters.")
+        case "not_signed_in": return String(localized: "This app isn't signed in yet. Open it online and try again.")
         case "not_friends": return String(localized: "You can only message friends.")
         case "invalid_message": return String(localized: "Write something first (500 characters at most).")
         case "too_many_messages": return String(localized: "You're sending messages fast. Wait a moment and try again.")
@@ -585,7 +588,26 @@ final class PlayerAccount: ObservableObject {
         }
     }
 
-    /// Sends one finished game. Never throws: the caller keeps what could not be sent and tries again later.
+    /// A bug or a feature idea (mm_send_feedback). Attaches this build and the phone. Returns a code
+    /// FeedbackDraft.notice shows. Signed out, or not online yet, it returns "offline" and stores nothing.
+    /// A username is not required: an anonymous account is enough, as with a freeze report.
+    func sendFeedback(kind: String, message: String, contact: String) async -> String {
+        guard phase == .ready else { return "offline" }
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? ""
+        let build = info?["CFBundleVersion"] as? String ?? ""
+        let device = "\(DeviceModel.identifier) · \(DeviceModel.system)"
+        guard let params = FeedbackDraft.params(kind: kind, message: message, contact: contact, platform: "ios", version: version, build: build, device: device) else {
+            return "invalid_feedback"
+        }
+        do {
+            _ = try await api.rpc("mm_send_feedback", params)
+            return "sent"
+        } catch {
+            return SupabaseLite.code(of: error)
+        }
+    }
+
     /// Sends a freeze report the player chose to send (docs/FREEZE_LOG.md); false when it couldn't go now. Never throws.
     func sendDiagnostic(kind: String, report: String) async -> Bool {
         guard phase == .ready else { return false }

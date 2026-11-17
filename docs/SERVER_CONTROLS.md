@@ -171,6 +171,59 @@ update public.app_settings set value = value || '{"worldMotionTest": true}', upd
 update public.app_settings set value = value - 'worldMotionTest', updated_at = now() where key = 'switches';
 ```
 
+## Feedback
+
+Players send a bug or a feature idea from Options (Send feedback) and from About, on iOS, Android and the web.
+`mm_send_feedback` stores it in `feedback`. The apps cannot read the table: no policy, and anon and authenticated have no
+privileges. A player needs the anonymous account every install makes once it has been online. A username is not required.
+Someone with no session yet is refused (`not_signed_in`), the same as a freeze report. Five notes an hour, 4,000 characters,
+and the contact is optional and at most 120. The row is the note, the contact, the platform, the version, the build and the
+device. Deck lists are not stored.
+
+Apply `supabase/migrations/20261117180000_feedback.sql` in the SQL editor when you want notes to start arriving. Until then
+the apps say feedback isn't on the server yet.
+
+### Monday check-in (read only)
+
+Use the SQL editor, which runs as the database owner, or call the summary as `service_role`. Do not grant `authenticated` or
+`anon` any read. `mm_feedback_summary` is already revoked from those roles.
+
+```sql
+-- Last seven days: counts by kind, platform and version, then the newest 40 notes.
+select public.mm_feedback_summary();
+-- A chosen window. p_since is the start.
+select public.mm_feedback_summary(now() - interval '7 days');
+```
+
+The same numbers, as SQL, if you are reading as the owner:
+
+```sql
+select kind, platform, app_version, count(*) as n
+  from public.feedback
+ where created_at >= now() - interval '7 days'
+ group by kind, platform, app_version
+ order by n desc, kind, platform, app_version;
+
+select created_at, kind, platform, app_version, build, device, contact, message
+  from public.feedback
+ where created_at >= now() - interval '7 days'
+ order by created_at desc
+ limit 40;
+```
+
+A separate read-only role, if you want one that is not `service_role` and not a client role. It has no login until you give
+it one, and it is never granted to the app:
+
+```sql
+create role feedback_reader nologin;
+grant usage on schema public to feedback_reader;
+grant select on public.feedback to feedback_reader;
+-- Then, in a session that may set the role:
+set role feedback_reader;
+select kind, platform, app_version, count(*) from public.feedback
+ where created_at >= now() - interval '7 days' group by 1, 2, 3;
+```
+
 ## Voice chat
 
 The `agora-token` edge function mints voice tokens; it needs the Supabase secret `AGORA_APP_CERTIFICATE` (Caleb sets it in
