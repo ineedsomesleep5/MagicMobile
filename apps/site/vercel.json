@@ -39,15 +39,6 @@
           "value": "application/json"
         }
       ]
-    },
-    {
-      "source": "/downloads/(.*).apk",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/vnd.android.package-archive"
-        }
-      ]
     }
   ],
   "rewrites": [

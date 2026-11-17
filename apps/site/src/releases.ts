@@ -8,8 +8,8 @@ export const releases = {
   android: {
     version: sharedAppVersion,
     build: androidReleaseBuild,
-    // Same-origin file. Do not point this at a code host.
-    url: "/downloads/MagicMobile-Android-0.1.1-build56.apk",
+    // Cloudflare R2. Do not point this at a code host.
+    url: "https://downloads.calebfeliciano.com/android/MagicMobile-Android-0.1.1-build56.apk",
   },
   ios: {
     version: sharedAppVersion,

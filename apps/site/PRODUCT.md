@@ -26,7 +26,7 @@ Signed Android build and acceptance receipt. iOS build 11 distribution evidence 
 ## Verified distribution
 On September 23, 2026 UTC, App Store Connect confirmed iOS version 0.1.1 build 11 as VALID, with Beta App Review APPROVED and both Internal and External groups IN_BETA_TESTING. The External group uses public invitation https://testflight.apple.com/join/2mSHE8rZ. This confirms distribution, not physical-iPhone gameplay acceptance; see `../../release/RELEASE_0.1.1_BUILD11.md`.
 
-Android build 56 is linked from this site at `/downloads/MagicMobile-Android-0.1.1-build56.apk` (`src/releases.ts`). The APK file is not stored in the repository.
+Android build 56 is linked from `src/releases.ts` at `https://downloads.calebfeliciano.com/android/MagicMobile-Android-0.1.1-build56.apk` (144,310,775 bytes, SHA-256 `ab8621cee1189acbc247ae3b910ad8bba1c3f353dd1fdcb7a008d5da5860a9d1`). The APK file is not stored in the repository.
 
 ## Open Decisions
 None for the download destinations. Production is published at https://magicmobile-downloads.vercel.app. Release version and build metadata are maintained with the download URLs in `src/releases.ts`.
